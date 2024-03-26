@@ -104,6 +104,8 @@ struct gpt_params {
     std::string lookup_cache_static  = ""; // path of static ngram cache file for lookup decoding
     std::string lookup_cache_dynamic = ""; // path of dynamic ngram cache file for lookup decoding
     std::string logits_file          = "";  // file for saving *all* logits
+    std::string script               = "";  // copied script input file
+    std::string custom_p_file        = "";  // custom prompts input file
 
     std::vector<llama_model_kv_override> kv_overrides;
 
@@ -156,6 +158,8 @@ struct gpt_params {
     bool infill            = false; // use infill mode
     bool dump_kv_cache     = false; // dump the KV cache contents for debugging purposes
     bool no_kv_offload     = false; // disable KV offloading
+    bool scripted          = false; // input is scripted
+    bool custom_prompts_on = false; // custom prompts are available
 
     std::string cache_type_k = "f16"; // KV cache data type for the K
     std::string cache_type_v = "f16"; // KV cache data type for the V
