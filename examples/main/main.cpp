@@ -41,6 +41,9 @@ static std::ostringstream       * g_output_ss;
 static std::vector<llama_token> * g_output_tokens;
 static bool is_interacting = false;
 
+// for timing
+int64_t t0;
+
 // for custom prompt mode
 std::string custom_template_prompt;
 std::vector<std::string> custom_prompts;
@@ -153,7 +156,15 @@ static void sigint_handler(int signo) {
             printf("\n");
             llama_print_timings(*g_ctx);
             write_logfile(*g_ctx, *g_params, *g_model, *g_input_tokens, g_output_ss->str(), *g_output_tokens);
-            _exit(130);
+
+            t0 = ggml_time_us() - t0;
+            printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
+
+#ifdef GGML_TENSOR_OP_PERF
+            print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
+
+             _exit(130);
         }
     }
 }
@@ -167,6 +178,10 @@ static void llama_log_callback_logTee(ggml_log_level level, const char * text, v
 
 int main(int argc, char ** argv) {
     gpt_params params;
+
+    ggml_time_init();
+    t0 = ggml_time_us();
+
     g_params = &params;
 
     if (!gpt_params_parse(argc, argv, params)) {
@@ -1055,6 +1070,13 @@ int main(int argc, char ** argv) {
 #ifndef LOG_DISABLE_LOGS
     LOG_TEE("Log end\n");
 #endif // LOG_DISABLE_LOGS
+
+    t0 = ggml_time_us() - t0;
+    printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }

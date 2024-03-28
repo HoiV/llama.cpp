@@ -254,6 +254,13 @@
 
 #define GGML_PAD(x, n) (((x) + (n) - 1) & ~((n) - 1))
 
+//
+// Enable asserts.
+//
+
+// #define ENABLE_ASSERTS 1
+
+#ifdef ENABLE_ASSERTS
 #define GGML_ASSERT(x) \
     do { \
         if (!(x)) { \
@@ -264,6 +271,16 @@
         } \
     } while (0)
 
+#else
+#define GGML_ASSERT(x)
+#endif // ENABLE_ASSERTS
+
+//
+// Turn off debug code.
+//
+
+#define NDEBUG 1
+
 #ifndef NDEBUG
 #define GGML_UNREACHABLE() GGML_ASSERT(!"statement should not be reached")
 #elif defined(__GNUC__)
@@ -273,6 +290,29 @@
 #else
 #define GGML_UNREACHABLE() ((void) 0)
 #endif
+
+//
+// Tensor and tensor op perf data collection.
+//
+
+#define GGML_TENSOR_OP_PERF 1
+#ifdef GGML_TENSOR_OP_PERF
+//#define GGML_VECTOR_DOT_PERF 1
+#endif // GGML_TENSOR_OP_PERF
+
+#ifdef  __cplusplus
+extern "C"
+#endif // __cplusplus
+void
+print_tensor_op_perf_data (
+    void
+    );
+
+//
+// Perf cycles data collection.
+//
+
+//#define GGML_PERF
 
 // used to copy the number of elements and stride in bytes of tensors into local variables.
 // main purpose is to reduce code duplication and improve readability.
@@ -577,6 +617,9 @@ extern "C" {
         struct ggml_tensor * grad;
         struct ggml_tensor * src[GGML_MAX_SRC];
 
+        int n_tasks;
+
+        // performance - not used but required for size and alignment
         // performance
         int     perf_runs;
         int64_t perf_cycles;
@@ -725,7 +768,7 @@ extern "C" {
     GGML_API GGML_CALL size_t  ggml_nbytes      (const struct ggml_tensor * tensor);
     GGML_API           size_t  ggml_nbytes_pad  (const struct ggml_tensor * tensor); // same as ggml_nbytes() but padded to GGML_MEM_ALIGN
 
-    GGML_API GGML_CALL int    ggml_blck_size(enum ggml_type type);
+    GGML_API GGML_CALL size_t ggml_blck_size(enum ggml_type type);
     GGML_API GGML_CALL size_t ggml_type_size(enum ggml_type type);             // size in bytes for all elements in a block
     GGML_API GGML_CALL size_t ggml_row_size (enum ggml_type type, int64_t ne); // size in bytes for all elements in a row
 
