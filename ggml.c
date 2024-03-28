@@ -2880,8 +2880,9 @@ inline static void ggml_vec_sum_f16_ggf(const int n, float * s, const ggml_fp16_
     *s = sum;
 }
 
-#ifdef XBOX_INVESTIGATE // problem in all output
-float ggml_vec_max_f32(const int64_t n, const float * x) {
+#ifdef XBOX_INVESTIGATE // slower than original version
+
+void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
     float max = -INFINITY;
 #ifdef GGML_SIMD
     int64_t i = 0;
@@ -2931,7 +2932,7 @@ float ggml_vec_max_f32(const int64_t n, const float * x) {
         max = MAX(max, x[i]);
     }
 #endif // GGML_SIMD 
-    return max;
+    *s = max;
 }
 
 #else // XBOX_INVESTIGATE
