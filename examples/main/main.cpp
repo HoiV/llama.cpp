@@ -19,7 +19,9 @@
 #include <signal.h>
 #include <unistd.h>
 #elif defined (_WIN32)
-#define WIN32_LEAN_AND_MEAN
+#if !defined WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif // WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -38,6 +40,55 @@ static std::vector<llama_token> * g_input_tokens;
 static std::ostringstream       * g_output_ss;
 static std::vector<llama_token> * g_output_tokens;
 static bool is_interacting = false;
+
+// for timing
+int64_t t0;
+
+// for custom prompt mode
+std::string custom_template_prompt;
+std::vector<std::string> custom_prompts;
+std::vector<std::string>::iterator custom_prompts_it;
+int current_custom_prompt_index = 0;
+
+bool processCustomPromptsFromFile(const std::string& custom_p_file) {
+    std::ifstream cpfile(custom_p_file);
+    if (!cpfile.is_open()) {
+        printf("[%s]: failed to open [%s]\n", __func__, custom_p_file.c_str());
+        return false;
+    }
+
+    std::string line;
+
+    bool templatePromptMode = false;
+    bool userPromptMode = false;
+    custom_prompts.clear();
+    custom_template_prompt = "";
+
+    // process CUSTOM_SYSTEM_PROMPT
+    while (std::getline(cpfile, line)) {
+        if (line == "CUSTOM_TEMPLATE_PROMPT") {
+            templatePromptMode = true;
+            continue;
+        } else if (line == "CUSTOM_PROMPT") {
+            userPromptMode = true;
+            continue;
+        } else if (line == "END_SECTION") {
+            templatePromptMode = false;
+            userPromptMode = false;
+            continue;
+        }
+
+        if (templatePromptMode) {
+            custom_template_prompt += line + '\n';
+        } else if (userPromptMode) {
+            custom_prompts.push_back(line);
+        }
+    }
+
+    cpfile.close();
+
+    return true;
+}
 
 static bool file_exists(const std::string &path) {
     std::ifstream f(path.c_str());
@@ -105,7 +156,15 @@ static void sigint_handler(int signo) {
             printf("\n");
             llama_print_timings(*g_ctx);
             write_logfile(*g_ctx, *g_params, *g_model, *g_input_tokens, g_output_ss->str(), *g_output_tokens);
-            _exit(130);
+
+            t0 = ggml_time_us() - t0;
+            printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
+
+#ifdef GGML_TENSOR_OP_PERF
+            print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
+
+             _exit(130);
         }
     }
 }
@@ -119,6 +178,10 @@ static void llama_log_callback_logTee(ggml_log_level level, const char * text, v
 
 int main(int argc, char ** argv) {
     gpt_params params;
+
+    ggml_time_init();
+    t0 = ggml_time_us();
+
     g_params = &params;
 
     if (!gpt_params_parse(argc, argv, params)) {
@@ -362,6 +425,14 @@ int main(int argc, char ** argv) {
         params.interactive_first = true;
         params.antiprompt.emplace_back("<|im_start|>user\n");
     }
+    // cutom prompt mode is active
+    else if (params.custom_prompts_on) {
+        params.interactive_first = true;
+
+        printf("[%s]: processing cpf input file [%s]\n", __func__, params.custom_p_file.c_str());
+        processCustomPromptsFromFile(params.custom_p_file);
+        custom_prompts_it = custom_prompts.begin();
+    }
 
     // enable interactive mode if interactive start is specified
     if (params.interactive_first) {
@@ -521,6 +592,7 @@ int main(int argc, char ** argv) {
 
     struct llama_sampling_context * ctx_sampling = llama_sampling_init(sparams);
 
+    std::istringstream iss(params.script);
     while ((n_remain != 0 && !is_antiprompt) || params.interactive) {
         // predict
         if (!embd.empty()) {
@@ -742,6 +814,12 @@ int main(int argc, char ** argv) {
                     output_tokens.push_back(id);
                     output_ss << token_str;
                 }
+
+                if (params.custom_prompts_on && (token_str.c_str()[0] == '}')) {
+                    // for custom prompt only - if we hit a "}" we should stop generating
+                    is_interacting = true;
+                    break;
+                }
             }
             fflush(stdout);
         }
@@ -835,13 +913,54 @@ int main(int argc, char ** argv) {
                 console::set_display(console::user_input);
                 display = params.display_prompt;
 
-                std::string line;
-                bool another_line = true;
-                do {
-                    another_line = console::readline(line, params.multiline_input);
-                    buffer += line;
-                } while (another_line);
+                if (params.scripted) {
+                    if (!std::getline(iss, buffer)) {
+                        std::cout << "[end of input script]\n\n";
+                        break;
+                    }
 
+                    std::cout << buffer.c_str() << "\n\n";
+
+                } else if (params.custom_prompts_on) {
+                    if (custom_prompts_it != custom_prompts.end()) {
+                        // for custom_prompt always clear the cache since we want 
+                        // every prompt to start from the saee beginning
+                        llama_kv_cache_clear(ctx);
+
+                        // Create custom user prompt
+                        std::string& custom_prompt = *custom_prompts_it;
+                        printf("\n"
+                               "> Running with custom prompt => [%d/%zd][%s]\n", 
+                               ++current_custom_prompt_index, 
+                               custom_prompts.size(),
+                               custom_prompt.c_str());
+
+                        std::string full_custom_prompt = custom_template_prompt;
+                        size_t pos = full_custom_prompt.find("{message}");
+                        if (pos != std::string::npos) {
+                            full_custom_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
+                        }
+
+                        // construct complete prompt
+                        buffer = full_custom_prompt;
+                        // printf("[%s]: full prompt => [%s]\n", __func__, full_custom_prompt.c_str());
+
+                        // bump iterator for next answer
+                        custom_prompts_it++;
+                    } else {
+                        // done with all custom prompts
+                        break;
+                    }
+
+                } else {
+                    std::string line;
+                    bool another_line = true;
+                    do {
+                        another_line = console::readline(line, params.multiline_input);
+                        buffer += line;
+                    } while (another_line);
+                }
+                
                 // done taking input, reset color
                 console::set_display(console::reset);
                 display = true;
@@ -951,6 +1070,13 @@ int main(int argc, char ** argv) {
 #ifndef LOG_DISABLE_LOGS
     LOG_TEE("Log end\n");
 #endif // LOG_DISABLE_LOGS
+
+    t0 = ggml_time_us() - t0;
+    printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }

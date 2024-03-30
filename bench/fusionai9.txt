@@ -1,0 +1,2040 @@
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>copy e:\Xbox-B612\llama.matmul\build\bin\Release\main.exe
+        1 file(s) copied.
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2544 (2a978b4)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-05
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+00
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 128 'Ä'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.20 MiB
+llama_new_context_with_model:        CPU compute buffer size =   167.01 MiB
+llama_new_context_with_model: graph nodes  = 1257
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are only 14-year old. It is not appropriate for your age."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are only 14-year old. It is not appropriate for your age."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are not 18-year old yet. You should not accept this movie."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+     "answer": "a. Mara, none of your friends should have this DVD anyway",
+     "justification": "Mara should not have this DVD because it is rated 18+ and she is only 14-year old. It is not appropriate for her age."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "e. I know your mom didn't buy this DVD for you.",
+    "justification": "Mara's mom bought the DVD for her, so she cannot have it."
+}
+llama_print_timings:        load time =     565.05 ms
+llama_print_timings:      sample time =      12.68 ms /   334 runs   (    0.04 ms per token, 26340.69 tokens per second)
+llama_print_timings: prompt eval time =   48922.01 ms /  3150 tokens (   15.53 ms per token,    64.39 tokens per second)
+llama_print_timings:        eval time =   12010.93 ms /   329 runs   (   36.51 ms per token,    27.39 tokens per second)
+llama_print_timings:       total time =   61085.11 ms /  3479 tokens
+Log end
+
+
+ total elapsed time   62.38sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   22080   0.33 GGML_TYPE_F16
+   44490   0.67 GGML_TYPE_Q8_K
+
+   66570   1.00
+
+mul_mat init time     1.06sec
+mul_mat type mismatch 44490
+mul_mat element sum 1956810240
+mul_mat type mismatch ration 44490 / 66585 =  0.67
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   77970    20.14  33.23     0.26 GGML_OP_ADD
+   11385     0.03   0.05     0.00 GGML_OP_MUL
+   11385     0.05   0.09     0.00 GGML_OP_NORM
+   66585    35.74  58.95     0.54 GGML_OP_MUL_MAT
+   11040     0.19   0.31     0.02 GGML_OP_SCALE
+   22080     0.18   0.30     0.01 GGML_OP_CPY
+   44160     1.47   2.42     0.03 GGML_OP_CONT
+    1380     0.21   0.35     0.16 GGML_OP_GET_ROWS
+   11040     2.19   3.61     0.20 GGML_OP_SOFT_MAX
+   22144     0.25   0.41     0.01 GGML_OP_ROPE
+   11040     0.17   0.29     0.02 GGML_OP_UNARY
+
+  356779    60.62 101.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+   11040     0.17  100.00     0.02 GGML_UNARY_OP_GELU
+
+   11040     0.17  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+   64     2      128      0.11     54.82
+ 1257   345   433665     60.77    176.14
+
+Total   347   433793     60.88
+
+Total NOP'ed Tensors    77014
+
+ Tensor Thread Creation Performance
+
+Creation count: 5205
+Total creation Time(ms): 106.04
+Thread creation time(us):  20.37
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf
+Log start
+main: build = 2544 (2a978b4)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 24 key-value pairs and 164 tensors from e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma
+llama_model_loader: - kv   1:                               general.name str              = gemma-2b-it
+llama_model_loader: - kv   2:                       gemma.context_length u32              = 8192
+llama_model_loader: - kv   3:                     gemma.embedding_length u32              = 2048
+llama_model_loader: - kv   4:                          gemma.block_count u32              = 18
+llama_model_loader: - kv   5:                  gemma.feed_forward_length u32              = 16384
+llama_model_loader: - kv   6:                 gemma.attention.head_count u32              = 8
+llama_model_loader: - kv   7:              gemma.attention.head_count_kv u32              = 1
+llama_model_loader: - kv   8:     gemma.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv   9:                 gemma.attention.key_length u32              = 256
+llama_model_loader: - kv  10:               gemma.attention.value_length u32              = 256
+llama_model_loader: - kv  11:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  12:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  13:                      tokenizer.ggml.scores arr[f32,256000]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  16:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  17:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  18:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  19:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  20:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  21:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - kv  22:               general.quantization_version u32              = 2
+llama_model_loader: - kv  23:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:   37 tensors
+llama_model_loader: - type q4_K:  109 tensors
+llama_model_loader: - type q6_K:   18 tensors
+llm_load_vocab: mismatch in special tokens definition ( 416/256000 vs 260/256000 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = gemma
+llm_load_print_meta: vocab type       = SPM
+llm_load_print_meta: n_vocab          = 256000
+llm_load_print_meta: n_merges         = 0
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_head           = 8
+llm_load_print_meta: n_head_kv        = 1
+llm_load_print_meta: n_layer          = 18
+llm_load_print_meta: n_rot            = 256
+llm_load_print_meta: n_embd_head_k    = 256
+llm_load_print_meta: n_embd_head_v    = 256
+llm_load_print_meta: n_gqa            = 8
+llm_load_print_meta: n_embd_k_gqa     = 256
+llm_load_print_meta: n_embd_v_gqa     = 256
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-06
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 16384
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.51 B
+llm_load_print_meta: model size       = 1.39 GiB (4.75 BPW)
+llm_load_print_meta: general.name     = gemma-2b-it
+llm_load_print_meta: BOS token        = 2 '<bos>'
+llm_load_print_meta: EOS token        = 1 '<eos>'
+llm_load_print_meta: UNK token        = 3 '<unk>'
+llm_load_print_meta: PAD token        = 0 '<pad>'
+llm_load_print_meta: LF token         = 227 '<0x0A>'
+llm_load_tensors: ggml ctx size =    0.06 MiB
+llm_load_tensors:        CPU buffer size =  1420.07 MiB
+..............................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =    36.00 MiB
+llama_new_context_with_model: KV self size  =   36.00 MiB, K (f16):   18.00 MiB, V (f16):   18.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.98 MiB
+llama_new_context_with_model:        CPU compute buffer size =   504.00 MiB
+llama_new_context_with_model: graph nodes  = 619
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 1
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated DVD and she is not 18-year old yet."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+llama_print_timings:        load time =     400.71 ms
+llama_print_timings:      sample time =      70.43 ms /   280 runs   (    0.25 ms per token,  3975.69 tokens per second)
+llama_print_timings: prompt eval time =   31909.23 ms /  3143 tokens (   10.15 ms per token,    98.50 tokens per second)
+llama_print_timings:        eval time =    7081.31 ms /   275 runs   (   25.75 ms per token,    38.83 tokens per second)
+llama_print_timings:       total time =   39323.33 ms /  3418 tokens
+Log end
+
+
+ total elapsed time   40.43sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   10476   0.22 GGML_TYPE_F16
+   36937   0.78 GGML_TYPE_Q8_K
+
+   47413   1.00
+
+mul_mat init time     0.96sec
+mul_mat type mismatch 36937
+mul_mat element sum 1701449728
+mul_mat type mismatch ration 36937 / 47433 =  0.78
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   10476     4.76  12.37     0.45 GGML_OP_ADD
+   16005     3.74   9.72     0.23 GGML_OP_MUL
+   10767     0.05   0.14     0.00 GGML_OP_RMS_NORM
+   47433    24.54  63.71     0.52 GGML_OP_MUL_MAT
+    5529     0.12   0.31     0.02 GGML_OP_SCALE
+   10476     0.11   0.29     0.01 GGML_OP_CPY
+    5238     0.31   0.80     0.06 GGML_OP_CONT
+     873     0.21   0.54     0.24 GGML_OP_GET_ROWS
+    5238     0.30   0.77     0.06 GGML_OP_SOFT_MAX
+   10512     0.72   1.87     0.07 GGML_OP_ROPE
+    5238     3.65   9.48     0.70 GGML_OP_UNARY
+
+  175198    38.51 101.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+    5238     3.65  100.00     0.70 GGML_UNARY_OP_GELU
+
+    5238     3.65  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+   36     2       72      0.01      7.50
+  619   291   180129     38.98    133.96
+
+Total   293   180201     39.00
+
+Total NOP'ed Tensors     5003
+
+ Tensor Thread Creation Performance
+
+Creation count: 4395
+Total creation Time(ms):  87.92
+Thread creation time(us):  20.01
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>copy \\xcloudos8\d$\o20\obj\amd64fre\xbox\gamecore\so2001\z-slmapp\zx-slm-ggml\objfre\amd64\slmappzx.exe slmappzx.os8.exe
+        1 file(s) copied.
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>slmappzx.os8.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf
+Log start
+main: build = 2050 (19122117)
+main: built with MSVC 19.38.33130.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 24 key-value pairs and 164 tensors from e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma
+llama_model_loader: - kv   1:                               general.name str              = gemma-2b-it
+llama_model_loader: - kv   2:                       gemma.context_length u32              = 8192
+llama_model_loader: - kv   3:                     gemma.embedding_length u32              = 2048
+llama_model_loader: - kv   4:                          gemma.block_count u32              = 18
+llama_model_loader: - kv   5:                  gemma.feed_forward_length u32              = 16384
+llama_model_loader: - kv   6:                 gemma.attention.head_count u32              = 8
+llama_model_loader: - kv   7:              gemma.attention.head_count_kv u32              = 1
+llama_model_loader: - kv   8:     gemma.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv   9:                 gemma.attention.key_length u32              = 256
+llama_model_loader: - kv  10:               gemma.attention.value_length u32              = 256
+llama_model_loader: - kv  11:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  12:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  13:                      tokenizer.ggml.scores arr[f32,256000]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  16:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  17:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  18:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  19:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  20:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  21:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - kv  22:               general.quantization_version u32              = 2
+llama_model_loader: - kv  23:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:   37 tensors
+llama_model_loader: - type q4_K:  109 tensors
+llama_model_loader: - type q6_K:   18 tensors
+llm_load_vocab: mismatch in special tokens definition ( 416/256000 vs 260/256000 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = gemma
+llm_load_print_meta: vocab type       = SPM
+llm_load_print_meta: n_vocab          = 256000
+llm_load_print_meta: n_merges         = 0
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_head           = 8
+llm_load_print_meta: n_head_kv        = 1
+llm_load_print_meta: n_layer          = 18
+llm_load_print_meta: n_rot            = 256
+llm_load_print_meta: n_embd_head_k    = 256
+llm_load_print_meta: n_embd_head_v    = 256
+llm_load_print_meta: n_gqa            = 8
+llm_load_print_meta: n_embd_k_gqa     = 256
+llm_load_print_meta: n_embd_v_gqa     = 256
+llm_load_print_meta: f_norm_eps       = 0.0e+000
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-006
+llm_load_print_meta: f_clamp_kqv      = 0.0e+000
+llm_load_print_meta: f_max_alibi_bias = 0.0e+000
+llm_load_print_meta: n_ff             = 16384
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.51 B
+llm_load_print_meta: model size       = 1.39 GiB (4.75 BPW)
+llm_load_print_meta: general.name     = gemma-2b-it
+llm_load_print_meta: BOS token        = 2 '<bos>'
+llm_load_print_meta: EOS token        = 1 '<eos>'
+llm_load_print_meta: UNK token        = 3 '<unk>'
+llm_load_print_meta: PAD token        = 0 '<pad>'
+llm_load_print_meta: LF token         = 227 '<0x0A>'
+llm_load_tensors: ggml ctx size =    0.06 MiB
+ggml_new_object: not enough space in the context's memory pool (needed 66000, available 65600)
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>slmappzx.os8.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2050 (19122117)
+main: built with MSVC 19.38.33130.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-005
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+000
+llm_load_print_meta: f_clamp_kqv      = 0.0e+000
+llm_load_print_meta: f_max_alibi_bias = 0.0e+000
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 30 '?'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors: offloading 0 repeating layers to GPU
+llm_load_tensors: offloaded 0/33 layers to GPU
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU input buffer size   =     9.01 MiB
+llama_new_context_with_model:        CPU compute buffer size =   173.80 MiB
+llama_new_context_with_model: graph splits (measure): 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.100, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temp
+generate: n_ctx = 2048, n_batch = 512, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only for people who are 18 or older. You can't watch it because you're still a teenager."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, it's not a good idea to watch an 18+ rated movie since you're only 14-year old."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the only way you can have this DVD is by stealing it since it is an 18+ rated DVD. At the time she was only 14-year old."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You can't watch it until you turn 18."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You can't watch it until you turn 18."
+}
+llama_print_timings:        load time =     557.96 ms
+llama_print_timings:      sample time =     116.44 ms /   355 runs   (    0.33 ms per token,  3048.70 tokens per second)
+llama_print_timings: prompt eval time =   49915.72 ms /  3145 tokens (   15.87 ms per token,    63.01 tokens per second)
+llama_print_timings:        eval time =   12758.25 ms /   355 runs   (   35.94 ms per token,    27.83 tokens per second)
+llama_print_timings:       total time =   63020.36 ms /  3500 tokens
+Log end
+
+
+ total elapsed time   64.31sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   82716    20.85  33.44     0.25 GGML_OP_ADD
+   12078     0.03   0.05     0.00 GGML_OP_MUL
+   12078     0.05   0.09     0.00 GGML_OP_NORM
+   70638    36.42  58.42     0.52 GGML_OP_MUL_MAT
+   11712     0.33   0.53     0.03 GGML_OP_SCALE
+   23424     0.16   0.26     0.01 GGML_OP_CPY
+   46848     1.53   2.46     0.03 GGML_OP_CONT
+     366     0.22   0.35     0.59 GGML_OP_GET_ROWS
+   11712     1.95   3.14     0.17 GGML_OP_SOFT_MAX
+   23488     0.63   1.02     0.03 GGML_OP_ROPE
+   11712     0.15   0.25     0.01 GGML_OP_UNARY
+
+  306772    62.34 100.00
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   23424   0.33 GGML_TYPE_F16
+   47214   0.67 GGML_TYPE_Q8_K
+
+   70638   1.00
+
+mul_mat init time     0.98sec
+mul_mat type mismatch 47214
+mul_mat element sum 2017152000
+mul_mat type mismatch ration 47214 / 70638 =  0.67
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+   11712     0.15  100.00     0.01 GGML_UNARY_OP_GELU
+
+   11712     0.15  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+ 1257   364   457548     54.21    148.93
+ 1321     2     2642      8.39   4192.62
+
+Total   366   460190     62.60
+
+Total NOP'ed Tensors   153418
+
+ Tensor Thread Creation Performance
+
+Creation count: 5490
+Total creation Time(ms): 107.45
+Thread creation time(us):  19.57
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>copy e:\Xbox-B612\llama.matmul\build\bin\Release\main.exe
+        1 file(s) copied.
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf
+Log start
+main: build = 2544 (2a978b4)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 24 key-value pairs and 164 tensors from e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma
+llama_model_loader: - kv   1:                               general.name str              = gemma-2b-it
+llama_model_loader: - kv   2:                       gemma.context_length u32              = 8192
+llama_model_loader: - kv   3:                     gemma.embedding_length u32              = 2048
+llama_model_loader: - kv   4:                          gemma.block_count u32              = 18
+llama_model_loader: - kv   5:                  gemma.feed_forward_length u32              = 16384
+llama_model_loader: - kv   6:                 gemma.attention.head_count u32              = 8
+llama_model_loader: - kv   7:              gemma.attention.head_count_kv u32              = 1
+llama_model_loader: - kv   8:     gemma.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv   9:                 gemma.attention.key_length u32              = 256
+llama_model_loader: - kv  10:               gemma.attention.value_length u32              = 256
+llama_model_loader: - kv  11:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  12:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  13:                      tokenizer.ggml.scores arr[f32,256000]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  16:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  17:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  18:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  19:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  20:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  21:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - kv  22:               general.quantization_version u32              = 2
+llama_model_loader: - kv  23:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:   37 tensors
+llama_model_loader: - type q4_K:  109 tensors
+llama_model_loader: - type q6_K:   18 tensors
+llm_load_vocab: mismatch in special tokens definition ( 416/256000 vs 260/256000 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = gemma
+llm_load_print_meta: vocab type       = SPM
+llm_load_print_meta: n_vocab          = 256000
+llm_load_print_meta: n_merges         = 0
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_head           = 8
+llm_load_print_meta: n_head_kv        = 1
+llm_load_print_meta: n_layer          = 18
+llm_load_print_meta: n_rot            = 256
+llm_load_print_meta: n_embd_head_k    = 256
+llm_load_print_meta: n_embd_head_v    = 256
+llm_load_print_meta: n_gqa            = 8
+llm_load_print_meta: n_embd_k_gqa     = 256
+llm_load_print_meta: n_embd_v_gqa     = 256
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-06
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 16384
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.51 B
+llm_load_print_meta: model size       = 1.39 GiB (4.75 BPW)
+llm_load_print_meta: general.name     = gemma-2b-it
+llm_load_print_meta: BOS token        = 2 '<bos>'
+llm_load_print_meta: EOS token        = 1 '<eos>'
+llm_load_print_meta: UNK token        = 3 '<unk>'
+llm_load_print_meta: PAD token        = 0 '<pad>'
+llm_load_print_meta: LF token         = 227 '<0x0A>'
+llm_load_tensors: ggml ctx size =    0.06 MiB
+llm_load_tensors:        CPU buffer size =  1420.07 MiB
+..............................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =    36.00 MiB
+llama_new_context_with_model: KV self size  =   36.00 MiB, K (f16):   18.00 MiB, V (f16):   18.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.98 MiB
+llama_new_context_with_model:        CPU compute buffer size =   504.00 MiB
+llama_new_context_with_model: graph nodes  = 619
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 1
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated DVD and she is not 18-year old yet."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+llama_print_timings:        load time =     393.43 ms
+llama_print_timings:      sample time =      77.28 ms /   280 runs   (    0.28 ms per token,  3623.28 tokens per second)
+llama_print_timings: prompt eval time =   32200.38 ms /  3143 tokens (   10.25 ms per token,    97.61 tokens per second)
+llama_print_timings:        eval time =    7234.25 ms /   275 runs   (   26.31 ms per token,    38.01 tokens per second)
+llama_print_timings:       total time =   39775.25 ms /  3418 tokens
+Log end
+
+
+ total elapsed time   40.88sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   10476   0.22 GGML_TYPE_F16 - <f16>
+   36937   0.78 GGML_TYPE_Q8_K - <q8_K>
+
+   47413   1.00
+
+mul_mat init time     0.97sec
+mul_mat type mismatch 36937
+mul_mat element sum 1701449728
+mul_mat type mismatch ration 36937 / 47433 =  0.78
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   10476     4.75  12.18     0.45 GGML_OP_ADD
+   16005     3.77   9.68     0.24 GGML_OP_MUL
+   10767     0.07   0.17     0.01 GGML_OP_RMS_NORM
+   47433    24.89  63.90     0.52 GGML_OP_MUL_MAT
+    5529     0.13   0.33     0.02 GGML_OP_SCALE
+   10476     0.11   0.29     0.01 GGML_OP_CPY
+    5238     0.31   0.80     0.06 GGML_OP_CONT
+     873     0.22   0.58     0.26 GGML_OP_GET_ROWS
+    5238     0.30   0.77     0.06 GGML_OP_SOFT_MAX
+   10512     0.71   1.83     0.07 GGML_OP_ROPE
+    5238     3.69   9.47     0.70 GGML_OP_UNARY
+
+  175198    38.96 101.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+    5238     3.69  100.00     0.70 GGML_UNARY_OP_GELU
+
+    5238     3.69  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+   36     2       72      0.01      7.24
+  619   291   180129     39.43    135.51
+
+Total   293   180201     39.45
+
+Total NOP'ed Tensors     5003
+
+ Tensor Thread Creation Performance
+
+Creation count: 4395
+Total creation Time(ms):  85.59
+Thread creation time(us):  19.47
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>copy e:\Xbox-B612\llama.cpf\build\bin\Release\main.exe main_cpf.exe
+        1 file(s) copied.
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main_cpf.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf
+Log start
+main: build = 2540 (557410b)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 24 key-value pairs and 164 tensors from e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma
+llama_model_loader: - kv   1:                               general.name str              = gemma-2b-it
+llama_model_loader: - kv   2:                       gemma.context_length u32              = 8192
+llama_model_loader: - kv   3:                     gemma.embedding_length u32              = 2048
+llama_model_loader: - kv   4:                          gemma.block_count u32              = 18
+llama_model_loader: - kv   5:                  gemma.feed_forward_length u32              = 16384
+llama_model_loader: - kv   6:                 gemma.attention.head_count u32              = 8
+llama_model_loader: - kv   7:              gemma.attention.head_count_kv u32              = 1
+llama_model_loader: - kv   8:     gemma.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv   9:                 gemma.attention.key_length u32              = 256
+llama_model_loader: - kv  10:               gemma.attention.value_length u32              = 256
+llama_model_loader: - kv  11:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  12:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  13:                      tokenizer.ggml.scores arr[f32,256000]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  16:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  17:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  18:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  19:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  20:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  21:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - kv  22:               general.quantization_version u32              = 2
+llama_model_loader: - kv  23:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:   37 tensors
+llama_model_loader: - type q4_K:  109 tensors
+llama_model_loader: - type q6_K:   18 tensors
+llm_load_vocab: mismatch in special tokens definition ( 416/256000 vs 260/256000 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = gemma
+llm_load_print_meta: vocab type       = SPM
+llm_load_print_meta: n_vocab          = 256000
+llm_load_print_meta: n_merges         = 0
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_head           = 8
+llm_load_print_meta: n_head_kv        = 1
+llm_load_print_meta: n_layer          = 18
+llm_load_print_meta: n_rot            = 256
+llm_load_print_meta: n_embd_head_k    = 256
+llm_load_print_meta: n_embd_head_v    = 256
+llm_load_print_meta: n_gqa            = 8
+llm_load_print_meta: n_embd_k_gqa     = 256
+llm_load_print_meta: n_embd_v_gqa     = 256
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-06
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 16384
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.51 B
+llm_load_print_meta: model size       = 1.39 GiB (4.75 BPW)
+llm_load_print_meta: general.name     = gemma-2b-it
+llm_load_print_meta: BOS token        = 2 '<bos>'
+llm_load_print_meta: EOS token        = 1 '<eos>'
+llm_load_print_meta: UNK token        = 3 '<unk>'
+llm_load_print_meta: PAD token        = 0 '<pad>'
+llm_load_print_meta: LF token         = 227 '<0x0A>'
+llm_load_tensors: ggml ctx size =    0.06 MiB
+llm_load_tensors:        CPU buffer size =  1420.07 MiB
+..............................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =    36.00 MiB
+llama_new_context_with_model: KV self size  =   36.00 MiB, K (f16):   18.00 MiB, V (f16):   18.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.98 MiB
+llama_new_context_with_model:        CPU compute buffer size =   504.00 MiB
+llama_new_context_with_model: graph nodes  = 619
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 1
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated DVD and she is not 18-year old yet."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+llama_print_timings:        load time =     429.11 ms
+llama_print_timings:      sample time =      69.19 ms /   280 runs   (    0.25 ms per token,  4046.65 tokens per second)
+llama_print_timings: prompt eval time =   38613.59 ms /  3143 tokens (   12.29 ms per token,    81.40 tokens per second)
+llama_print_timings:        eval time =    9373.45 ms /   275 runs   (   34.09 ms per token,    29.34 tokens per second)
+llama_print_timings:       total time =   48324.83 ms /  3418 tokens
+Log end
+
+
+ total elapsed time   49.53sec
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main_cpf.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2540 (557410b)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-05
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+00
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 128 'Ä'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.20 MiB
+llama_new_context_with_model:        CPU compute buffer size =   167.01 MiB
+llama_new_context_with_model: graph nodes  = 1257
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 1 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "d. Mara, I don't recall you have a friend by that name",
+    "justification": "Mara, I don't recall you have a friend by that name. It is not possible for you to have received this DVD as a gift from someone you don't know."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are not 18-year old yet. You should not accept this movie."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are not 18-year old yet. It is illegal to watch this movie."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are not 18-year old yet. It is illegal for you to watch this movie."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "e. I know your mom didn't buy this DVD for you.",
+    "justification": "Mara's mom bought the DVD for her, so she cannot have it."
+}
+llama_print_timings:        load time =     661.52 ms
+llama_print_timings:      sample time =      12.65 ms /   346 runs   (    0.04 ms per token, 27360.43 tokens per second)
+llama_print_timings: prompt eval time =   62881.03 ms /  3150 tokens (   19.96 ms per token,    50.09 tokens per second)
+llama_print_timings:        eval time =   17545.35 ms /   341 runs   (   51.45 ms per token,    19.44 tokens per second)
+llama_print_timings:       total time =   80587.62 ms /  3491 tokens
+Log end
+
+
+ total elapsed time   81.97sec
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf
+Log start
+main: build = 2544 (2a978b4)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 24 key-value pairs and 164 tensors from e:\Xbox-B612\models\SLM\Gemma\2B\gemma-2b-it-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = gemma
+llama_model_loader: - kv   1:                               general.name str              = gemma-2b-it
+llama_model_loader: - kv   2:                       gemma.context_length u32              = 8192
+llama_model_loader: - kv   3:                     gemma.embedding_length u32              = 2048
+llama_model_loader: - kv   4:                          gemma.block_count u32              = 18
+llama_model_loader: - kv   5:                  gemma.feed_forward_length u32              = 16384
+llama_model_loader: - kv   6:                 gemma.attention.head_count u32              = 8
+llama_model_loader: - kv   7:              gemma.attention.head_count_kv u32              = 1
+llama_model_loader: - kv   8:     gemma.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv   9:                 gemma.attention.key_length u32              = 256
+llama_model_loader: - kv  10:               gemma.attention.value_length u32              = 256
+llama_model_loader: - kv  11:                       tokenizer.ggml.model str              = llama
+llama_model_loader: - kv  12:                      tokenizer.ggml.tokens arr[str,256000]  = ["<pad>", "<eos>", "<bos>", "<unk>", ...
+llama_model_loader: - kv  13:                      tokenizer.ggml.scores arr[f32,256000]  = [0.000000, 0.000000, 0.000000, 0.0000...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,256000]  = [3, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                tokenizer.ggml.bos_token_id u32              = 2
+llama_model_loader: - kv  16:                tokenizer.ggml.eos_token_id u32              = 1
+llama_model_loader: - kv  17:            tokenizer.ggml.unknown_token_id u32              = 3
+llama_model_loader: - kv  18:            tokenizer.ggml.padding_token_id u32              = 0
+llama_model_loader: - kv  19:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  20:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  21:                    tokenizer.chat_template str              = {% if messages[0]['role'] == 'system'...
+llama_model_loader: - kv  22:               general.quantization_version u32              = 2
+llama_model_loader: - kv  23:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:   37 tensors
+llama_model_loader: - type q4_K:  109 tensors
+llama_model_loader: - type q6_K:   18 tensors
+llm_load_vocab: mismatch in special tokens definition ( 416/256000 vs 260/256000 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = gemma
+llm_load_print_meta: vocab type       = SPM
+llm_load_print_meta: n_vocab          = 256000
+llm_load_print_meta: n_merges         = 0
+llm_load_print_meta: n_ctx_train      = 8192
+llm_load_print_meta: n_embd           = 2048
+llm_load_print_meta: n_head           = 8
+llm_load_print_meta: n_head_kv        = 1
+llm_load_print_meta: n_layer          = 18
+llm_load_print_meta: n_rot            = 256
+llm_load_print_meta: n_embd_head_k    = 256
+llm_load_print_meta: n_embd_head_v    = 256
+llm_load_print_meta: n_gqa            = 8
+llm_load_print_meta: n_embd_k_gqa     = 256
+llm_load_print_meta: n_embd_v_gqa     = 256
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-06
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 16384
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 8192
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 2B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.51 B
+llm_load_print_meta: model size       = 1.39 GiB (4.75 BPW)
+llm_load_print_meta: general.name     = gemma-2b-it
+llm_load_print_meta: BOS token        = 2 '<bos>'
+llm_load_print_meta: EOS token        = 1 '<eos>'
+llm_load_print_meta: UNK token        = 3 '<unk>'
+llm_load_print_meta: PAD token        = 0 '<pad>'
+llm_load_print_meta: LF token         = 227 '<0x0A>'
+llm_load_tensors: ggml ctx size =    0.06 MiB
+llm_load_tensors:        CPU buffer size =  1420.07 MiB
+..............................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =    36.00 MiB
+llama_new_context_with_model: KV self size  =   36.00 MiB, K (f16):   18.00 MiB, V (f16):   18.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.98 MiB
+llama_new_context_with_model:        CPU compute buffer size =   504.00 MiB
+llama_new_context_with_model: graph nodes  = 619
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 1
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated DVD and she is not 18-year old yet."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "c. Mara, you should not accept this movie anyway",
+    "justification": "Mara should not accept this movie because it is an 18+ rated movie and she is not 18-year old yet."
+}
+llama_print_timings:        load time =     417.10 ms
+llama_print_timings:      sample time =      76.47 ms /   280 runs   (    0.27 ms per token,  3661.81 tokens per second)
+llama_print_timings: prompt eval time =   31814.58 ms /  3143 tokens (   10.12 ms per token,    98.79 tokens per second)
+llama_print_timings:        eval time =    7159.78 ms /   275 runs   (   26.04 ms per token,    38.41 tokens per second)
+llama_print_timings:       total time =   39314.39 ms /  3418 tokens
+Log end
+
+
+ total elapsed time   40.47sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   10476   0.22 GGML_TYPE_F16 - <f16>
+   36937   0.78 GGML_TYPE_Q8_K - <q8_K>
+
+   47413   1.00
+
+mul_mat init time     0.96sec
+mul_mat type mismatch 36937
+mul_mat element sum 1701449728
+mul_mat type mismatch ration 36937 / 47433 =  0.78
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   10476     4.93  12.79     0.47 GGML_OP_ADD
+   16005     3.84   9.97     0.24 GGML_OP_MUL
+   10767     0.06   0.15     0.01 GGML_OP_RMS_NORM
+   47433    24.09  62.59     0.51 GGML_OP_MUL_MAT
+    5529     0.12   0.31     0.02 GGML_OP_SCALE
+   10476     0.11   0.29     0.01 GGML_OP_CPY
+    5238     0.29   0.75     0.05 GGML_OP_CONT
+     873     0.21   0.54     0.24 GGML_OP_GET_ROWS
+    5238     0.30   0.78     0.06 GGML_OP_SOFT_MAX
+   10512     0.71   1.85     0.07 GGML_OP_ROPE
+    5238     3.85   9.99     0.73 GGML_OP_UNARY
+
+  175198    38.50 101.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+    5238     3.85  100.00     0.73 GGML_UNARY_OP_GELU
+
+    5238     3.85  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+   36     2       72      0.01      7.24
+  619   291   180129     38.97    133.92
+
+Total   293   180201     38.99
+
+Total NOP'ed Tensors     5003
+
+ Tensor Thread Creation Performance
+
+Creation count: 4395
+Total creation Time(ms):  88.58
+Thread creation time(us):  20.15
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>main.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2544 (2a978b4)
+main: built with MSVC 19.29.30154.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-05
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+00
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 2
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 128 'Ä'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.20 MiB
+llama_new_context_with_model:        CPU compute buffer size =   167.01 MiB
+llama_new_context_with_model: graph nodes  = 1257
+llama_new_context_with_model: graph splits = 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temperature
+generate: n_ctx = 2048, n_batch = 2048, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are only 14-year old. It is not appropriate for your age."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are only 14-year old. It is not appropriate for your age."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, you cannot have this DVD because it is rated 18+ and you are not 18-year old yet. You should not accept this movie."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+     "answer": "a. Mara, none of your friends should have this DVD anyway",
+     "justification": "Mara should not have this DVD because it is rated 18+ and she is only 14-year old. It is not appropriate for her age."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+    "answer": "e. I know your mom didn't buy this DVD for you.",
+    "justification": "Mara's mom bought the DVD for her, so she cannot have it."
+}
+llama_print_timings:        load time =     590.27 ms
+llama_print_timings:      sample time =      16.63 ms /   334 runs   (    0.05 ms per token, 20081.77 tokens per second)
+llama_print_timings: prompt eval time =   48574.33 ms /  3150 tokens (   15.42 ms per token,    64.85 tokens per second)
+llama_print_timings:        eval time =   12041.19 ms /   329 runs   (   36.60 ms per token,    27.32 tokens per second)
+llama_print_timings:       total time =   60769.43 ms /  3479 tokens
+Log end
+
+
+ total elapsed time   61.99sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+vector dot matrix multiply type frequency
+
+   Count     %
+
+   22080   0.33 GGML_TYPE_F16 - <f16>
+   44490   0.67 GGML_TYPE_Q8_K - <q8_K>
+
+   66570   1.00
+
+mul_mat init time     1.05sec
+mul_mat type mismatch 44490
+mul_mat element sum 1956810240
+mul_mat type mismatch ration 44490 / 66585 =  0.67
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   77970    20.37  33.77     0.26 GGML_OP_ADD
+   11385     0.03   0.06     0.00 GGML_OP_MUL
+   11385     0.05   0.09     0.00 GGML_OP_NORM
+   66585    35.15  58.26     0.53 GGML_OP_MUL_MAT
+   11040     0.17   0.28     0.02 GGML_OP_SCALE
+   22080     0.18   0.29     0.01 GGML_OP_CPY
+   44160     1.45   2.40     0.03 GGML_OP_CONT
+    1380     0.21   0.35     0.15 GGML_OP_GET_ROWS
+   11040     2.30   3.81     0.21 GGML_OP_SOFT_MAX
+   22144     0.24   0.40     0.01 GGML_OP_ROPE
+   11040     0.17   0.28     0.02 GGML_OP_UNARY
+
+  356779    60.33 101.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+   11040     0.17  100.00     0.02 GGML_UNARY_OP_GELU
+
+   11040     0.17  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+   64     2      128      0.11     52.70
+ 1257   345   433665     60.48    175.29
+
+Total   347   433793     60.58
+
+Total NOP'ed Tensors    77014
+
+ Tensor Thread Creation Performance
+
+Creation count: 5205
+Total creation Time(ms): 104.37
+Thread creation time(us):  20.05
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>e:\os\obj\amd64fre\xbox\gamecore\so2001\z-slmapp\zx-slm-ggml\objfre\amd64\slmappzx.exe  --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2050 (19122117)
+main: built with MSVC 19.38.33130.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-005
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+000
+llm_load_print_meta: f_clamp_kqv      = 0.0e+000
+llm_load_print_meta: f_max_alibi_bias = 0.0e+000
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 30 '?'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors: offloading 0 repeating layers to GPU
+llm_load_tensors: offloaded 0/33 layers to GPU
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU input buffer size   =     9.01 MiB
+llama_new_context_with_model:        CPU compute buffer size =   173.80 MiB
+llama_new_context_with_model: graph splits (measure): 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.100, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temp
+generate: n_ctx = 2048, n_batch = 512, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only for adults. You can't have a movie like that unless you're an adult."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+    "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+    "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You're still a teenager and should not watch such movies."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You're still a minor so you cannot watch it."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You can't watch it until you turn 18."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You're still a minor so you should not watch it."
+}
+llama_print_timings:        load time =     579.19 ms
+llama_print_timings:      sample time =     112.12 ms /   353 runs   (    0.32 ms per token,  3148.33 tokens per second)
+llama_print_timings: prompt eval time =   55758.69 ms /  3145 tokens (   17.73 ms per token,    56.40 tokens per second)
+llama_print_timings:        eval time =   13533.49 ms /   353 runs   (   38.34 ms per token,    26.08 tokens per second)
+llama_print_timings:       total time =   69640.90 ms /  3498 tokens
+Log end
+
+
+ total elapsed time   70.89sec
+
+ Overall Tensor Op Performance Data
+
+Tensor ops are executed in parallel by a specified set of threads
+Tensor execution time is the total time by the parallel set of threads
+Total time is the seconds to execute all tensors of the specified type
+Tensor time is the average milliseconds to execute a single tensor of the specified type
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Tensor Op
+
+   82264    21.90  31.75     0.27 GGML_OP_ADD
+   12012     0.03   0.05     0.00 GGML_OP_MUL
+   12012     0.05   0.08     0.00 GGML_OP_NORM
+   70252    41.46  60.13     0.59 GGML_OP_MUL_MAT
+   11648     0.38   0.56     0.03 GGML_OP_SCALE
+   23296     0.16   0.23     0.01 GGML_OP_CPY
+   46592     1.68   2.44     0.04 GGML_OP_CONT
+     364     0.21   0.31     0.58 GGML_OP_GET_ROWS
+   11648     2.14   3.11     0.18 GGML_OP_SOFT_MAX
+   23360     0.77   1.11     0.03 GGML_OP_ROPE
+   11648     0.16   0.24     0.01 GGML_OP_UNARY
+
+  305096    68.96 100.00
+
+          Total     Total  Tensor
+   Count Time(sec)   %   Time(ms) Unary Op
+
+   11648     0.16  100.00     0.01 GGML_UNARY_OP_GELU
+
+   11648     0.16  100.00
+
+ Graph Tensor Op Performance Data
+
+Graph size is the number of tensors in a graph
+The graph size zero bucket is the overflowed number of tensors
+Graph count is the graphs with the respective graph size
+Total time is the seconds to execute all graphs with the respective size
+Graph time is the average milliseconds to execute a single graph with the respective size
+
+Graph Graph   Total    Total     Graph
+ Size Count  Tensors Time(sec)  Time(ms)
+
+ 1257   362   455034     59.75    165.06
+ 1321     2     2642      9.45   4726.18
+
+Total   364   457676     69.21
+
+Total NOP'ed Tensors   152580
+
+ Tensor Thread Creation Performance
+
+Creation count: 5460
+Total creation Time(ms): 103.41
+Thread creation time(us):  18.94
+
+
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>e:\os\obj\amd64fre\xbox\gamecore\so2001\z-slmapp\z-slm-ggml\objfre\amd64\slmappz.exe --color -c 2048 -t 16 -s 42 -cpf custom_prompts_2.txt --temp 0.1 -m e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf
+Log start
+main: build = 2050 (19122117)
+main: built with MSVC 19.38.33130.0 for x64
+main: seed  = 42
+llama_model_loader: loaded meta data with 20 key-value pairs and 325 tensors from e:\Xbox-B612\models\SLM\Phi-2\Phi-2.GGUF\phi-2.Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = phi2
+llama_model_loader: - kv   1:                               general.name str              = Phi2
+llama_model_loader: - kv   2:                        phi2.context_length u32              = 2048
+llama_model_loader: - kv   3:                      phi2.embedding_length u32              = 2560
+llama_model_loader: - kv   4:                   phi2.feed_forward_length u32              = 10240
+llama_model_loader: - kv   5:                           phi2.block_count u32              = 32
+llama_model_loader: - kv   6:                  phi2.attention.head_count u32              = 32
+llama_model_loader: - kv   7:               phi2.attention.head_count_kv u32              = 32
+llama_model_loader: - kv   8:          phi2.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv   9:                  phi2.rope.dimension_count u32              = 32
+llama_model_loader: - kv  10:                          general.file_type u32              = 15
+llama_model_loader: - kv  11:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  12:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  13:                      tokenizer.ggml.tokens arr[str,51200]   = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  14:                  tokenizer.ggml.token_type arr[i32,51200]   = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  15:                      tokenizer.ggml.merges arr[str,50000]   = ["Ġ t", "Ġ a", "h e", "i n", "r e",...
+llama_model_loader: - kv  16:                tokenizer.ggml.bos_token_id u32              = 50256
+llama_model_loader: - kv  17:                tokenizer.ggml.eos_token_id u32              = 50256
+llama_model_loader: - kv  18:            tokenizer.ggml.unknown_token_id u32              = 50256
+llama_model_loader: - kv  19:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:  195 tensors
+llama_model_loader: - type q4_K:   81 tensors
+llama_model_loader: - type q5_K:   32 tensors
+llama_model_loader: - type q6_K:   17 tensors
+llm_load_vocab: mismatch in special tokens definition ( 910/51200 vs 944/51200 ).
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = phi2
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 51200
+llm_load_print_meta: n_merges         = 50000
+llm_load_print_meta: n_ctx_train      = 2048
+llm_load_print_meta: n_embd           = 2560
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 32
+llm_load_print_meta: n_layer          = 32
+llm_load_print_meta: n_rot            = 32
+llm_load_print_meta: n_embd_head_k    = 80
+llm_load_print_meta: n_embd_head_v    = 80
+llm_load_print_meta: n_gqa            = 1
+llm_load_print_meta: n_embd_k_gqa     = 2560
+llm_load_print_meta: n_embd_v_gqa     = 2560
+llm_load_print_meta: f_norm_eps       = 1.0e-005
+llm_load_print_meta: f_norm_rms_eps   = 0.0e+000
+llm_load_print_meta: f_clamp_kqv      = 0.0e+000
+llm_load_print_meta: f_max_alibi_bias = 0.0e+000
+llm_load_print_meta: n_ff             = 10240
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 10000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_yarn_orig_ctx  = 2048
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: model type       = 3B
+llm_load_print_meta: model ftype      = Q4_K - Medium
+llm_load_print_meta: model params     = 2.78 B
+llm_load_print_meta: model size       = 1.66 GiB (5.14 BPW)
+llm_load_print_meta: general.name     = Phi2
+llm_load_print_meta: BOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: EOS token        = 50256 '<|endoftext|>'
+llm_load_print_meta: UNK token        = 50256 '<|endoftext|>'
+llm_load_print_meta: LF token         = 30 '?'
+llm_load_tensors: ggml ctx size =    0.12 MiB
+llm_load_tensors: offloading 0 repeating layers to GPU
+llm_load_tensors: offloaded 0/33 layers to GPU
+llm_load_tensors:        CPU buffer size =  1704.63 MiB
+....................................................................................
+llama_new_context_with_model: n_ctx      = 2048
+llama_new_context_with_model: freq_base  = 10000.0
+llama_new_context_with_model: freq_scale = 1
+llama_kv_cache_init:        CPU KV buffer size =   640.00 MiB
+llama_new_context_with_model: KV self size  =  640.00 MiB, K (f16):  320.00 MiB, V (f16):  320.00 MiB
+llama_new_context_with_model:        CPU input buffer size   =     9.01 MiB
+llama_new_context_with_model:        CPU compute buffer size =   173.80 MiB
+llama_new_context_with_model: graph splits (measure): 1
+
+system_info: n_threads = 16 / 24 | AVX = 1 | AVX_VNNI = 0 | AVX2 = 1 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | FMA = 1 | NEON = 0 | ARM_FMA = 0 | F16C = 1 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 1 | SSSE3 = 0 | VSX = 0 |
+[main]: processing cpf input file [custom_prompts_2.txt]
+main: interactive mode on.
+sampling:
+        repeat_last_n = 64, repeat_penalty = 1.100, frequency_penalty = 0.000, presence_penalty = 0.000
+        top_k = 40, tfs_z = 1.000, top_p = 0.950, min_p = 0.050, typical_p = 1.000, temp = 0.100
+        mirostat = 0, mirostat_lr = 0.100, mirostat_ent = 5.000
+sampling order:
+CFG -> Penalties -> top_k -> tfs_z -> typical_p -> top_p -> min_p -> temp
+generate: n_ctx = 2048, n_batch = 512, n_predict = -1, n_keep = 0
+
+
+== Running in interactive mode. ==
+ - Press Ctrl+C to interject at any time.
+ - Press Return to return control to LLaMa.
+ - To return control without starting a new line, end your input with '/'.
+ - If you want to submit another line, end your input with '\'.
+
+
+
+
+> Running with custom prompt => [1/5][It was a gift for Xmas from someone I don't know]
+Options: [
+"a. Mara, none of your friends should have this DVD anyway",
+"b. Mara, you should not accept this movie anyway",
+"c. But this DVD is rated 18+ and you are not 18-year old yet.",
+"d. Mara, I don't recall you have a friend by that name",
+"e. I know your mom didn't buy this DVD for you."
+]
+You: {
+     "answer": "a. Mara, none of your friends should have this DVD anyway",
+     "justification": "Mara's answer is correct because she did not receive the DVD from a friend and it is inappropriate for her age to watch an 18+ rated movie."
+}
+> Running with custom prompt => [2/5][Josie gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's not suitable for your age. You should not watch it."
+}
+> Running with custom prompt => [3/5][Someone gave it to me]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the only way you can have this DVD is by stealing it since it is an 18+ rated DVD. At the time she was only 14-year old."
+}
+> Running with custom prompt => [4/5][Julia gave it to me as a gift]
+{
+     "answer": "c. But this DVD is rated 18+ and you are not 18-year old yet.",
+     "justification": "Mara, the movie is rated 18+, which means it's only suitable for adults. You're still a minor so you should not watch it."
+}
+> Running with custom prompt => [5/5][My mom bought it for me]
+{
+     "answer": "a. Mara, none of your friends should have this DVD anyway",
+     "justification": "Mara's mom bought the DVD for her and she is not supposed to have it because it is rated 18+."
+}
+llama_print_timings:        load time =     659.31 ms
+llama_print_timings:      sample time =     140.13 ms /   433 runs   (    0.32 ms per token,  3090.05 tokens per second)
+llama_print_timings: prompt eval time =   59978.14 ms /  3145 tokens (   19.07 ms per token,    52.44 tokens per second)
+llama_print_timings:        eval time =   19678.37 ms /   433 runs   (   45.45 ms per token,    22.00 tokens per second)
+llama_print_timings:       total time =   80066.57 ms /  3578 tokens
+Log end
+
+
+ total elapsed time   81.43sec
+
+e:\os\src\xbox\gamecore\so2001\z-slmapp\test>

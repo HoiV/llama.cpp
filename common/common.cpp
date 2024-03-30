@@ -23,7 +23,9 @@
 #endif
 
 #if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
+#if !defined WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif // WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #   define NOMINMAX
 #endif
@@ -276,6 +278,36 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         if (!params.prompt.empty() && params.prompt.back() == '\n') {
             params.prompt.pop_back();
         }
+        return true;
+    }
+    if (arg == "-script" || arg == "--script-input") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        std::ifstream file(argv[i]);
+        if (!file) {
+            fprintf(stderr, "error: failed to open file '%s'\n", argv[i]);
+            invalid_param = true;
+            return true;
+        }
+        params.scripted = true;
+        std::copy(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), back_inserter(params.script));
+        return true;
+    }
+    if (arg == "-cpf" || arg == "--custom-prompt-file") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        std::ifstream file(argv[i]);
+        if (!file) {
+            fprintf(stderr, "error: failed to open file '%s'\n", argv[i]);
+            invalid_param = true;
+            return true;
+        } 
+        params.custom_prompts_on = true;
+        params.custom_p_file = argv[i];
         return true;
     }
     if (arg == "-n" || arg == "--n-predict") {
