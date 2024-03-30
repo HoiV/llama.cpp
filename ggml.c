@@ -2282,7 +2282,7 @@ float ggml_vec_sumsq_f32(const int64_t n, const float * x) {
     return sumf;
 }
 
-void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
    assert(nrc == 1);
    UNUSED(nrc);
    UNUSED(bx);
@@ -2395,7 +2395,7 @@ void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restri
     *s = sumf;
 }
 
-void ggml_vec_dot_f16(const int64_t n, float * s, size_t bs, const ggml_fp16_t * x, size_t bx, const ggml_fp16_t * y, size_t by, int nrc) {
+void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -2414,7 +2414,7 @@ void ggml_vec_dot_f16(const int64_t n, float * s, size_t bs, const ggml_fp16_t *
         GGML_F16_VEC512 ay[GGML_F16_ARR];
         const int64_t np = (n & ~(GGML_F16_STEP16 - 1));
 
-        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
+        for (int64_t j = 0; j < GGML_F16_ARR; ++j) {
             sum[j] = GGML_F16_VEC_ZERO512;
         }
 
@@ -2459,7 +2459,7 @@ void ggml_vec_dot_f16(const int64_t n, float * s, size_t bs, const ggml_fp16_t *
         GGML_F16_VEC ay[GGML_F16_ARR];
         const int64_t np = (n & ~(GGML_F16_STEP - 1));
 
-        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
+        for (int64_t j = 0; j < GGML_F16_ARR; ++j) {
             sum[j] = GGML_F16_VEC_ZERO;
         }
 
@@ -2507,7 +2507,7 @@ void ggml_vec_dot_f16(const int64_t n, float * s, size_t bs, const ggml_fp16_t *
     *s = sumf;
 }
 
-void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -2553,7 +2553,7 @@ void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const 
             } while (i < xn);
         }
 
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
 
@@ -3237,6 +3237,31 @@ static const char * GGML_UNARY_OP_NAME[GGML_UNARY_OP_COUNT] = {
 
 static_assert(GGML_UNARY_OP_COUNT == 12, "GGML_UNARY_OP_COUNT != 12");
 
+static const char * GGML_VEC_DOT_TYPE_NAME[GGML_TYPE_COUNT] = {
+    "F32",
+    "F16",
+    "Q4_0",
+    "Q4_1",
+    "Q4_2",
+    "Q4_3",
+    "Q5_0",
+    "Q5_1",
+    "Q8_0",
+    "Q8_1",
+    "Q2_K",
+    "Q3_K",
+    "Q4_K",
+    "Q5_K",
+    "Q6_K",
+    "Q8_K",
+    "IQ2_XXS",
+    "IQ2_XS",
+    "IQ3_XXS",
+    "I8",
+    "I16",
+    "I32",
+};
+
 //
 // Performance data logging.
 //
@@ -3254,6 +3279,7 @@ atomic_int graph_tensor_counts[GGML_TENSOR_NODE_COUNT] = {0};
 atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
 atomic_int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
 atomic_int64 unary_op_time[GGML_UNARY_OP_COUNT] = {0};
+int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
 
 #ifdef GGML_VECTOR_DOT_PERF
 atomic_int64 vec_dot16_counts = 0;
@@ -3279,6 +3305,29 @@ print_tensor_op_perf_data (
     printf("Tensor execution time is the total time by the parallel set of threads\n");
     printf("Total time is the seconds to execute all tensors of the specified type\n");
     printf("Tensor time is the average milliseconds to execute a single tensor of the specified type\n\n");
+
+    printf("vector dot matrix multiply type frequency\n\n");
+    printf("   Count     %%\n\n");
+
+    total_count = 0;
+    total_percent = 0.;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        total_count += vec_dot_type_counts[i];
+    }
+
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        if (vec_dot_type_counts[i]) {
+            percent = (double)vec_dot_type_counts[i] / (double)total_count;
+            total_percent += percent;
+            printf("%8d  %5.2f GGML_TYPE_%s - <%s>\n",
+                   vec_dot_type_counts[i],
+                   percent,
+                   GGML_VEC_DOT_TYPE_NAME[i],
+                   type_traits[i].type_name);
+        }
+    }
+
+    printf("\n%8d  %5.2f\n\n", total_count, total_percent);
 
     printf("mul_mat init time %8.2fsec\n", (double)mul_mat_time / (1000. * 1000.)); 
     printf("mul_mat type mismatch %d\n", mul_mat_type);
@@ -12047,6 +12096,11 @@ static void ggml_compute_forward_mul_mat(
 #endif // GGML_TENSOR_OP_PERF
 
     if (params->type == GGML_TASK_TYPE_INIT) {
+
+#ifdef GGML_TENSOR_OP_PERF
+        vec_dot_type_counts[vec_dot_type] += 1;
+#endif // GGML_TENSOR_OP_PERF
+
         if (init_mat) {
 
 #ifdef GGML_TENSOR_OP_PERF
@@ -12076,16 +12130,6 @@ static void ggml_compute_forward_mul_mat(
         }
 
         return;
-    }
-
-    size_t row_size = ggml_row_size(vec_dot_type, ne10);
-    void * wdata = src1->data;
-    if (init_mat) {
-        wdata = params->wdata;
-
-    } else if ((vec_dot_type == GGML_TYPE_F16) && (src1_type == GGML_TYPE_F32)) {
-        row_size = ggml_row_size(src1_type, ne10);
-        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
 
     const int64_t nr0 = ne01;          // src0 rows
@@ -12168,8 +12212,17 @@ static void ggml_compute_forward_mul_mat(
     atomic_int64 dot_time32 = 0;
 #endif // GGML_VECTOR_DOT_PERF 
 
-    // attempt to reduce false-sharing (does not seem to make a difference)
+    size_t row_size = ggml_row_size(vec_dot_type, ne10);
+    void * wdata = src1->data;
+    if (init_mat) {
+        wdata = params->wdata;
 
+    } else if ((vec_dot_type == GGML_TYPE_F16) && (src1_type == GGML_TYPE_F32)) {
+        row_size = ggml_row_size(src1_type, ne10);
+        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+    }
+
+    // attempt to reduce false-sharing (does not seem to make a difference)
     // float tmp[32];
 
     void * dst_data = dst->data;
