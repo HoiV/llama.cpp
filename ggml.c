@@ -496,8 +496,9 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
-static void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
-static void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, ggml_fp16_t * restrict x, size_t bx, ggml_fp16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, ggml_fp16_t * restrict x, size_t bx, ggml_fp16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 
 static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     [GGML_TYPE_I8] = {
@@ -2506,6 +2507,73 @@ void ggml_vec_dot_f16(const int64_t n, float * s, size_t bs, const ggml_fp16_t *
     *s = sumf;
 }
 
+void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+
+    float sumf = 0.0;
+#if defined(GGML_SIMD)
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    if (xn) {
+        GGML_F32_VEC sum[GGML_F32_ARR];
+        __m128i av[GGML_F32_ARR];
+        GGML_F32_VEC ax[GGML_F32_ARR];
+        GGML_F32_VEC ay[GGML_F32_ARR];
+        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+
+        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
+            sum[j] = GGML_F32_VEC_ZERO;
+        }
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    av[j] = _mm_loadu_si128((__m128i *)(x + i + j * GGML_F32_EPR));
+                    ax[j] = _mm256_cvtph_ps(av[j]);
+                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+                    sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ay[j]);
+                }
+    
+                i += GGML_F32_STEP;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                av[0] = _mm_loadu_si128((__m128i *)(x + i));
+                ax[0] = _mm256_cvtph_ps(av[0]);
+                ay[0] = GGML_F32_VEC_LOAD(y + i);
+                sum[0] = GGML_F32_VEC_FMA(sum[0], ax[0], ay[0]);
+                i += GGML_F32_EPR;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sum0
+        GGML_F32_VEC_REDUCE(sumf, sum);
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR - 1)) {
+        do {
+            sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+    for (int64_t i = 0; i < n; ++i) {
+        sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
+    }
+#endif
+
+    *s = sumf;
+}
+
 // compute GGML_VEC_DOT_UNROLL dot products at once
 // xs - x row stride in bytes
 inline static void ggml_vec_dot_f16_unroll(const int n, const int xs, float * restrict s, void * restrict xv, ggml_fp16_t * restrict y) {
@@ -3174,6 +3242,9 @@ static_assert(GGML_UNARY_OP_COUNT == 12, "GGML_UNARY_OP_COUNT != 12");
 //
 
 #ifdef GGML_TENSOR_OP_PERF
+atomic_int64 mul_mat_time = 0;
+atomic_int mul_mat_type = 0;
+atomic_int64 mul_mat_element_sum = 0;
 #define GGML_TENSOR_NODE_COUNT 4096
 atomic_int thread_create_count = 0;
 atomic_int64 thread_create_time = 0;
@@ -3208,6 +3279,14 @@ print_tensor_op_perf_data (
     printf("Tensor execution time is the total time by the parallel set of threads\n");
     printf("Total time is the seconds to execute all tensors of the specified type\n");
     printf("Tensor time is the average milliseconds to execute a single tensor of the specified type\n\n");
+
+    printf("mul_mat init time %8.2fsec\n", (double)mul_mat_time / (1000. * 1000.)); 
+    printf("mul_mat type mismatch %d\n", mul_mat_type);
+    printf("mul_mat element sum %zd\n", mul_mat_element_sum);
+    printf("mul_mat type mismatch ration %d / %d = %5.2f\n\n",
+           mul_mat_type,
+           compute_op_counts[GGML_OP_MUL_MAT],
+           (double)mul_mat_type / (double)compute_op_counts[GGML_OP_MUL_MAT]);
 
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
@@ -11856,8 +11935,7 @@ static void ggml_compute_forward_mul_mat(
     const enum ggml_type type = src0->type;
 
     const bool src1_cont = ggml_is_contiguous(src1);
-
-    ggml_vec_dot_t    const vec_dot               = type_traits[type].vec_dot;
+    ggml_vec_dot_t          vec_dot               = type_traits[type].vec_dot;
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
@@ -11962,11 +12040,21 @@ static void ggml_compute_forward_mul_mat(
 
     const enum ggml_type src1_type = src1->type;
 
+#if 0 // #ifdef GGML_TENSOR_OP_PERF
+    const bool init_mat = (vec_dot_type != src1_type);
+#else
+    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
+#endif // GGML_TENSOR_OP_PERF
+
     if (params->type == GGML_TASK_TYPE_INIT) {
-        if (ith != 0) {
-            return;
-        }
-        if (src1_type != vec_dot_type) {
+        if (init_mat) {
+
+#ifdef GGML_TENSOR_OP_PERF
+            int64_t t0 = ggml_time_us();
+            atomic_fetch_add(&mul_mat_type, 1);
+            atomic_fetch_add64(&mul_mat_element_sum, ne00 * ne1 * ne12 * ne13);
+#endif // GGML_TENSOR_OP_PERF
+
             char * wdata = params->wdata;
             const size_t row_size = ggml_row_size(vec_dot_type, ne10);
 
@@ -11981,17 +12069,24 @@ static void ggml_compute_forward_mul_mat(
                     }
                 }
             }
+#ifdef GGML_TENSOR_OP_PERF
+            atomic_fetch_add64(&mul_mat_time, ggml_time_us() - t0);
+#endif // GGML_TENSOR_OP_PERF
+
         }
 
         return;
     }
 
-    if (params->type == GGML_TASK_TYPE_FINALIZE) {
-        return;
-    }
+    size_t row_size = ggml_row_size(vec_dot_type, ne10);
+    void * wdata = src1->data;
+    if (init_mat) {
+        wdata = params->wdata;
 
-    const void * wdata    = (src1_type == vec_dot_type) ? src1->data : params->wdata;
-    const size_t row_size = ggml_row_size(vec_dot_type, ne10);
+    } else if ((vec_dot_type == GGML_TYPE_F16) && (src1_type == GGML_TYPE_F32)) {
+        row_size = ggml_row_size(src1_type, ne10);
+        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+    }
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
@@ -12054,7 +12149,6 @@ static void ggml_compute_forward_mul_mat(
 
     //printf("ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", ir010, ir011, ir110, ir111);
 
-    // threads with no work simply yield (not sure if it helps)
     if (ir010 >= ir011 || ir110 >= ir111) {
         // sched_yield();
         return;
@@ -12099,7 +12193,7 @@ static void ggml_compute_forward_mul_mat(
                 // TODO: this is a bit of a hack, we should probably have a better way to handle this
 
                 const char * src1_col = (const char *) wdata +
-                    (src1_cont || src1_type != vec_dot_type
+                    (src1_cont || init_mat
                      ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
                      : (i11*nb11 + i12*nb12 + i13*nb13));
 
