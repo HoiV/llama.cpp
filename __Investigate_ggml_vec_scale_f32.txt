@@ -1,0 +1,17 @@
+Issue with void void ggml_vec_scale_f32(const int n, float * y, const float   v)
+
+ORG version:
+llama_print_timings:        load time =     648.48 ms
+llama_print_timings:      sample time =      12.86 ms /   336 runs   (    0.04 ms per token, 26137.69 tokens per second)
+llama_print_timings: prompt eval time =   58183.35 ms /  3150 tokens (   18.47 ms per token,    54.14 tokens per second)
+llama_print_timings:        eval time =   15391.25 ms /   331 runs   (   46.50 ms per token,    21.51 tokens per second)
+llama_print_timings:       total time =   73728.26 ms /  3481 tokens
+Log end
+
+NEW version:
+llama_print_timings:        load time =     658.47 ms
+llama_print_timings:      sample time =      12.61 ms /   336 runs   (    0.04 ms per token, 26641.29 tokens per second)
+llama_print_timings: prompt eval time =   57297.65 ms /  3150 tokens (   18.19 ms per token,    54.98 tokens per second)
+llama_print_timings:        eval time =   15801.17 ms /   331 runs   (   47.74 ms per token,    20.95 tokens per second)
+llama_print_timings:       total time =   73252.48 ms /  3481 tokens
+Log end
