@@ -49,6 +49,9 @@ std::string custom_template_prompt;
 std::vector<std::string> custom_prompts;
 std::vector<std::string>::iterator custom_prompts_it;
 int current_custom_prompt_index = 0;
+int token_generated = 0;
+bool json_start = false;
+bool restart_prompt = false;
 
 bool processCustomPromptsFromFile(const std::string& custom_p_file) {
     std::ifstream cpfile(custom_p_file);
@@ -806,7 +809,25 @@ int main(int argc, char ** argv) {
         if (input_echo && display) {
             for (auto id : embd) {
                 const std::string token_str = llama_token_to_piece(ctx, id);
+
+                token_generated++;
+                if (!json_start && (token_str.find('{') != std::string::npos)) {
+                    json_start = true;
+                    token_generated = 0;
+                }
+                if (!json_start && (token_generated > 5)) {
+                    // detect the model is not behaving - stop and restart
+                    is_interacting = true;
+                    restart_prompt = true;
+                    printf("\nModel hallucination - RESET...\n");
+                    break;
+                }
+#if 0
+                if (!json_start) {
+                    printf("[%d-%d]:~%s~", token_generated, json_start? 1 : 0, token_str.c_str());
+#else
                 printf("%s", token_str.c_str());
+#endif
 
                 if (embd.size() > 1) {
                     input_tokens.push_back(id);
@@ -818,6 +839,7 @@ int main(int argc, char ** argv) {
                 if (params.custom_prompts_on && (token_str.c_str()[0] == '}')) {
                     // for custom prompt only - if we hit a "}" we should stop generating
                     is_interacting = true;
+                    restart_prompt = false;
                     break;
                 }
             }
@@ -924,14 +946,24 @@ int main(int argc, char ** argv) {
                 } else if (params.custom_prompts_on) {
                     if (custom_prompts_it != custom_prompts.end()) {
                         // for custom_prompt always clear the cache since we want 
-                        // every prompt to start from the saee beginning
+                        // every prompt to start from the same beginning
                         llama_kv_cache_clear(ctx);
+                        json_start = false;
+                        token_generated = 0;
+
+                        if (restart_prompt) {
+                            // reset back to previous prompts
+                            custom_prompts_it--;
+                            restart_prompt = false;
+                        } else {
+                            current_custom_prompt_index++;
+                        }
 
                         // Create custom user prompt
                         std::string& custom_prompt = *custom_prompts_it;
                         printf("\n"
                                "> Running with custom prompt => [%d/%zd][%s]\n", 
-                               ++current_custom_prompt_index, 
+                               current_custom_prompt_index, 
                                custom_prompts.size(),
                                custom_prompt.c_str());
 
