@@ -1180,7 +1180,9 @@ do {                                                              \
 #define GGML_F32_VEC_ZERO512 _mm512_setzero_ps()
 #define GGML_F32_VEC_LOAD512 _mm512_loadu_ps
 #define GGML_F32_VEC_FMA512(a, b, c) _mm512_fmadd_ps(b, c, a)
-#define GGML_F32_VEC_ADD512  _m512_add_ps
+#define GGML_F32_VEC_ADD512  _mm512_add_ps
+#define GGML_F32_VEC_MUL512  _mm512_mul_ps
+#define GGML_F32_VEC_STORE512 _mm512_storeu_ps
 #define GGML_F32_VEC_PREFETCH(a) _mm_prefetch((char const *)(a), _MM_HINT_T2)
 
 #define GGML_F32_VEC_REDUCE512(res, x)                            \
@@ -1622,10 +1624,54 @@ inline static void ggml_vec_set_i32(const int n, int32_t * x, const int32_t v) {
 
 inline static void ggml_vec_set_f16(const int n, ggml_fp16_t * x, const int32_t v) { for (int i = 0; i < n; ++i) x[i] = v; }
 
-void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float * y)
+void ggml_vec_add_f32(const int32_t n, float * z, const float * x, const float * y)
 {
 #ifdef GGML_SIMD
     int64_t i = 0;
+
+#ifdef __AVX512F__
+
+    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        GGML_F32_VEC512 ax[GGML_F32_ARR];
+        GGML_F32_VEC512 ay[GGML_F32_ARR];
+        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
+                    ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
+                    ay[j] = GGML_F32_VEC_ADD512(ax[j], ay[j]);
+                    GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = GGML_F32_VEC_LOAD512(x + i);
+                ay[0] = GGML_F32_VEC_LOAD512(y + i);
+                ay[0] = GGML_F32_VEC_ADD512(ax[0], ay[0]);
+                GGML_F32_VEC_STORE512(z + i, ay[0]);
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            z[i]  = x[i] + y[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
     if (xn) {
@@ -1664,6 +1710,9 @@ void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float *
             i += 1;
         } while (i < n);
     }
+
+#endif // __AVX512F__
+
 #else
     for (int64_t i = 0; i < n; ++i) {
         z[i]  = x[i] + y[i];
@@ -2002,9 +2051,53 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
 #endif // GGML_SIMD
 }
 
-void ggml_vec_mul_f32(const int64_t n, float * z, const float * x, const float * y) {
+void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float * y) {
 #ifdef GGML_SIMD
     int64_t i = 0;
+
+#ifdef __AVX512F__
+
+    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        GGML_F32_VEC512 ax[GGML_F32_ARR];
+        GGML_F32_VEC512 ay[GGML_F32_ARR];
+        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
+                    ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
+                    ay[j] = GGML_F32_VEC_MUL512(ax[j], ay[j]);
+                    GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = GGML_F32_VEC_LOAD512(x + i);
+                ay[0] = GGML_F32_VEC_LOAD512(y + i);
+                ay[0] = GGML_F32_VEC_MUL512(ax[0], ay[0]);
+                GGML_F32_VEC_STORE512(z + i, ay[0]);
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            z[i]  = x[i] + y[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
     const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
 
     if (xn) {
@@ -2044,11 +2137,16 @@ void ggml_vec_mul_f32(const int64_t n, float * z, const float * x, const float *
             i += 1;
         } while (i < n);
     }
+
+#endif // __AVX512F__
+
 #else
+
     // scalar
     for (int64_t i = 0; i < n; ++i) {
         z[i]  = x[i] * y[i];
     }
+
 #endif // GGML_SIMD 
 }
 
@@ -2515,8 +2613,62 @@ void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml
     UNUSED(bs);
 
     float sumf = 0.0;
+
 #if defined(GGML_SIMD)
     int64_t i = 0;
+
+#ifdef __AVX512F__
+
+    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        GGML_F32_VEC512 sum[GGML_F32_ARR];
+        __m256i av[GGML_F32_ARR];
+        GGML_F32_VEC512 ax[GGML_F32_ARR];
+        GGML_F32_VEC512 ay[GGML_F32_ARR];
+        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
+            sum[j] = GGML_F32_VEC_ZERO512;
+        }
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    av[j] = _mm256_loadu_si256((__m256i *)(x + i + j * GGML_F32_EPR16));
+                    ax[j] = _mm512_cvtph_ps(av[j]);
+                    ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
+                    sum[j] = GGML_F32_VEC_FMA512(sum[j], ax[j], ay[j]);
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                av[0] = _mm256_loadu_si256((__m256i *)(x + i));
+                ax[0] = _mm512_cvtph_ps(av[0]);
+                ay[0] = GGML_F32_VEC_LOAD512(y + i);
+                sum[0] = GGML_F32_VEC_FMA512(sum[0], ax[0], ay[0]);
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sumf
+        GGML_F32_VEC_REDUCE512(sumf, sum);
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
     if (xn) {
@@ -2565,10 +2717,14 @@ void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml
         } while (i < n);
     }
 
+#endif // __AVX512F__
+
 #else
+
     for (int64_t i = 0; i < n; ++i) {
         sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
     }
+
 #endif
 
     *s = sumf;
@@ -3237,31 +3393,6 @@ static const char * GGML_UNARY_OP_NAME[GGML_UNARY_OP_COUNT] = {
 
 static_assert(GGML_UNARY_OP_COUNT == 12, "GGML_UNARY_OP_COUNT != 12");
 
-static const char * GGML_VEC_DOT_TYPE_NAME[GGML_TYPE_COUNT] = {
-    "F32",
-    "F16",
-    "Q4_0",
-    "Q4_1",
-    "Q4_2",
-    "Q4_3",
-    "Q5_0",
-    "Q5_1",
-    "Q8_0",
-    "Q8_1",
-    "Q2_K",
-    "Q3_K",
-    "Q4_K",
-    "Q5_K",
-    "Q6_K",
-    "Q8_K",
-    "IQ2_XXS",
-    "IQ2_XS",
-    "IQ3_XXS",
-    "I8",
-    "I16",
-    "I32",
-};
-
 //
 // Performance data logging.
 //
@@ -3319,10 +3450,9 @@ print_tensor_op_perf_data (
         if (vec_dot_type_counts[i]) {
             percent = (double)vec_dot_type_counts[i] / (double)total_count;
             total_percent += percent;
-            printf("%8d  %5.2f GGML_TYPE_%s - <%s>\n",
+            printf("%8d  %5.2f GGML_TYPE_%s\n",
                    vec_dot_type_counts[i],
                    percent,
-                   GGML_VEC_DOT_TYPE_NAME[i],
                    type_traits[i].type_name);
         }
     }
@@ -12092,7 +12222,9 @@ static void ggml_compute_forward_mul_mat(
 #if 0 // #ifdef GGML_TENSOR_OP_PERF
     const bool init_mat = (vec_dot_type != src1_type);
 #else
-    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
+    bool init_mat = ((vec_dot_type != src1_type) &&
+                     (vec_dot_type != GGML_TYPE_F16) &&
+                     (vec_dot_type != GGML_TYPE_Q8_K));
 #endif // GGML_TENSOR_OP_PERF
 
     if (params->type == GGML_TASK_TYPE_INIT) {
@@ -12100,6 +12232,8 @@ static void ggml_compute_forward_mul_mat(
 #ifdef GGML_TENSOR_OP_PERF
         vec_dot_type_counts[vec_dot_type] += 1;
 #endif // GGML_TENSOR_OP_PERF
+
+        *params->barrier0 = nth;
 
         if (init_mat) {
 
@@ -12118,7 +12252,7 @@ static void ggml_compute_forward_mul_mat(
             for (int64_t i13 = 0; i13 < ne13; ++i13) {
                 for (int64_t i12 = 0; i12 < ne12; ++i12) {
                     for (int64_t i11 = 0; i11 < ne11; ++i11) {
-                        from_float_to_vec_dot((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11), (void *) wdata, ne10);
+                        from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), wdata, ne10);
                         wdata += row_size;
                     }
                 }
@@ -12213,13 +12347,59 @@ static void ggml_compute_forward_mul_mat(
 #endif // GGML_VECTOR_DOT_PERF 
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
-    void * wdata = src1->data;
+    char * wdata = src1->data;
+
     if (init_mat) {
         wdata = params->wdata;
 
-    } else if ((vec_dot_type == GGML_TYPE_F16) && (src1_type == GGML_TYPE_F32)) {
+    } else if ((vec_dot_type != src1_type) && (vec_dot_type == GGML_TYPE_F16)) {
         row_size = ggml_row_size(src1_type, ne10);
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+
+    } else if ((vec_dot_type != src1_type) && (vec_dot_type == GGML_TYPE_Q8_K)) {
+        wdata = params->wdata;
+
+        assert(params->wsize >= ne11*ne12*ne13*row_size);
+        GGML_ASSERT(src1_type == GGML_TYPE_F32);
+
+        //
+        // Distribute the src1 converion over all threads.
+        //
+
+        const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
+        const int64_t start_row = rows_per_thread * ith;
+        const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
+
+        //
+        // Convert the src1 rows to the destination vector dot type.
+        //
+
+        for (int64_t i13 = 0; i13 < ne13; ++i13) {
+            char * row_data = wdata + (i13 * ne12 * ne11 * row_size);
+            for (int64_t i12 = 0; i12 < ne12; ++i12) {
+                char * row_base = row_data + (((i12 * ne11) + start_row) * row_size);
+                for (int64_t i11 = start_row; i11 < end_row; ++i11) {
+                    from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), row_base, ne10);
+                    row_base += row_size;
+                }
+            }
+        }
+
+        //
+        // Wait until all threads are finished with the src1 conversion before proceeding.
+        //
+
+        if (atomic_fetch_sub(params->barrier0, 1) != 1) {
+            do {
+                YieldProcessor(); 
+            } while (*params->barrier0);
+        }
+
+        //
+        // Mark initialization done.
+        //
+
+        init_mat = TRUE;
     }
 
     // attempt to reduce false-sharing (does not seem to make a difference)
@@ -19320,6 +19500,7 @@ struct DECLSPEC_CACHEALIGN ggml_compute_state_shared {
     int n_tasks;
     void * node;                        // active graph tensor node
     uint64_t t0;
+    atomic_int b0;                      // init barrier
     DECLSPEC_CACHEALIGN const struct ggml_tensor ** cgraph_nodes;
     const size_t cplan_work_size;       // cplan work size
     const uint8_t * cplan_work_data;    // cplan work data
@@ -19607,7 +19788,8 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         .ith = 0,
         .nth = 0,
         .wsize = shared->cplan_work_size,
-        .wdata = shared->cplan_work_data
+        .wdata = shared->cplan_work_data,
+        .barrier0 = &shared->b0
     };
 
     do {
@@ -20009,6 +20191,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
         .n_tasks = 0,
         .node = NULL,
         .t0 = 0,
+        .b0 = 0,
         .cgraph_nodes = cgraph->nodes,
         .cplan_work_size = cplan->work_size,
         .cplan_work_data = cplan->work_data,

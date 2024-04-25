@@ -3641,8 +3641,33 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32_t k) {
     assert(k % QK_K == 0);
     const int32_t nb = k / QK_K;
-#ifdef __AVX2__
+#if defined(__AVX2__) || defined(__AVX512F__)
     for (int64_t i = 0; i < nb; i++) {
+
+#ifdef __AVX512F__
+
+        __m512 ax[4];
+        __m512 maxabs = _mm512_set1_ps(0.0f);
+        __m128 max4;
+        __m256 max8;
+        const __m512 signBit = _mm512_set1_ps(-0.0f);
+    
+        float amax = 0;
+        int64_t n = 0;
+        for (int64_t j = 0; j < 4; j++) {
+            for (int64_t k = 0; k < 4; k++) {
+                ax[k] = _mm512_loadu_ps(x + n + k * 16);
+                ax[k] = _mm512_andnot_ps(signBit, ax[k]);
+                maxabs = _mm512_max_ps(maxabs, ax[k]);
+            }
+
+            n += 64;
+        }
+
+        max8 = _mm256_max_ps(_mm512_extractf32x8_ps(maxabs, 1), _mm512_castps512_ps256(maxabs));
+        max4 = _mm_max_ps(_mm256_extractf128_ps(max8, 1), _mm256_castps256_ps128(max8));
+
+#else
 
         __m256 ax[4];
         __m256 maxabs = _mm256_set1_ps(0.0f);
@@ -3662,6 +3687,9 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32
         }
 
         max4 = _mm_max_ps(_mm256_extractf128_ps(maxabs, 1), _mm256_castps256_ps128(maxabs));
+
+#endif // __AVX512F__
+
         max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
         max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
         amax = _mm_cvtss_f32(max4);
@@ -3676,6 +3704,34 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32
 
         const float iscale = 126.99999f / amax;
         const float shift = 12582912.f;
+
+#ifdef __AVX512F__
+
+        const __m512 xshift = _mm512_set1_ps(shift);
+        const __m512 xscale = _mm512_set1_ps(iscale);
+
+        static const uint8_t shuffle[64] = {
+            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
+
+        const __m512i ctrl = _mm512_loadu_si512((__m512i *)&shuffle);
+
+        for (int64_t j = 0; j < QK_K / 16; ++j) {
+            __m512 vx = _mm512_loadu_ps(x + (j * 16));
+            vx = _mm512_fmadd_ps(vx, xscale, xshift);
+            __m512i qsbytes = _mm512_shuffle_epi8(_mm512_castps_si512(vx), ctrl);
+            __m256i q0bytes = _mm512_extracti32x8_epi32(qsbytes, 0);
+            __m256i q1bytes = _mm512_extracti32x8_epi32(qsbytes, 1);
+            *((uint32_t *)&y->qs[(j * 16) + 0]) = _mm256_extract_epi32(q0bytes, 0);
+            *((uint32_t *)&y->qs[(j * 16) + 4]) = _mm256_extract_epi32(q0bytes, 4);
+            *((uint32_t *)&y->qs[(j * 16) + 8]) = _mm256_extract_epi32(q1bytes, 0);
+            *((uint32_t *)&y->qs[(j * 16) + 12]) = _mm256_extract_epi32(q1bytes, 4);
+        }
+
+#else
+
         __m256 xshift = _mm256_broadcast_ss(&shift);
         __m256 xscale = _mm256_broadcast_ss(&iscale);
 
@@ -3683,7 +3739,8 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32
             0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
             0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
 
-        __m256i ctrl = _mm256_loadu_si256((__m256i *)&shuffle);
+        const __m256i ctrl = _mm256_loadu_si256((__m256i *)&shuffle);
+
         __m256 xv[4];
 
         for (int64_t j = 0; j < (QK_K / 32); ++j) {
@@ -3695,6 +3752,8 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32
                 *((uint32_t *)&y->qs[(j * 32) + (k * 8) + 4]) = _mm256_extract_epi32(qsbytes, 4);
             }
         }
+
+#endif // __AVX512F__
 
         __m128i lbytes;
         __m128i lwords;
@@ -3720,6 +3779,7 @@ next_block:
         y += 1;
     }
 #else
+
     for (int i = 0; i < nb; i++) {
 
         float max = 0;
@@ -3753,7 +3813,9 @@ next_block:
         y[i].d = 1/iscale;
         x += QK_K;
     }
-#endif // __AVX2__
+
+#endif // __AVX2__ || __AVX512__
+
 }
 
 void dequantize_row_q8_K(const block_q8_K * restrict x, float * restrict y, int k) {

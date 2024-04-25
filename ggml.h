@@ -278,6 +278,8 @@
 //
 // Turn off debug code.
 //
+// N.B. This turns off the function assert(...)
+//
 
 #define NDEBUG 1
 
@@ -722,6 +724,7 @@ extern "C" {
         // work buffer for all threads
         size_t wsize;
         void * wdata;
+        volatile long * barrier0;
     };
 
     // numa strategies
