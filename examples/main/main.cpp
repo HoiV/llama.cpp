@@ -810,17 +810,19 @@ int main(int argc, char ** argv) {
             for (auto id : embd) {
                 const std::string token_str = llama_token_to_piece(ctx, id);
 
-                token_generated++;
-                if (!json_start && (token_str.find('{') != std::string::npos)) {
-                    json_start = true;
-                    token_generated = 0;
-                }
-                if (!json_start && (token_generated > 5)) {
-                    // detect the model is not behaving - stop and restart
-                    is_interacting = true;
-                    restart_prompt = true;
-                    printf("\nModel hallucination - RESET...\n");
-                    break;
+                if (params.custom_prompts_on) {
+                    token_generated++;
+                    if (!json_start && (token_str.find('{') != std::string::npos)) {
+                        json_start = true;
+                        token_generated = 0;
+                    }
+                    if (!json_start && (token_generated > 5)) {
+                        // detect the model is not behaving - stop and restart
+                        is_interacting = true;
+                        restart_prompt = true;
+                        printf("\nModel hallucination - RESET...\n");
+                        break;
+                    }
                 }
 #if 0
                 if (!json_start) {
