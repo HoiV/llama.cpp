@@ -66,10 +66,10 @@ typedef sycl::half2 ggml_half2;
 // QK_K = super-block size
 
 #ifdef GGML_QKK_64
-#define QK_K 64
+#define QK_K 64u
 #define K_SCALE_SIZE 4
 #else
-#define QK_K 256
+#define QK_K 256u
 #define K_SCALE_SIZE 12
 #endif // GGML_QKK_64
 

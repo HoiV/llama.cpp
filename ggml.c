@@ -1629,7 +1629,7 @@ void ggml_vec_add_f32(const int32_t n, float * z, const float * x, const float *
 #ifdef GGML_SIMD
     int64_t i = 0;
 
-#ifdef __AVX512F__
+#if 0 // def __AVX512F__
 
     const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
 
@@ -2055,7 +2055,7 @@ void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float *
 #ifdef GGML_SIMD
     int64_t i = 0;
 
-#ifdef __AVX512F__
+#if 0 // def __AVX512F__
 
     const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
 
@@ -2390,7 +2390,7 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
     float sumf = 0.0f;
 #ifdef GGML_SIMD
     int64_t i = 0;
-#ifdef __AVX512F__
+#if 0 // def __AVX512F__
     const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
@@ -2503,7 +2503,7 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
      float sumf = 0.0;
 #if defined(GGML_SIMD)
     int64_t i = 0;
-#ifdef __AVX512F__
+#if 0 // def __AVX512F__
     const int64_t xn = (n & ~(GGML_F16_EPR16 - 1));
 
     if (xn) {
@@ -3398,9 +3398,6 @@ static_assert(GGML_UNARY_OP_COUNT == 12, "GGML_UNARY_OP_COUNT != 12");
 //
 
 #ifdef GGML_TENSOR_OP_PERF
-atomic_int64 mul_mat_time = 0;
-atomic_int mul_mat_type = 0;
-atomic_int64 mul_mat_element_sum = 0;
 #define GGML_TENSOR_NODE_COUNT 4096
 atomic_int thread_create_count = 0;
 atomic_int64 thread_create_time = 0;
@@ -3458,14 +3455,6 @@ print_tensor_op_perf_data (
     }
 
     printf("\n%8d  %5.2f\n\n", total_count, total_percent);
-
-    printf("mul_mat init time %8.2fsec\n", (double)mul_mat_time / (1000. * 1000.)); 
-    printf("mul_mat type mismatch %d\n", mul_mat_type);
-    printf("mul_mat element sum %zd\n", mul_mat_element_sum);
-    printf("mul_mat type mismatch ration %d / %d = %5.2f\n\n",
-           mul_mat_type,
-           compute_op_counts[GGML_OP_MUL_MAT],
-           (double)mul_mat_type / (double)compute_op_counts[GGML_OP_MUL_MAT]);
 
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
@@ -12103,17 +12092,29 @@ static void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
-    int64_t t0 = ggml_perf_time_us();
-    UNUSED(t0);
-
-    GGML_TENSOR_BINARY_OP_LOCALS
+    const enum ggml_type type = src0->type;
 
     const int ith = params->ith;
     const int nth = params->nth;
 
-    const enum ggml_type type = src0->type;
+#ifdef _WIN32
+
+    if (params->type == GGML_TASK_TYPE_INIT) {
+
+#ifdef GGML_TENSOR_OP_PERF
+        vec_dot_type_counts[type_traits[type].vec_dot_type] += 1;
+#endif // GGML_TENSOR_OP_PERF
+
+        *params->barrier0 = nth;
+        return;
+    }
+
+#endif // _WIN32
+
+    GGML_TENSOR_BINARY_OP_LOCALS
 
     const bool src1_cont = ggml_is_contiguous(src1);
+
     ggml_vec_dot_t          vec_dot               = type_traits[type].vec_dot;
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
@@ -12217,54 +12218,6 @@ static void ggml_compute_forward_mul_mat(
     }
 #endif
 
-    const enum ggml_type src1_type = src1->type;
-
-#if 0 // #ifdef GGML_TENSOR_OP_PERF
-    const bool init_mat = (vec_dot_type != src1_type);
-#else
-    bool init_mat = ((vec_dot_type != src1_type) &&
-                     (vec_dot_type != GGML_TYPE_F16) &&
-                     (vec_dot_type != GGML_TYPE_Q8_K));
-#endif // GGML_TENSOR_OP_PERF
-
-    if (params->type == GGML_TASK_TYPE_INIT) {
-
-#ifdef GGML_TENSOR_OP_PERF
-        vec_dot_type_counts[vec_dot_type] += 1;
-#endif // GGML_TENSOR_OP_PERF
-
-        *params->barrier0 = nth;
-
-        if (init_mat) {
-
-#ifdef GGML_TENSOR_OP_PERF
-            int64_t t0 = ggml_time_us();
-            atomic_fetch_add(&mul_mat_type, 1);
-            atomic_fetch_add64(&mul_mat_element_sum, ne00 * ne1 * ne12 * ne13);
-#endif // GGML_TENSOR_OP_PERF
-
-            char * wdata = params->wdata;
-            const size_t row_size = ggml_row_size(vec_dot_type, ne10);
-
-            assert(params->wsize >= ne11*ne12*ne13*row_size);
-            GGML_ASSERT(src1_type == GGML_TYPE_F32);
-
-            for (int64_t i13 = 0; i13 < ne13; ++i13) {
-                for (int64_t i12 = 0; i12 < ne12; ++i12) {
-                    for (int64_t i11 = 0; i11 < ne11; ++i11) {
-                        from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), wdata, ne10);
-                        wdata += row_size;
-                    }
-                }
-            }
-#ifdef GGML_TENSOR_OP_PERF
-            atomic_fetch_add64(&mul_mat_time, ggml_time_us() - t0);
-#endif // GGML_TENSOR_OP_PERF
-
-        }
-
-        return;
-    }
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
@@ -12346,17 +12299,13 @@ static void ggml_compute_forward_mul_mat(
     atomic_int64 dot_time32 = 0;
 #endif // GGML_VECTOR_DOT_PERF 
 
+    const enum ggml_type src1_type = src1->type;
+    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
+
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
     char * wdata = src1->data;
 
     if (init_mat) {
-        wdata = params->wdata;
-
-    } else if ((vec_dot_type != src1_type) && (vec_dot_type == GGML_TYPE_F16)) {
-        row_size = ggml_row_size(src1_type, ne10);
-        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
-
-    } else if ((vec_dot_type != src1_type) && (vec_dot_type == GGML_TYPE_Q8_K)) {
         wdata = params->wdata;
 
         assert(params->wsize >= ne11*ne12*ne13*row_size);
@@ -12395,11 +12344,9 @@ static void ggml_compute_forward_mul_mat(
             } while (*params->barrier0);
         }
 
-        //
-        // Mark initialization done.
-        //
-
-        init_mat = TRUE;
+    } else if (vec_dot_type != src1_type) {
+        row_size = ggml_row_size(src1_type, ne10);
+        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
 
     // attempt to reduce false-sharing (does not seem to make a difference)
