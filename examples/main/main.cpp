@@ -48,6 +48,9 @@ int64_t t0;
 std::string custom_template_prompt;
 std::vector<std::string> custom_prompts;
 std::vector<std::string>::iterator custom_prompts_it;
+std::string pfx_shared;
+bool switch_prompt = false; // set true every time switch to a new prompt
+bool need_save_pfx = false;
 int current_custom_prompt_index = 0;
 int token_generated = 0;
 bool json_start = false;
@@ -91,6 +94,12 @@ bool processCustomPromptsFromFile(const std::string& custom_p_file) {
     cpfile.close();
 
     return true;
+}
+
+std::string pfx_file_path(std::string pfx) {
+    static std::string dir = "shared_prefix";
+    static std::hash<std::string> hasher;
+    return dir + "/" + std::to_string(hasher(pfx));
 }
 
 static bool file_exists(const std::string &path) {
@@ -306,6 +315,7 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             session_tokens.resize(n_token_count_out);
+            llama_set_rng_seed(ctx, params.seed);
             LOG_TEE("%s: loaded a session with prompt size of %d tokens\n", __func__, (int)session_tokens.size());
         }
     }
@@ -314,6 +324,7 @@ int main(int argc, char ** argv) {
     GGML_ASSERT(llama_add_eos_token(model) != 1);
     LOG("add_bos: %d\n", add_bos);
 
+    // store all input tokens, contain multiple rounds prompt
     std::vector<llama_token> embd_inp;
 
     if (params.interactive_first || params.instruct || params.chatml || !params.prompt.empty() || session_tokens.empty()) {
@@ -331,6 +342,7 @@ int main(int argc, char ** argv) {
     LOG("tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
 
     // Should not run without any tokens
+    // zimiao: an empty bos
     if (embd_inp.empty()) {
         embd_inp.push_back(llama_token_bos(model));
         LOG("embd_inp was considered empty and bos was added: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
@@ -459,7 +471,7 @@ int main(int argc, char ** argv) {
             }
         }
 
-        if (params.n_keep > add_bos) {
+        if (params.n_keep > 0) {
             LOG_TEE("%s: static prompt based on n_keep: '", __func__);
             for (int i = 0; i < params.n_keep; i++) {
                 LOG_TEE("%s", llama_token_to_piece(ctx, embd_inp[i]).c_str());
@@ -469,8 +481,7 @@ int main(int argc, char ** argv) {
         LOG_TEE("\n");
     }
 
-    // ctrl+C handling
-    {
+    if (params.interactive) {
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
         struct sigaction sigint_action;
         sigint_action.sa_handler = sigint_handler;
@@ -568,9 +579,9 @@ int main(int argc, char ** argv) {
     bool display              = true;
     bool need_to_save_session = !path_session.empty() && n_matching_session_tokens < embd_inp.size();
 
-    int n_past             = 0;
+    int n_past             = 0; // how many past token has been used in current n_ctx, used to assign pos for RoPE
     int n_remain           = params.n_predict;
-    int n_consumed         = 0;
+    int n_consumed         = 0; // how many prompt tokens has been processed, used along with embd_inp. it may exceed n_ctx because we will shift for infinite generation
     int n_session_consumed = 0;
     int n_past_guidance    = 0;
 
@@ -671,28 +682,34 @@ int main(int argc, char ** argv) {
                 }
             }
 
-            // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
-            if (n_session_consumed < (int) session_tokens.size()) {
-                size_t i = 0;
-                for ( ; i < embd.size(); i++) {
-                    if (embd[i] != session_tokens[n_session_consumed]) {
-                        session_tokens.resize(n_session_consumed);
-                        break;
-                    }
+            if (!params.custom_prompts_on) {
+                // try to reuse a matching prefix from the loaded session instead of re-eval (via n_past)
+                if (n_session_consumed < (int)session_tokens.size()) {
+                    size_t i = 0;
+                    for (; i < embd.size(); i++) {
+                        // not fully matched with session_token, trancate session_token
+                        if (embd[i] != session_tokens[n_session_consumed]) {
+                            session_tokens.resize(n_session_consumed);
+                            break;
+                        }
 
-                    n_past++;
-                    n_session_consumed++;
+                        n_past++;
+                        n_session_consumed++;
 
-                    if (n_session_consumed >= (int) session_tokens.size()) {
-                        ++i;
-                        break;
+                        // embd is fully matched with prefix and longer than session_token
+                        if (n_session_consumed >= (int)session_tokens.size()) {
+                            ++i;
+                            break;
+                        }
                     }
-                }
-                if (i > 0) {
-                    embd.erase(embd.begin(), embd.begin() + i);
+                    if (i > 0) {
+                        embd.erase(embd.begin(), embd.begin() + i);
+                    }
                 }
             }
 
+
+            // zimiao: fold
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
             if (ctx_guidance) {
@@ -741,6 +758,8 @@ int main(int argc, char ** argv) {
 
                 LOG("eval: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
+                // LOG("1111 embd.size(): %d, n_past: %d, n_eval: %d\n", (int)embd.size(), n_past, n_eval);
+
                 if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
                     LOG_TEE("%s : failed to eval\n", __func__);
                     return 1;
@@ -755,12 +774,20 @@ int main(int argc, char ** argv) {
                 }
             }
 
+            // update session_tokens
             if (!embd.empty() && !path_session.empty()) {
                 session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
                 n_session_consumed = session_tokens.size();
             }
+
+            if (!embd.empty() && params.custom_prompts_on && need_save_pfx) {
+                session_tokens.insert(session_tokens.end(), embd.begin(), embd.end());
+            }
         }
 
+        // clear embd, and process new tokens
+        // 1. all tokens in embd_inp has been consumed, which means it's going to decode and need to sample next token accordingly
+        // 2. not all tokens are consumed, still process prompt
         embd.clear();
         embd_guidance.clear();
 
@@ -771,6 +798,13 @@ int main(int argc, char ** argv) {
                 llama_state_save_file(ctx, path_session.c_str(), session_tokens.data(), session_tokens.size());
 
                 LOG("saved session to %s\n", path_session.c_str());
+            }
+
+            if (params.custom_prompts_on && need_save_pfx) {
+                std::string pfx_file = pfx_file_path(pfx_shared);
+                GGML_ASSERT(!file_exists(pfx_file));
+                llama_state_save_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.size());
+                need_save_pfx = false;
             }
 
             const llama_token id = llama_sampling_sample(ctx_sampling, ctx, ctx_guidance);
@@ -855,6 +889,7 @@ int main(int argc, char ** argv) {
 
         // if not currently processing queued inputs;
         if ((int) embd_inp.size() <= n_consumed) {
+            // zimiao: fold
             // check for reverse prompt in the last n_prev tokens
             if (!params.antiprompt.empty()) {
                 const int n_prev = 32;
@@ -896,6 +931,7 @@ int main(int argc, char ** argv) {
                 }
             }
 
+            // zimiao: fold
             // deal with end of generation tokens in interactive mode
             if (llama_token_is_eog(model, llama_sampling_last(ctx_sampling))) {
                 LOG("found EOS token\n");
@@ -950,6 +986,10 @@ int main(int argc, char ** argv) {
                         // for custom_prompt always clear the cache since we want 
                         // every prompt to start from the same beginning
                         llama_kv_cache_clear(ctx);
+                        n_past = 0;
+                        embd_inp.clear();
+                        n_consumed = 0;
+                        
                         json_start = false;
                         token_generated = 0;
 
@@ -975,12 +1015,50 @@ int main(int argc, char ** argv) {
                             full_custom_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
                         }
 
+                        // load saved session
+                        pfx_shared = full_custom_prompt.substr(0, pos);
+                        std::string pfx_file = pfx_file_path(pfx_shared);
+
+                        // note tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content seperately
+                        const auto line_pfx_shared = ::llama_tokenize(ctx, pfx_shared, false, false);
+                        embd_inp.insert(embd_inp.end(), line_pfx_shared.begin(), line_pfx_shared.end());
+
+                        if (file_exists(pfx_file)) {
+                            // The file exists and is not empty
+                            session_tokens.resize(n_ctx);
+                            size_t n_token_count_out = 0;
+                            if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
+                                LOG_TEE("%s: error: failed to load session file '%s'\n", __func__, pfx_file.c_str());
+                                return 1;
+                            }
+                            session_tokens.resize(n_token_count_out);
+                            llama_set_rng_seed(ctx, params.seed);
+                            LOG_TEE("%s: loaded a session with prompt size of %d tokens\n", __func__, (int)session_tokens.size());
+
+                            // sanity check
+                            GGML_ASSERT(line_pfx_shared.size() <= session_tokens.size());
+                            for (size_t i = 0; i < line_pfx_shared.size(); i++) {
+                                GGML_ASSERT(line_pfx_shared[i] == session_tokens[i]);
+                            }
+                            // remove any "future" tokens that we might have inherited from the previous session
+                            llama_kv_cache_seq_rm(ctx, -1, line_pfx_shared.size(), -1);
+                            n_consumed += line_pfx_shared.size();
+                            n_past += line_pfx_shared.size();
+                        }
+                        else {
+                            // todo: shared position for saving
+                            //buffer = full_custom_prompt;
+                            need_save_pfx = true;
+                        }
+
                         // construct complete prompt
-                        buffer = full_custom_prompt;
-                        // printf("[%s]: full prompt => [%s]\n", __func__, full_custom_prompt.c_str());
+                        buffer = full_custom_prompt.substr(pos);
+                        //buffer = full_custom_prompt;
+                        //printf("[%s]: full prompt => \n[%s]\n", __func__, full_custom_prompt.c_str());
 
                         // bump iterator for next answer
                         custom_prompts_it++;
+                        switch_prompt = true;
                     } else {
                         // done with all custom prompts
                         break;
@@ -1012,6 +1090,7 @@ int main(int argc, char ** argv) {
 
                     const size_t original_size = embd_inp.size();
 
+                    // zimiao: fold
                     // instruct mode: insert instruction prefix
                     if (params.instruct && !is_antiprompt) {
                         LOG("inserting instruction prefix\n");
@@ -1028,6 +1107,7 @@ int main(int argc, char ** argv) {
                         process_escapes(buffer);
                     }
 
+                    // append a new round to the end of embd_inp
                     const auto line_pfx = ::llama_tokenize(ctx, params.input_prefix, false, true);
                     const auto line_inp = ::llama_tokenize(ctx, buffer,              false, false);
                     const auto line_sfx = ::llama_tokenize(ctx, params.input_suffix, false, true);
@@ -1064,11 +1144,12 @@ int main(int argc, char ** argv) {
                 input_echo = false; // do not echo this again
             }
 
-            if (n_past > 0) {
+            if (n_past > 0 || switch_prompt) {
                 if (is_interacting) {
                     llama_sampling_reset(ctx_sampling);
                 }
                 is_interacting = false;
+                switch_prompt = false;
             }
         }
 

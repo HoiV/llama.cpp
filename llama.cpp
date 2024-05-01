@@ -15376,6 +15376,15 @@ void llama_free_model(struct llama_model * model) {
     delete model;
 }
 
+void print_ctx_cpu_buffer(llama_context* ctx, std::string prefix="") {
+    ggml_backend_t backend = ctx->backends[0];
+    size_t size = ggml_backend_sched_get_buffer_size(ctx->sched, backend);
+    printf("%s: -%s- buffer size = %8.2f MiB\n", __func__,
+        prefix.c_str(),
+        size / 1024.0 / 1024.0);
+    return;
+}
+
 struct llama_context * llama_new_context_with_model(
                  struct llama_model * model,
         struct llama_context_params   params) {
@@ -15684,10 +15693,36 @@ struct llama_context * llama_new_context_with_model(
             }
 
             // build worst-case graph
+            print_ctx_cpu_buffer(ctx);
             int n_tokens = (int)std::min(cparams.n_ctx, cparams.n_ubatch);
             int n_past = cparams.n_ctx - n_tokens;
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
             ggml_cgraph * gf = llama_build_graph(*ctx, llama_batch_get_one(&token, n_tokens, n_past, 0), true);
+
+            /*size_t mem_total = 0;
+            size_t mem_max = 0;
+            for (size_t i = 0; i < gf->n_nodes; i++) {
+                ggml_tensor* node = gf->nodes[i];
+                size_t cur = 0;
+                if (!(node->view_src || node->data)) {
+                    cur = ggml_nbytes(node);
+                    mem_total += cur;
+                    if (cur > 0) {
+                        LLAMA_LOG_INFO("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
+                        mem_max = std::max(mem_max, cur);
+                        if (node->op == GGML_OP_MUL_MAT) {
+                            LLAMA_LOG_INFO("A(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
+                            LLAMA_LOG_INFO("B(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
+                            LLAMA_LOG_INFO("C(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                        }
+                    }
+                }
+                else {
+                    LLAMA_LOG_INFO("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
+                }
+            }
+            LLAMA_LOG_INFO("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
+            LLAMA_LOG_INFO("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);*/
 
             // initialize scheduler with the worst-case graph
             if (!ggml_backend_sched_reserve(ctx->sched, gf)) {
@@ -15696,6 +15731,7 @@ struct llama_context * llama_new_context_with_model(
                 return nullptr;
             }
 
+            print_ctx_cpu_buffer(ctx);
             for (size_t i = 0; i < ctx->backends.size(); i++) {
                 ggml_backend_t backend = ctx->backends[i];
                 ggml_backend_buffer_type_t buft = backend_buft[i];
