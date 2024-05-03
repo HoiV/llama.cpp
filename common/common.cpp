@@ -434,6 +434,10 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.custom_p_file = argv[i];
         return true;
     }
+    if (arg == "-pfc" || arg == "--prefix_cache") {
+        params.use_prefix_cache = true;
+        return true;
+    }
     if (arg == "-n" || arg == "--n-predict") {
         if (++i >= argc) {
             invalid_param = true;

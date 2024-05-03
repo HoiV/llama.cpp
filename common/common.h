@@ -169,6 +169,7 @@ struct gpt_params {
     bool check_tensors     = false; // validate tensor data
     bool scripted          = false; // input is scripted
     bool custom_prompts_on = false; // custom prompts are available
+    bool use_prefix_cache  = false; // use prefix cache if it exists and create one if it is not present
 
     std::string cache_type_k = "f16"; // KV cache data type for the K
     std::string cache_type_v = "f16"; // KV cache data type for the V
