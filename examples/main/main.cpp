@@ -1017,9 +1017,9 @@ int main(int argc, char ** argv) {
                                custom_prompt.c_str());
 
                         std::string full_custom_prompt = custom_template_prompt;
-                        size_t pos = full_custom_prompt.find("{message}");
+                        size_t pos = full_custom_prompt.find("\"{message}\"");
                         if (pos != std::string::npos) {
-                            full_custom_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
+                            full_custom_prompt.replace(pos, std::string("\"{message}\"").length(), custom_prompt);
                         }
 
                         // load saved session
@@ -1037,9 +1037,11 @@ int main(int argc, char ** argv) {
                             if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
                                 LOG_TEE("> %s: error: failed to load session file '%s' - create new file\n", 
                                     __func__, pfx_file.c_str());
+                                // setup the flag to save the cache after we are done
                                 session_tokens.resize(0);
                                 need_save_pfx = true;
                             } else {
+                                // the cache is present and content correct shareable content
                                 session_tokens.resize(n_token_count_out);
                                 llama_set_rng_seed(ctx, params.seed);
                                 LOG_TEE("> %s: loaded saved session '%s' with prompt size of (%d) tokens\n", 
@@ -1047,7 +1049,7 @@ int main(int argc, char ** argv) {
 
                                 // sanity check
                                 GGML_ASSERT(line_pfx_shared.size() <= session_tokens.size());
-                                for     (size_t i = 0; i < line_pfx_shared.size(); i++) {
+                                for (size_t i = 0; i < line_pfx_shared.size(); i++) {
                                     GGML_ASSERT(line_pfx_shared[i] == session_tokens[i]);
                                 }
                                 // remove any "future" tokens that we might have inherited from the previous session
@@ -1057,16 +1059,17 @@ int main(int argc, char ** argv) {
                             }
                         } else {
                             // todo: shared position for saving
-                            //buffer = full_custom_prompt;
                             if (params.use_prefix_cache) {
+                                // -pfc flag is set but the cache file is not valid
+                                // so save the mew file after this prompt is processed
                                 need_save_pfx = true;
                             }
                         }
 
-                        // construct complete prompt
+                        // setup the rest of the prompt after the shared portion
                         buffer = full_custom_prompt.substr(pos);
-                        //buffer = full_custom_prompt;
-                        //printf("[%s]: full prompt => \n[%s]\n", __func__, full_custom_prompt.c_str());
+                        // printf("[%s]: full prompt => \n===\n%s\n===\n", __func__, buffer.c_str());
+                        // printf("[%s]: full prompt size => %zd\n", __func__, buffer.length());
 
                         // bump iterator for next answer
                         custom_prompts_it++;
