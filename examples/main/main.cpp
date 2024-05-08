@@ -48,6 +48,7 @@ int64_t t0;
 std::string custom_template_prompt;
 std::vector<std::string> custom_prompts;
 std::vector<std::string>::iterator custom_prompts_it;
+std::string custom_prompts_output;
 std::string pfx_shared;
 bool switch_prompt = false; // set true every time switch to a new prompt
 bool need_save_pfx = false;
@@ -861,6 +862,9 @@ int main(int argc, char ** argv) {
                         // detect the model is not behaving - stop and restart
                         is_interacting = true;
                         restart_prompt = true;
+                        // print the output 
+                        printf("--->>%s<<---", custom_prompts_output.c_str());
+                        custom_prompts_output.clear();
                         printf("\nModel hallucination - RESET...\n");
                         break;
                     }
@@ -869,7 +873,11 @@ int main(int argc, char ** argv) {
                 if (!json_start) {
                     printf("[%d-%d]:~%s~", token_generated, json_start? 1 : 0, token_str.c_str());
 #else
-                printf("%s", token_str.c_str());
+                if (params.custom_prompts_on) {
+                    custom_prompts_output += token_str;
+                } else {
+                    printf("%s", token_str.c_str());
+                }
 #endif
 
                 if (embd.size() > 1) {
@@ -883,6 +891,9 @@ int main(int argc, char ** argv) {
                     // for custom prompt only - if we hit a "}" we should stop generating
                     is_interacting = true;
                     restart_prompt = false;
+                    // print the output 
+                    printf("%s", custom_prompts_output.c_str());
+                    custom_prompts_output.clear();
                     break;
                 }
             }
