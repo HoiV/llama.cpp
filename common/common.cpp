@@ -434,8 +434,23 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.custom_p_file = argv[i];
         return true;
     }
-    if (arg == "-pfc" || arg == "--prefix_cache") {
+    if (arg == "-pfc" || arg == "--prefix-cache") {
         params.use_prefix_cache = true;
+        return true;
+    }
+    if (arg == "--prefix-cache-dir") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.pfx_cache_dir = argv[i];
+        if (!CreateDirectory(params.pfx_cache_dir.c_str(), NULL)) {
+            if (GetLastError() != ERROR_ALREADY_EXISTS) {
+                fprintf(stderr, "%s: Failed to create directory: %s - use current dir for prefix cache\n",
+                    __func__, params.pfx_cache_dir.c_str());
+                params.pfx_cache_dir = ".";
+            }
+        }
         return true;
     }
     if (arg == "-n" || arg == "--n-predict") {

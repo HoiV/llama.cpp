@@ -97,15 +97,7 @@ bool processCustomPromptsFromFile(const std::string& custom_p_file) {
     return true;
 }
 
-std::string pfx_file_path(std::string pfx) {
-    static std::string dir = "shared_prefix";
-    if (!CreateDirectory(dir.c_str(), NULL)) {
-        if (GetLastError() != ERROR_ALREADY_EXISTS) {
-            fprintf(stderr, "%s: Failed to create directory: %s - use current dir for prefix cache\n", 
-                __func__, dir.c_str());
-            dir = ".";
-        }
-    }
+std::string pfx_file_path(std::string pfx, std::string dir) {
     static std::hash<std::string> hasher;
     return dir + "/" + std::to_string(hasher(pfx));
 }
@@ -308,6 +300,10 @@ int main(int argc, char ** argv) {
     std::string path_session = params.path_prompt_cache;
     std::vector<llama_token> session_tokens;
 
+    if (!path_session.empty() && params.use_prefix_cache) {
+        LOG_TEE("%s: error: --prompt_cache and --prefix_cache cannot be both enabled\n", __func__);
+    }
+
     if (!path_session.empty()) {
         LOG_TEE("%s: attempting to load saved session from '%s'\n", __func__, path_session.c_str());
         if (!file_exists(path_session)) {
@@ -350,7 +346,6 @@ int main(int argc, char ** argv) {
     LOG("tokens: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
 
     // Should not run without any tokens
-    // zimiao: an empty bos
     if (embd_inp.empty()) {
         embd_inp.push_back(llama_token_bos(model));
         LOG("embd_inp was considered empty and bos was added: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
@@ -716,8 +711,6 @@ int main(int argc, char ** argv) {
                 }
             }
 
-
-            // zimiao: fold
             // evaluate tokens in batches
             // embd is typically prepared beforehand to fit within a batch, but not always
             if (ctx_guidance) {
@@ -766,8 +759,6 @@ int main(int argc, char ** argv) {
 
                 LOG("eval: %s\n", LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
-                // LOG("1111 embd.size(): %d, n_past: %d, n_eval: %d\n", (int)embd.size(), n_past, n_eval);
-
                 if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
                     LOG_TEE("%s : failed to eval\n", __func__);
                     return 1;
@@ -809,7 +800,7 @@ int main(int argc, char ** argv) {
             }
 
             if (params.custom_prompts_on && need_save_pfx) {
-                std::string pfx_file = pfx_file_path(pfx_shared);
+                std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir);
                 GGML_ASSERT(!file_exists(pfx_file));
                 llama_state_save_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.size());
                 need_save_pfx = false;
@@ -873,7 +864,8 @@ int main(int argc, char ** argv) {
                 if (!json_start) {
                     printf("[%d-%d]:~%s~", token_generated, json_start? 1 : 0, token_str.c_str());
 #else
-                if (params.custom_prompts_on) {
+                if (params.custom_prompts_on && custom_prompts_it != custom_prompts.begin()) {
+                    // ignore the very first dummy execution
                     custom_prompts_output += token_str;
                 } else {
                     printf("%s", token_str.c_str());
@@ -907,7 +899,6 @@ int main(int argc, char ** argv) {
 
         // if not currently processing queued inputs;
         if ((int) embd_inp.size() <= n_consumed) {
-            // zimiao: fold
             // check for reverse prompt in the last n_prev tokens
             if (!params.antiprompt.empty()) {
                 const int n_prev = 32;
@@ -949,7 +940,6 @@ int main(int argc, char ** argv) {
                 }
             }
 
-            // zimiao: fold
             // deal with end of generation tokens in interactive mode
             if (llama_token_is_eog(model, llama_sampling_last(ctx_sampling))) {
                 LOG("found EOS token\n");
@@ -1035,7 +1025,7 @@ int main(int argc, char ** argv) {
 
                         // load saved session
                         pfx_shared = full_custom_prompt.substr(0, pos);
-                        std::string pfx_file = pfx_file_path(pfx_shared);
+                        std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir);
 
                         // note tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
                         const auto line_pfx_shared = ::llama_tokenize(ctx, pfx_shared, false, false);
@@ -1116,7 +1106,6 @@ int main(int argc, char ** argv) {
 
                     const size_t original_size = embd_inp.size();
 
-                    // zimiao: fold
                     // instruct mode: insert instruction prefix
                     if (params.instruct && !is_antiprompt) {
                         LOG("inserting instruction prefix\n");
