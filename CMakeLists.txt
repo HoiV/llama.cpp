@@ -1023,7 +1023,7 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
         if (LLAMA_NATIVE)
             include(cmake/FindSIMD.cmake)
         endif ()
-        if (LLAMA_AVX512_)
+        if (LLAMA_AVX512)
             list(APPEND ARCH_FLAGS /arch:AVX2 /arch:AVX512 /fp:fast /d2jumptablerdata /Zc:forScope /O2 /Ob1)
             # MSVC has no compile-time flags enabling specific
             # AVX512 extensions, neither it defines the
