@@ -112,6 +112,7 @@ struct gpt_params {
     std::string logits_file          = "";  // file for saving *all* logits
     std::string script               = "";  // copied script input file
     std::string custom_p_file        = "";  // custom prompts input file
+    std::string pfx_cache_dir        = ".";
 
     std::vector<llama_model_kv_override> kv_overrides;
 
