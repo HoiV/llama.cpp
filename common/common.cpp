@@ -435,6 +435,13 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         return true;
     }
     if (arg == "-pfc" || arg == "--prefix-cache") {
+        if ((++i >= argc) || (argv[i][0] == '-')) {
+            // if no name is specified then use the computed hashed name
+            params.pfx_cache_file = "default";
+        } else {
+            // a valid prefix cache is specified
+            params.pfx_cache_file = argv[i];
+        }
         params.use_prefix_cache = true;
         return true;
     }

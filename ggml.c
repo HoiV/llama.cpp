@@ -19670,7 +19670,7 @@ struct ggml_compute_state {
     enum ggml_status ec;
 };
 
-static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_threads) {
+static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
     int n_tasks = 0;
 
     if (ggml_is_empty(node)) {
@@ -19757,12 +19757,6 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
             {
                 n_tasks = n_threads;
             } break;
-        case GGML_OP_GET_ROWS:
-            {
-                // FIXME: the cost of launching additional threads decreases performance with GPU offloading
-                //n_tasks = MIN(n_threads, ggml_nelements(node->src[1]));
-                n_tasks = MIN(n_cur_threads, ggml_nelements(node->src[1]));
-            } break;
         case GGML_OP_SCALE:
         case GGML_OP_SET:
         case GGML_OP_CONT:
@@ -19770,6 +19764,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
         case GGML_OP_VIEW:
         case GGML_OP_PERMUTE:
         case GGML_OP_TRANSPOSE:
+        case GGML_OP_GET_ROWS:
         case GGML_OP_GET_ROWS_BACK:
         case GGML_OP_DIAG:
             {
@@ -19864,32 +19859,29 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
             } break;
         case GGML_OP_MAP_CUSTOM1:
             {
-                struct ggml_map_custom1_op_params p;
-                memcpy(&p, node->op_params, sizeof(p));
-                if (p.n_tasks == GGML_N_TASKS_MAX) {
+                struct ggml_map_custom1_op_params * p = (struct ggml_map_custom1_op_params *) node->op_params;
+                if (p->n_tasks == GGML_N_TASKS_MAX) {
                     n_tasks = n_threads;
                 } else {
-                    n_tasks = MIN(p.n_tasks, n_threads);
+                    n_tasks = MIN(p->n_tasks, n_threads);
                 }
             } break;
         case GGML_OP_MAP_CUSTOM2:
             {
-                struct ggml_map_custom2_op_params p;
-                memcpy(&p, node->op_params, sizeof(p));
-                if (p.n_tasks == GGML_N_TASKS_MAX) {
+                struct ggml_map_custom2_op_params * p = (struct ggml_map_custom2_op_params *) node->op_params;
+                if (p->n_tasks == GGML_N_TASKS_MAX) {
                     n_tasks = n_threads;
                 } else {
-                    n_tasks = MIN(p.n_tasks, n_threads);
+                    n_tasks = MIN(p->n_tasks, n_threads);
                 }
             } break;
         case GGML_OP_MAP_CUSTOM3:
             {
-                struct ggml_map_custom3_op_params p;
-                memcpy(&p, node->op_params, sizeof(p));
-                if (p.n_tasks == GGML_N_TASKS_MAX) {
+                struct ggml_map_custom3_op_params * p = (struct ggml_map_custom3_op_params *) node->op_params;
+                if (p->n_tasks == GGML_N_TASKS_MAX) {
                     n_tasks = n_threads;
                 } else {
-                    n_tasks = MIN(p.n_tasks, n_threads);
+                    n_tasks = MIN(p->n_tasks, n_threads);
                 }
             } break;
         case GGML_OP_CROSS_ENTROPY_LOSS:
@@ -20126,7 +20118,7 @@ struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threa
     for (int i = 0; i < cgraph->n_nodes; i++) {
         struct ggml_tensor * node = cgraph->nodes[i];
 
-        const int n_tasks = ggml_get_n_tasks(node, n_threads, 1);
+        const int n_tasks = ggml_get_n_tasks(node, n_threads);
         node->n_tasks = n_tasks;
 
         max_tasks = MAX(max_tasks, n_tasks);

@@ -97,9 +97,16 @@ bool processCustomPromptsFromFile(const std::string& custom_p_file) {
     return true;
 }
 
-std::string pfx_file_path(std::string pfx, std::string dir) {
+std::string pfx_file_path(std::string pfx, std::string dir, std::string file) {
     static std::hash<std::string> hasher;
-    return dir + "/" + std::to_string(hasher(pfx));
+    std::string full_file_path = dir + "/" + file;
+    if (file == "default") {
+        full_file_path = dir + "/" + std::to_string(hasher(pfx));
+    } else if (file.find_last_of("/\\") != std::string::npos) {
+        // file already includes a path in it
+        full_file_path = file;
+    }
+    return full_file_path;
 }
 
 static bool file_exists(const std::string &path) {
@@ -800,7 +807,7 @@ int main(int argc, char ** argv) {
             }
 
             if (params.custom_prompts_on && need_save_pfx) {
-                std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir);
+                std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir, params.pfx_cache_file);
                 GGML_ASSERT(!file_exists(pfx_file));
                 llama_state_save_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.size());
                 need_save_pfx = false;
@@ -864,7 +871,7 @@ int main(int argc, char ** argv) {
                 if (!json_start) {
                     printf("[%d-%d]:~%s~", token_generated, json_start? 1 : 0, token_str.c_str());
 #else
-                if (params.custom_prompts_on && custom_prompts_it != custom_prompts.begin()) {
+                if (params.custom_prompts_on && (custom_prompts_it != custom_prompts.begin())) {
                     // ignore the very first dummy execution
                     custom_prompts_output += token_str;
                 } else {
@@ -883,8 +890,11 @@ int main(int argc, char ** argv) {
                     // for custom prompt only - if we hit a "}" we should stop generating
                     is_interacting = true;
                     restart_prompt = false;
-                    // print the output 
-                    printf("%s", custom_prompts_output.c_str());
+                    // print the whole output in one shot
+                    if (custom_prompts_it != custom_prompts.begin()) {
+                        // ignore the very first dummy execution
+                        printf("%s", custom_prompts_output.c_str());
+                    }
                     custom_prompts_output.clear();
                     break;
                 }
@@ -1011,6 +1021,7 @@ int main(int argc, char ** argv) {
 
                         // Create custom user prompt
                         std::string& custom_prompt = *custom_prompts_it;
+                        custom_prompt.erase(std::remove(custom_prompt.begin(), custom_prompt.end(), '\"'), custom_prompt.end());
                         printf("\n"
                                "> Running with custom prompt => [%d/%zd][%s]\n", 
                                current_custom_prompt_index, 
@@ -1018,14 +1029,14 @@ int main(int argc, char ** argv) {
                                custom_prompt.c_str());
 
                         std::string full_custom_prompt = custom_template_prompt;
-                        size_t pos = full_custom_prompt.find("\"{message}\"");
+                        size_t pos = full_custom_prompt.find("{message}");
                         if (pos != std::string::npos) {
-                            full_custom_prompt.replace(pos, std::string("\"{message}\"").length(), custom_prompt);
+                            full_custom_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
                         }
 
                         // load saved session
                         pfx_shared = full_custom_prompt.substr(0, pos);
-                        std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir);
+                        std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir, params.pfx_cache_file);
 
                         // note tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
                         const auto line_pfx_shared = ::llama_tokenize(ctx, pfx_shared, false, false);
