@@ -67,10 +67,10 @@ typedef sycl::half2 ggml_half2;
 
 #ifdef GGML_QKK_64
 #define QK_K 64u
-#define K_SCALE_SIZE 4
+#define K_SCALE_SIZE 4u
 #else
 #define QK_K 256u
-#define K_SCALE_SIZE 12
+#define K_SCALE_SIZE 12u
 #endif // GGML_QKK_64
 
 #if defined(GGML_COMMON_DECL_CUDA) || defined(GGML_COMMON_DECL_HIP) || defined(GGML_COMMON_DECL_SYCL)
@@ -141,14 +141,14 @@ typedef sycl::half2 ggml_half2;
 
 #endif // GGML_COMMON_DECL_CUDA || GGML_COMMON_DECL_HIP
 
-#define QK4_0 32
+#define QK4_0 32u
 typedef struct {
     ggml_half d;           // delta
     uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
 static_assert(sizeof(block_q4_0) == sizeof(ggml_half) + QK4_0 / 2, "wrong q4_0 block size/padding");
 
-#define QK4_1 32
+#define QK4_1 32u
 typedef struct {
     union {
         struct {
@@ -161,7 +161,7 @@ typedef struct {
 } block_q4_1;
 static_assert(sizeof(block_q4_1) == 2 * sizeof(ggml_half) + QK4_1 / 2, "wrong q4_1 block size/padding");
 
-#define QK5_0 32
+#define QK5_0 32u
 typedef struct {
     ggml_half d;           // delta
     uint8_t qh[4];         // 5-th bit of quants
@@ -169,7 +169,7 @@ typedef struct {
 } block_q5_0;
 static_assert(sizeof(block_q5_0) == sizeof(ggml_half) + sizeof(uint32_t) + QK5_0 / 2, "wrong q5_0 block size/padding");
 
-#define QK5_1 32
+#define QK5_1 32u
 typedef struct {
     union {
         struct {
@@ -183,14 +183,14 @@ typedef struct {
 } block_q5_1;
 static_assert(sizeof(block_q5_1) == 2 * sizeof(ggml_half) + sizeof(uint32_t) + QK5_1 / 2, "wrong q5_1 block size/padding");
 
-#define QK8_0 32
+#define QK8_0 32u
 typedef struct {
     ggml_half d;       // delta
     int8_t  qs[QK8_0]; // quants
 } block_q8_0;
 static_assert(sizeof(block_q8_0) == sizeof(ggml_half) + QK8_0, "wrong q8_0 block size/padding");
 
-#define QK8_1 32
+#define QK8_1 32u
 typedef struct {
     union {
         struct {

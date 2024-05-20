@@ -46,6 +46,12 @@ extern "C" {
 #ifndef __SSE3__
 #define __SSE3__
 #endif
+#ifndef __AVXVNNI__
+#define __AVXVNNI__
+#endif
+#ifndef __AVXVNNIINT8__
+//#define __AVXVNNIINT8__
+#endif
 #endif
 
 // 16-bit float
