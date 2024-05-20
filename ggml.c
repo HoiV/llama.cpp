@@ -3391,28 +3391,6 @@ print_tensor_op_perf_data (
     printf("Total time is the seconds to execute all tensors of the specified type\n");
     printf("Tensor time is the average milliseconds to execute a single tensor of the specified type\n\n");
 
-    printf("vector dot matrix multiply type frequency\n\n");
-    printf("   Count     %%\n\n");
-
-    total_count = 0;
-    total_percent = 0.;
-    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
-        total_count += vec_dot_type_counts[i];
-    }
-
-    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
-        if (vec_dot_type_counts[i]) {
-            percent = (double)vec_dot_type_counts[i] / (double)total_count;
-            total_percent += percent;
-            printf("%8d  %5.2f GGML_TYPE_%s\n",
-                   vec_dot_type_counts[i],
-                   percent,
-                   type_traits[i].type_name);
-        }
-    }
-
-    printf("\n%8d  %5.2f\n\n", total_count, total_percent);
-
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
 
@@ -3439,6 +3417,28 @@ print_tensor_op_perf_data (
            total_count,
            (double)(total_time) / (1000. * 1000.),
            total_percent);
+
+    printf("vector dot matrix multiply type frequency\n\n");
+    printf("   Count     %%\n\n");
+
+    total_count = 0;
+    total_percent = 0.;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        total_count += vec_dot_type_counts[i];
+    }
+
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        if (vec_dot_type_counts[i]) {
+            percent = (double)vec_dot_type_counts[i] / (double)total_count;
+            total_percent += percent;
+            printf("%8d  %5.2f GGML_TYPE_%s\n",
+                   vec_dot_type_counts[i],
+                   percent,
+                   type_traits[i].type_name);
+        }
+    }
+
+    printf("\n%8d  %5.2f\n\n", total_count, total_percent);
 
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(ms) Unary Op\n\n");
@@ -20172,6 +20172,7 @@ struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threa
                 } break;
             case GGML_OP_MUL_MAT_ID:
                 {
+#if 1 // XBOX_INVESTIGATE
                     cur = 0;
                     const struct ggml_tensor * src0 = node->src[0];
                     const struct ggml_tensor * src1 = node->src[1];
@@ -20183,6 +20184,19 @@ struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threa
                     cur += GGML_PAD(cur, sizeof(int64_t));       // align
                     cur += n_as * sizeof(int64_t);               // matrix_row_counts
                     cur += n_as * src1->ne[2] * sizeof(int64_t); // matrix_rows
+#else // XBOX_INVESTIGATE
+                    cur = 0;
+                    const struct ggml_tensor * src0 = node->src[2]; // !!!!!
+                    const struct ggml_tensor * src1 = node->src[1];
+                    const enum ggml_type vec_dot_type = type_traits[src0->type].vec_dot_type;
+                    if (src1->type != vec_dot_type) {
+                        cur += ggml_row_size(vec_dot_type, ggml_nelements(src1));
+                    }
+                    const int n_as = ggml_get_op_params_i32(node, 1); // !!!!!
+                    cur += GGML_PAD(cur, sizeof(int64_t));       // align
+                    cur += n_as * sizeof(int64_t);               // matrix_row_counts
+                    cur += n_as * src1->ne[1] * sizeof(int64_t); // matrix_rows !!!!!
+#endif // XBOX_INVESTIGATE 
                 } break;
             case GGML_OP_OUT_PROD:
                 {
