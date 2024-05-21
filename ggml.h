@@ -1293,6 +1293,12 @@ extern "C" {
             struct ggml_tensor  * a,
             struct ggml_tensor  * b);
 
+    // a -> b, in-place, return view(b)
+    GGML_API struct ggml_tensor * ggml_cpy_inplace( 
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a,
+            struct ggml_tensor  * b);
+
     GGML_API struct ggml_tensor * ggml_cast(
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
