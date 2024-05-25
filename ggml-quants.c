@@ -1384,7 +1384,6 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
     
         uint32_t is = 0;
         for (int64_t l = 0; l < QK_K; l += 128) {
-            uint32_t shift = 0;
 
             for (int64_t j = 0; j < 4; j++) {
                 __m128i q2i;
@@ -1398,7 +1397,7 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
         
                 for (int64_t k = 0; k < 2; k++) {
                     q2i = _mm_insert_epi64(q2iz,
-                                           ((q[k] >> shift) & 0x0303030303030303) * scale,
+                                           ((q[k] >> (j * 2)) & 0x0303030303030303) * scale,
                                            0);
     
                     q2vi = _mm256_cvtepi8_epi32(q2i);
@@ -1413,15 +1412,13 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
         
                 for (int64_t k = 0; k < 2; k++) {
                     q2i = _mm_insert_epi64(q2iz,
-                                           ((q[k + 2] >> shift) & 0x0303030303030303) * scale,
+                                           ((q[k + 2] >> (j * 2)) & 0x0303030303030303) * scale,
                                            0);
     
                     q2vi = _mm256_cvtepi8_epi32(q2i);
                     q2v = _mm256_cvtepi32_ps(q2vi);
                     *yv++ = _mm256_fmsub_ps(dlv, q2v, mlv);
                 }
-    
-                shift += 2;
             }
     
             q += 4;

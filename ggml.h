@@ -257,10 +257,13 @@
 //
 // Enable asserts.
 //
+// N.B. NDEBUG is used by the C/C++ runtime.
+//
 
 // #define ENABLE_ASSERTS 1
 
 #ifdef ENABLE_ASSERTS
+#undef NDEBUG
 #define GGML_ASSERT(x) \
     do { \
         if (!(x)) { \
@@ -271,27 +274,12 @@
         } \
     } while (0)
 
-#else
-#define GGML_ASSERT(x)
-#endif // ENABLE_ASSERTS
-
-//
-// Turn off debug code.
-//
-// N.B. This turns off the function assert(...)
-//
-
-#define NDEBUG 1
-
-#ifndef NDEBUG
 #define GGML_UNREACHABLE() GGML_ASSERT(!"statement should not be reached")
-#elif defined(__GNUC__)
-#define GGML_UNREACHABLE() __builtin_unreachable()
-#elif defined(_MSC_VER)
-#define GGML_UNREACHABLE() __assume(0)
 #else
-#define GGML_UNREACHABLE() ((void) 0)
-#endif
+#define NDEBUG 1 
+#define GGML_ASSERT(x)
+#define GGML_UNREACHABLE() __assume(0)
+#endif // ENABLE_ASSERTS
 
 //
 // Tensor and tensor op perf data collection.
