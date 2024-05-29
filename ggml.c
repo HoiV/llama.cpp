@@ -353,7 +353,7 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
     }
 }
 
-void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int n);
+void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n);
 
 bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b) {
     return memcmp(guid_a, guid_b, sizeof(ggml_guid)) == 0;
@@ -498,7 +498,7 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
 void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
-void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, ggml_fp16_t * restrict x, size_t bx, ggml_fp16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
 void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 
 static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
@@ -1451,7 +1451,7 @@ static inline void __sse_f16x4_store(ggml_fp16_t *x, __m128 y) {
 // fundamental operations
 //
 
-void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int n) {
+void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
 #if defined(GGML_SIMD) 
     const int64_t zn = n;
     int64_t i = 0;
@@ -2500,7 +2500,7 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
     *s = sumf;
 }
 
-void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
