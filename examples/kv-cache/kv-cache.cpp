@@ -1,10 +1,74 @@
-#include "common.h"
 #include "llama.h"
 
 #include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <thread>
+
+struct gpt_params {
+    uint32_t seed                    = 42; // RNG seed - default was 0xFFFFFFFF
+    int32_t n_threads                = 4;
+    int32_t n_threads_batch          = -1;    // number of threads to use for batch processing (-1 = use n_threads)
+    std::string model                = "";  // model path
+    std::string prompt               = "";
+    std::string prompt_file          = "";  // store the external prompt file name
+    std::string path_prompt_cache    = "";  // path to file for saving/loading prompt eval state
+    std::string script               = "";  // copied script input file
+    std::string custom_p_file        = "";  // custom prompts input file
+    std::string pfx_cache_dir        = "shared_prefix"; // default prefix cache directory
+    std::string pfx_cache_file       = "";  // default prefix cache file 
+};
+
+std::vector<llama_token> llama_tokenize(
+    const struct llama_model * model,
+           const std::string & text,
+                        bool   add_special,
+                        bool   parse_special = false) {
+    // upper limit for the number of tokens
+    int n_tokens = text.length() + 2 * add_special;
+    std::vector<llama_token> result(n_tokens);
+    n_tokens = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_special, parse_special);
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_tokenize(model, text.data(), text.length(), result.data(), result.size(), add_special, parse_special);
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+    return result;
+}
+
+std::string llama_token_to_piece(const struct llama_context * ctx, llama_token token, bool special = true) {
+    std::vector<char> result(8, 0);
+    const int n_tokens = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), special);
+    if (n_tokens < 0) {
+        result.resize(-n_tokens);
+        int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), special);
+        GGML_ASSERT(check == -n_tokens);
+    } else {
+        result.resize(n_tokens);
+    }
+
+    return std::string(result.data(), result.size());
+}
+
+void llama_batch_add(
+                 struct llama_batch & batch,
+                        llama_token   id,
+                          llama_pos   pos,
+    const std::vector<llama_seq_id> & seq_ids,
+                               bool   logits) {
+    batch.token   [batch.n_tokens] = id;
+    batch.pos     [batch.n_tokens] = pos;
+    batch.n_seq_id[batch.n_tokens] = seq_ids.size();
+    for (size_t i = 0; i < seq_ids.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+    }
+    batch.logits  [batch.n_tokens] = logits;
+
+    batch.n_tokens++;
+}
 
 int main(int argc, char ** argv) {
     gpt_params params;
@@ -24,6 +88,11 @@ int main(int argc, char ** argv) {
 
     if (params.prompt.empty()) {
         params.prompt = "The capital of Portugal is";
+    }
+
+    unsigned int n_threads = std::thread::hardware_concurrency();
+    if (n_threads > 0) {
+        params.n_threads =(n_threads <= 4) ? n_threads : (n_threads / 2);
     }
 
     // total length of the sequence including the prompt
@@ -66,7 +135,7 @@ int main(int argc, char ** argv) {
     // tokenize the prompt
 
     std::vector<llama_token> tokens_list;
-    tokens_list = ::llama_tokenize(ctx, params.prompt, true);
+    tokens_list = llama_tokenize(llama_get_model(ctx), params.prompt, true);
 
     const int n_ctx    = llama_n_ctx(ctx);
     const int n_kv_req = tokens_list.size() + (n_len - tokens_list.size());
@@ -132,12 +201,19 @@ int main(int argc, char ** argv) {
             llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
 
             // sample the most likely token (greedy sampling algo)
+            const int   top_k = 40;
+            const float top_p = 0.9f;
+            const float temp  = 0.1f;
+
+            llama_sample_top_k(ctx, &candidates_p, top_k, 1);
+            llama_sample_top_p(ctx, &candidates_p, top_p, 1);
+            llama_sample_temp (ctx, &candidates_p, temp);
+
             const llama_token new_token_id = llama_sample_token_greedy(ctx, &candidates_p);
 
             // is it an end of generation - are we done?
             if (llama_token_is_eog(model, new_token_id) || n_cur == n_len) {
                 printf("\n");
-
                 break;
             }
 
@@ -145,7 +221,7 @@ int main(int argc, char ** argv) {
             fflush(stdout);
 
             // prepare the next batch
-            llama_batch_clear(batch);
+            batch.n_tokens = 0;
 
             // push this new token for next evaluation
             llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
