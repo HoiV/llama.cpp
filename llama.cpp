@@ -16222,8 +16222,8 @@ size_t llama_set_state_data(struct llama_context * ctx, const uint8_t * src) {
 }
 
 // deprecated
-bool llama_load_session_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
-    return llama_state_load_file(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out);
+bool llama_load_session_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet) {
+    return llama_state_load_file(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out, fQuiet);
 }
 
 // deprecated
@@ -16656,7 +16656,48 @@ size_t llama_state_set_data(struct llama_context * ctx, const uint8_t * src) {
     return nread;
 }
 
-static bool llama_state_load_file_internal(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
+static uint32_t llama_model_ftype_rank(llama_ftype ftype) {
+    if (ftype & LLAMA_FTYPE_GUESSED) {
+        return llama_model_ftype_rank((enum llama_ftype) (ftype & ~LLAMA_FTYPE_GUESSED));
+    }
+    
+    switch (ftype) {
+        case LLAMA_FTYPE_MOSTLY_IQ1_S  :return 1; // "IQ1_S - 1.5625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ1_M  :return 1; // "IQ1_M - 1.75 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_XXS:return 1; // "IQ2_XXS - 2.0625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_XS: return 1; // "IQ2_XS - 2.3125 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_S:  return 1; // "IQ2_S - 2.5 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_M:  return 1; // "IQ2_M - 2.7 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_XS: return 1; // "IQ3_XS - 3.3 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_XXS:return 1; // "IQ3_XXS - 3.0625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_S:  return 1; // "IQ3_S - 3.4375 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_M:  return 1; // "IQ3_S mix - 3.66 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ4_NL: return 1; // "IQ4_NL - 4.5 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ4_XS: return 1; // "IQ4_XS - 4.25 bpw";
+        case LLAMA_FTYPE_MOSTLY_Q2_K:   return 2;
+        case LLAMA_FTYPE_MOSTLY_Q2_K_S: return 2;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_S: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_M: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_L: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q4_0: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_1: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16:
+                                      return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_K_S: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_K_M: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q5_0: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_1: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_K_S: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_K_M: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q6_K:   return 6;
+        case LLAMA_FTYPE_MOSTLY_Q8_0: return 8;
+        case LLAMA_FTYPE_MOSTLY_F16:  return 16;
+        case LLAMA_FTYPE_ALL_F32:     return 32;
+        default: return 0;
+    }
+}
+
+static bool llama_state_load_file_internal(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet = false) {
     llama_file file(path_session, "rb");
 
     // sanity checks
@@ -16678,6 +16719,18 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
         }
     }
 
+    // check the ftype
+    const llama_ftype session_ftype = (llama_ftype) file.read_u32();
+
+    if (llama_model_ftype_rank(session_ftype) < llama_model_ftype_rank(ctx->model.ftype)) {
+        // do not use a lower quantized session to serve a higher quantized model
+        LLAMA_LOG_INFO("%s : session %s was created with lower quantization '%s' - create new cache\n", 
+                       __func__, 
+                       path_session,
+                       llama_model_ftype_name(session_ftype).c_str());
+        return false;
+    }
+
     // load the prompt
     {
         const uint32_t n_token_count = file.read_u32();
@@ -16689,6 +16742,14 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
 
         file.read_raw(tokens_out, sizeof(llama_token) * n_token_count);
         *n_token_count_out = n_token_count;
+
+        if (!fQuiet) {
+            LLAMA_LOG_INFO("%s : cache file %s ('%s') with prompt size (%d) is loaded''\n", 
+                           __func__,
+                           path_session,
+                           llama_model_ftype_name(session_ftype).c_str(),
+                           n_token_count);
+        }
     }
 
     // restore the context state
@@ -16710,9 +16771,9 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
     return true;
 }
 
-bool llama_state_load_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
+bool llama_state_load_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet) {
     try {
-        return llama_state_load_file_internal(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out);
+        return llama_state_load_file_internal(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out, fQuiet);
     } catch (const std::exception & err) {
         LLAMA_LOG_ERROR("error loading session file: %s\n", err.what());
         return false;
@@ -16727,6 +16788,9 @@ static bool llama_state_save_file_internal(struct llama_context * ctx, const cha
 
     file.write_raw(&ctx->model.hparams, sizeof(llama_hparams));
 
+    // save the ftype for verification when we load it from disk
+    file.write_u32(ctx->model.ftype);
+
     // save the prompt
     file.write_u32((uint32_t) n_token_count);
     file.write_raw(tokens, sizeof(llama_token) * n_token_count);
@@ -16734,6 +16798,11 @@ static bool llama_state_save_file_internal(struct llama_context * ctx, const cha
     // save the context state using stream saving
     llama_data_file_context data_ctx(&file);
     llama_state_get_data_internal(ctx, &data_ctx);
+
+    LLAMA_LOG_INFO("\n%s : session %s ('%s) created!\n", 
+                   __func__, 
+                   path_session,
+                   llama_model_ftype_name(ctx->model.ftype).c_str());
 
     return true;
 }

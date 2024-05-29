@@ -99,13 +99,24 @@ bool processCustomPromptsFromFile(const std::string& custom_p_file) {
 
 std::string pfx_file_path(std::string pfx, std::string dir, std::string file) {
     static std::hash<std::string> hasher;
-    std::string full_file_path = dir + "/" + file;
-    if (file == "default") {
-        full_file_path = dir + "/" + std::to_string(hasher(pfx));
-    } else if (file.find_last_of("/\\") != std::string::npos) {
-        // file already includes a path in it
-        full_file_path = file;
+    std::string generated_name = std::to_string(hasher(pfx));
+
+    // create the cache dir if it does not exist yet
+    if (!CreateDirectoryA(dir.c_str(), NULL)) {
+        if (GetLastError() != ERROR_ALREADY_EXISTS) {
+            fprintf(stderr, "%s: Failed to create directory: %s - use current dir for prefix cache\n",
+                __func__, dir.c_str());
+            dir = ".";
+        }
     }
+
+    // default generated file name
+    std::string full_file_path = dir + "/" + generated_name;
+
+    if (file != "default") {
+        full_file_path = dir + "/" + file;
+    }
+
     return full_file_path;
 }
 
@@ -808,7 +819,6 @@ int main(int argc, char ** argv) {
 
             if (params.custom_prompts_on && need_save_pfx) {
                 std::string pfx_file = pfx_file_path(pfx_shared, params.pfx_cache_dir, params.pfx_cache_file);
-                GGML_ASSERT(!file_exists(pfx_file));
                 llama_state_save_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.size());
                 need_save_pfx = false;
             }
@@ -1000,6 +1010,7 @@ int main(int argc, char ** argv) {
                     std::cout << buffer.c_str() << "\n\n";
 
                 } else if (params.custom_prompts_on) {
+                    static bool first_prompt = true;
                     if (custom_prompts_it != custom_prompts.end()) {
                         // for custom_prompt always clear the cache since we want 
                         // every prompt to start from the same beginning
@@ -1022,11 +1033,6 @@ int main(int argc, char ** argv) {
                         // Create custom user prompt
                         std::string& custom_prompt = *custom_prompts_it;
                         custom_prompt.erase(std::remove(custom_prompt.begin(), custom_prompt.end(), '\"'), custom_prompt.end());
-                        printf("\n"
-                               "> Running with custom prompt => [%d/%zd][%s]\n", 
-                               current_custom_prompt_index, 
-                               custom_prompts.size(),
-                               custom_prompt.c_str());
 
                         std::string full_custom_prompt = custom_template_prompt;
                         size_t pos = full_custom_prompt.find("{message}");
@@ -1046,9 +1052,7 @@ int main(int argc, char ** argv) {
                             // The file exists and is not empty
                             session_tokens.resize(n_ctx);
                             size_t n_token_count_out = 0;
-                            if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
-                                LOG_TEE("> %s: error: failed to load session file '%s' - create new file\n", 
-                                    __func__, pfx_file.c_str());
+                            if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out, !first_prompt)) {
                                 // setup the flag to save the cache after we are done
                                 session_tokens.resize(0);
                                 need_save_pfx = true;
@@ -1056,8 +1060,6 @@ int main(int argc, char ** argv) {
                                 // the cache is present and content correct shareable content
                                 session_tokens.resize(n_token_count_out);
                                 llama_set_rng_seed(ctx, params.seed);
-                                LOG_TEE("> %s: loaded saved session '%s' with prompt size of (%d) tokens\n", 
-                                    __func__, pfx_file.c_str(), (int)session_tokens.size());
 
                                 // sanity check
                                 GGML_ASSERT(line_pfx_shared.size() <= session_tokens.size());
@@ -1078,10 +1080,18 @@ int main(int argc, char ** argv) {
                             }
                         }
 
+                        printf("\n"
+                               "> Running with custom prompt => [%d/%zd][%s]\n", 
+                               current_custom_prompt_index, 
+                               custom_prompts.size(),
+                               custom_prompt.c_str());
+
                         // setup the rest of the prompt after the shared portion
                         buffer = full_custom_prompt.substr(pos);
                         // printf("[%s]: full prompt => \n===\n%s\n===\n", __func__, buffer.c_str());
                         // printf("[%s]: full prompt size => %zd\n", __func__, buffer.length());
+
+                        first_prompt = false;
 
                         // bump iterator for next answer
                         custom_prompts_it++;
