@@ -436,8 +436,8 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
     }
     if (arg == "-pfc" || arg == "--prefix-cache") {
         if ((++i >= argc) || (argv[i][0] == '-')) {
-            // if no name is specified then use the computed hashed name
-            params.pfx_cache_file = "default";
+            // if no name is specified then a computed hashed name is used
+            --i;
         } else {
             // a valid prefix cache is specified
             params.pfx_cache_file = argv[i];
@@ -451,13 +451,6 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
             return true;
         }
         params.pfx_cache_dir = argv[i];
-        if (!CreateDirectory(params.pfx_cache_dir.c_str(), NULL)) {
-            if (GetLastError() != ERROR_ALREADY_EXISTS) {
-                fprintf(stderr, "%s: Failed to create directory: %s - use current dir for prefix cache\n",
-                    __func__, params.pfx_cache_dir.c_str());
-                params.pfx_cache_dir = ".";
-            }
-        }
         return true;
     }
     if (arg == "-n" || arg == "--n-predict") {
