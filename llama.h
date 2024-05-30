@@ -651,15 +651,13 @@ extern "C" {
                       const char * path_session,
                      llama_token * tokens_out,
                           size_t   n_token_capacity,
-                          size_t * n_token_count_out,
-                            bool   fQuiet=false);
+                          size_t * n_token_count_out);
     LLAMA_API DEPRECATED(bool llama_load_session_file(
             struct llama_context * ctx,
                       const char * path_session,
                      llama_token * tokens_out,
                           size_t   n_token_capacity,
-                          size_t * n_token_count_out,
-                          bool     fQuiet=false),
+                          size_t * n_token_count_out),
         "use llama_state_load_file instead");
 
     LLAMA_API bool llama_state_save_file(
