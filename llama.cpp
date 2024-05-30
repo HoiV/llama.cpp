@@ -3658,7 +3658,7 @@ static const char * llama_model_arch_name(llm_arch arch) {
     return it->second;
 }
 
-static std::string llama_model_ftype_name(llama_ftype ftype) {
+std::string llama_model_ftype_name(llama_ftype ftype) {
     if (ftype & LLAMA_FTYPE_GUESSED) {
         return llama_model_ftype_name((enum llama_ftype) (ftype & ~LLAMA_FTYPE_GUESSED)) + " (guessed)";
     }
@@ -16222,8 +16222,8 @@ size_t llama_set_state_data(struct llama_context * ctx, const uint8_t * src) {
 }
 
 // deprecated
-bool llama_load_session_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet) {
-    return llama_state_load_file(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out, fQuiet);
+bool llama_load_session_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
+    return llama_state_load_file(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out);
 }
 
 // deprecated
@@ -16697,7 +16697,7 @@ static uint32_t llama_model_ftype_rank(llama_ftype ftype) {
     }
 }
 
-static bool llama_state_load_file_internal(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet = false) {
+static bool llama_state_load_file_internal(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
     llama_file file(path_session, "rb");
 
     // sanity checks
@@ -16741,15 +16741,17 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
         }
 
         file.read_raw(tokens_out, sizeof(llama_token) * n_token_count);
-        *n_token_count_out = n_token_count;
 
-        if (!fQuiet) {
+        if (*n_token_count_out == 0xffffffff) {
+            // signal from caller that this is the first time through so print info about cache file
             LLAMA_LOG_INFO("%s : cache file %s ('%s') with prompt size (%d) is loaded''\n", 
                            __func__,
                            path_session,
                            llama_model_ftype_name(session_ftype).c_str(),
                            n_token_count);
         }
+
+        *n_token_count_out = n_token_count;
     }
 
     // restore the context state
@@ -16771,9 +16773,9 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
     return true;
 }
 
-bool llama_state_load_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out, bool fQuiet) {
+bool llama_state_load_file(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
     try {
-        return llama_state_load_file_internal(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out, fQuiet);
+        return llama_state_load_file_internal(ctx, path_session, tokens_out, n_token_capacity, n_token_count_out);
     } catch (const std::exception & err) {
         LLAMA_LOG_ERROR("error loading session file: %s\n", err.what());
         return false;

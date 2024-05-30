@@ -1051,13 +1051,13 @@ int main(int argc, char ** argv) {
                         if (params.use_prefix_cache && file_exists(pfx_file)) {
                             // The file exists and is not empty
                             session_tokens.resize(n_ctx);
-                            size_t n_token_count_out = 0;
-                            if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out, !first_prompt)) {
+                            size_t n_token_count_out = first_prompt ? 0xffffffff : 0; 
+                            if (!llama_state_load_file(ctx, pfx_file.c_str(), session_tokens.data(), session_tokens.capacity(), &n_token_count_out)) {
                                 // setup the flag to save the cache after we are done
                                 session_tokens.resize(0);
                                 need_save_pfx = true;
                             } else {
-                                // the cache is present and content correct shareable content
+                                // the cache is present and contains correct shareable content
                                 session_tokens.resize(n_token_count_out);
                                 llama_set_rng_seed(ctx, params.seed);
 
