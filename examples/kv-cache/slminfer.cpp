@@ -5,6 +5,7 @@
 llama_context *ctx;
 llama_context_params ctx_params;
 llama_model *model;
+llama_model_params model_params;
 int n_decode = 0;
 std::vector<llama_token> session_tokens;
 std::string slm_output;
@@ -81,7 +82,7 @@ int slm_init(gpt_params& params) {
     llama_backend_init();
 
     // initialize the model
-    llama_model_params model_params = llama_model_default_params();
+    model_params = llama_model_default_params();
 
     model = llama_load_model_from_file(params.model.c_str(), model_params);
     if (model == NULL) {
@@ -131,12 +132,19 @@ int slm_init(gpt_params& params) {
             else {
                 session_tokens.resize(n_token_count_out);
                 llama_set_rng_seed(ctx, params.seed);
+                // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
 
                 // sanity check
                 GGML_ASSERT(tokens_shared.size() <= session_tokens.size());
                 for (size_t i = 0; i < tokens_shared.size(); i++) {
                     GGML_ASSERT(tokens_shared[i] == session_tokens[i]);
+                    if (tokens_shared[i] != session_tokens[i]) {
+                        printf("Mismatched pfx tokens!!!!\n");
+                        return 1;
+                    }
                 }
+
+                //printf("%s: token_shared=%zd - %s\n", __func__, tokens_shared.size(), LOG_TOKENS_TOSTR_PRETTY(ctx, tokens_shared).c_str());
 
                 // remove any "future" tokens that we might have inherited from the previous session
                 llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
@@ -158,8 +166,184 @@ int slm_init(gpt_params& params) {
 }
 
 int slm_inference(gpt_params& params) {
-    const llama_model* model = llama_get_model(ctx);
+    std::vector<llama_token> embd_inp;
+    int n_consumed = 0;
+    int n_past = 0;
+    int n_kv_pfx = 0;
 
+    // for custom_prompt always clear the cache since we want 
+    // every prompt to start from the same beginning
+    llama_kv_cache_clear(ctx);
+    embd_inp.clear();
+    
+    if (params.pfc_mode) {
+        // remove any "future" tokens that we might have inherited from the previous session
+        llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
+        embd_inp.insert(embd_inp.end(), tokens_shared.begin(), tokens_shared.end());
+        n_consumed = tokens_shared.size();
+        n_past = tokens_shared.size();
+        n_kv_pfx = tokens_shared.size();
+    } else {
+        n_consumed = 0;
+        n_past = 0;
+        n_kv_pfx = 0;
+    }
+
+    // tokenize the remaining prompt or full prompt if pfc_mode is off
+    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
+
+    // append the variant part of the prompt
+    embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
+
+    const int n_ctx = llama_n_ctx(ctx);
+    const int n_kv_req = tokens_input.size() + (params.n_len - tokens_input.size() - n_kv_pfx);
+
+    // make sure the KV cache is big enough to hold all the prompt and generated tokens
+    if (n_kv_req > n_ctx) {
+        printf("%s: error: n_kv_req(%d-%d) > n_ctx(%d), the required KV cache size is not big enough\n",
+            __func__,
+            n_kv_pfx,
+            n_kv_req,
+            n_ctx);
+        printf("%s:        either reduce n_len or increase n_ctx\n", __func__);
+        return 1;
+    }
+
+    // printf("%s: before eval n_past=%d, eval: %s\n", __func__, n_past, LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
+
+    // calculate how much has been processed through the shared cache
+    if (params.pfc_mode) {
+        int i = 0;
+        int n_tokens_consumed = 0;
+        for (; i < embd_inp.size(); i++) {
+            // not fully matched with shared tokens
+            if (embd_inp[i] != tokens_shared[i]) {
+                break;
+            }
+
+            n_tokens_consumed++;
+
+            // embd_inp is fully matched with shared prefix cache
+            if (n_tokens_consumed >= (int)tokens_shared.size()) {
+                ++i;
+                break;
+            }
+        }
+
+        // printf("n_tokens_consumed=%d - i=%d - n_past=%d\n", n_tokens_consumed, i, n_past);
+
+#if 0 // Note: removing these tokens caused the output to forget the whole context from tokens_shared
+      // Note: if we do not remove these then the whole prompt will be reprocessed just like the cache does not exist
+        if (i > 0) {
+            // remove tokens already covered by the shared cache and start from 0
+            embd_inp.erase(embd_inp.begin(), embd_inp.begin() + i);
+            n_past = 0;
+#if 0
+            i = 0;
+            while (i < embd_inp.size())
+            {
+                llama_sampling_accept(params.scontext, ctx, embd_inp[i], false);
+                printf("%s: pushing to sampling accept [%s]\n", __func__, llama_token_to_piece(ctx, embd_inp[i]).c_str());
+                i++;
+            }
+#endif
+        }
+#endif
+    }
+
+    // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
+
+    printf("%s: start decoding @n_past = %d\n", __func__, n_past);
+    int64_t t1_start = ggml_time_us();
+
+    // decode the remaining prompt not covered by the shared portion
+    for (int i = 0; i < (int)embd_inp.size(); i += params.n_batch) {
+        int n_eval = (int) embd_inp.size() - i;
+        if (n_eval > params.n_batch) {
+            n_eval = params.n_batch;
+        }
+
+        if (llama_decode(ctx, llama_batch_get_one(&embd_inp[i], n_eval, n_past, 0))) {
+            printf("%s : failed to eval\n", __func__);
+            return 1;
+        }
+
+        n_past += n_eval;
+        printf("%s: n_past = %d - n_eval = %d\n", __func__, n_past, n_eval);
+    }
+
+    int64_t t2_start = ggml_time_us();
+    printf("t2-t1 = %.2fms\n", ((t2_start - t1_start) / 1000.0f));
+
+    while (n_past <= params.n_len) {
+        // sample the last token just received
+        {
+            auto n_vocab = llama_n_vocab(model);
+            auto *logits = llama_get_logits_ith(ctx, 0);
+
+            std::vector<llama_token_data> candidates;
+            candidates.reserve(n_vocab);
+
+            for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
+                candidates.emplace_back(llama_token_data{ token_id, logits[token_id], 0.0f });
+            }
+
+            llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
+
+            // sample the most likely token (greedy sampling algo)
+            const int   top_k = 40;
+            const float top_p = 0.9f;
+            const float temp = 0.1f;
+
+            llama_sample_top_k(ctx, &candidates_p, top_k, 1);
+            llama_sample_top_p(ctx, &candidates_p, top_p, 1);
+            llama_sample_temp(ctx, &candidates_p, temp);
+
+            const llama_token new_token_id = llama_sample_token_greedy(ctx, &candidates_p);
+
+            // is it an end of generation - are we done?
+            if (llama_token_is_eog(model, new_token_id) || (n_past > params.n_len)) {
+                printf("\n");
+                break;
+            }
+
+            const std::string token_str = llama_token_to_piece(ctx, new_token_id);
+            // enable the following printf for streaming replies
+            printf("%s", token_str.c_str());
+            slm_output += token_str;
+            fflush(stdout);
+
+            if (token_str.c_str()[0] == '}') {
+                // force end of output since we have what we need
+                //printf("%s", slm_output.c_str());
+                slm_output.clear();
+                printf("\n");
+                break;
+            }
+
+            // push this new token for next evaluation
+            // llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
+
+            embd_inp.clear();
+            embd_inp.push_back(new_token_id);
+
+            n_decode += 1;
+        }
+
+        // bump current generated token index
+        n_past += 1;
+
+        // evaluate the current batch with the transformer model
+        if (llama_decode(ctx, llama_batch_get_one(&embd_inp[0], 1, n_past, 0))) {
+            printf("%s : failed to eval, return code %d\n", __func__, 1);
+            return 1;
+        }
+    }
+}
+
+int slm_infer(gpt_params& params) {
+    const llama_model* model = llama_get_model(ctx);
+   
     // for custom_prompt always clear the cache since we want 
     // every prompt to start from the same beginning
     llama_kv_cache_clear(ctx);
