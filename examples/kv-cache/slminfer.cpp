@@ -7,6 +7,7 @@ llama_context_params ctx_params;
 llama_model *model;
 llama_model_params model_params;
 int n_decode = 0;
+bool save_slm_state = false;
 std::vector<llama_token> session_tokens;
 std::string slm_output;
 int64_t t_main_start;
@@ -109,13 +110,15 @@ int slm_init(gpt_params& params) {
     printf("%s: n_threads = %d, n_threads_batch = %d\n\n", __func__, ctx_params.n_threads, ctx_params.n_threads_batch);
 
     if (params.pfc_mode) {
-        std::string full_prompt = params.custom_template_prompt;
-        size_t pos = full_prompt.find("{message}");
+        std::string template_prompt = params.custom_template_prompt;
+        size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared prompt
-            params.pfx_shared = full_prompt.substr(0, pos);
+            params.pfx_shared = template_prompt.substr(0, pos);
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
             tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+
+#if 0 // use llama_state_load_file()
             // build the cache file directory
             params.pfx_file = pfx_file_path(params.pfx_shared);
             // load the cache and create one if it does not exist
@@ -149,6 +152,28 @@ int slm_init(gpt_params& params) {
                 // remove any "future" tokens that we might have inherited from the previous session
                 llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
             }
+
+#else // use llama_set_state_data()
+
+            printf("%s: Loading saved state...\n", __func__);
+            FILE *slm_state_fp = fopen("./slm_state.bin", "rb");
+            if (slm_state_fp != NULL) {
+                auto state_size = llama_state_get_size(ctx);
+                //if (state_size != state_size2) {
+                //    cerr << "state size differs\n";
+                //}
+                auto state_mem = new uint8_t[state_size];
+                fread(state_mem, 1, state_size, slm_state_fp);
+                llama_state_set_data(ctx, state_mem);  // could also read directly from memory mapped file
+                fclose(slm_state_fp);
+                printf("%s: saved state loaded successfully\n", __func__);
+            } else {
+                printf("%s: slm state file not available - set flag to save it later...\n", __func__);
+                save_slm_state = true;
+            }
+
+#endif
+
         }
         else {
             // no shared prompt detected
@@ -192,7 +217,7 @@ int slm_inference(gpt_params& params) {
     // tokenize the remaining prompt or full prompt if pfc_mode is off
     std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
 
-    // append the variant part of the prompt
+    // append the variant part of the prompt or the full prompt for non pfc mode
     embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
 
     const int n_ctx = llama_n_ctx(ctx);
@@ -211,59 +236,47 @@ int slm_inference(gpt_params& params) {
 
     // printf("%s: before eval n_past=%d, eval: %s\n", __func__, n_past, LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
 
-    // calculate how much has been processed through the shared cache
+    // calculate how much has been processed through the saved state file
+    int prompt_index = 0;
     if (params.pfc_mode) {
-        int i = 0;
-        int n_tokens_consumed = 0;
-        for (; i < embd_inp.size(); i++) {
+        int n_tokens_processed = 0;
+        for (; prompt_index < embd_inp.size(); prompt_index++) {
             // not fully matched with shared tokens
-            if (embd_inp[i] != tokens_shared[i]) {
+            if (embd_inp[prompt_index] != tokens_shared[prompt_index]) {
                 break;
             }
 
-            n_tokens_consumed++;
+            n_tokens_processed++;
 
             // embd_inp is fully matched with shared prefix cache
-            if (n_tokens_consumed >= (int)tokens_shared.size()) {
-                ++i;
+            if (n_tokens_processed >= (int)tokens_shared.size()) {
+                ++prompt_index;
                 break;
             }
         }
 
-        // printf("n_tokens_consumed=%d - i=%d - n_past=%d\n", n_tokens_consumed, i, n_past);
-
-#if 0 // Note: removing these tokens caused the output to forget the whole context from tokens_shared
-      // Note: if we do not remove these then the whole prompt will be reprocessed just like the cache does not exist
-        if (i > 0) {
-            // remove tokens already covered by the shared cache and start from 0
-            embd_inp.erase(embd_inp.begin(), embd_inp.begin() + i);
-            n_past = 0;
-#if 0
-            i = 0;
-            while (i < embd_inp.size())
-            {
-                llama_sampling_accept(params.scontext, ctx, embd_inp[i], false);
-                printf("%s: pushing to sampling accept [%s]\n", __func__, llama_token_to_piece(ctx, embd_inp[i]).c_str());
-                i++;
-            }
-#endif
-        }
-#endif
+        printf("%s: pfc mode - tokens processed =%d - prompt_index=%d - n_past=%d\n", __func__, n_tokens_processed, prompt_index, n_past);
     }
 
-    // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd_inp).c_str());
+    // build token list for inference
+    std::vector<llama_token> embd;
+    for (int i = prompt_index; i < embd_inp.size(); i++) {
+        embd.push_back(embd_inp[i]);
+    }
+    n_past = 0;
+    // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
-    printf("%s: start decoding @n_past = %d\n", __func__, n_past);
+    printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
     int64_t t1_start = ggml_time_us();
 
     // decode the remaining prompt not covered by the shared portion
-    for (int i = 0; i < (int)embd_inp.size(); i += params.n_batch) {
-        int n_eval = (int) embd_inp.size() - i;
+    for (int i = 0; i < (int)embd.size(); i += params.n_batch) {
+        int n_eval = (int) embd.size() - i;
         if (n_eval > params.n_batch) {
             n_eval = params.n_batch;
         }
 
-        if (llama_decode(ctx, llama_batch_get_one(&embd_inp[i], n_eval, n_past, 0))) {
+        if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
             printf("%s : failed to eval\n", __func__);
             return 1;
         }
@@ -275,7 +288,23 @@ int slm_inference(gpt_params& params) {
     int64_t t2_start = ggml_time_us();
     printf("t2-t1 = %.2fms\n", ((t2_start - t1_start) / 1000.0f));
 
-    while (n_past <= params.n_len) {
+    if (save_slm_state) {
+        // save state (rng, logits, embedding and kv_cache) to file
+        printf("%s: saving SLM state...\n", __func__);
+        FILE *slm_state_fp = fopen("./slm_state.bin", "wb");
+        auto state_size = llama_state_get_size(ctx);
+        auto state_mem = new uint8_t[state_size];
+        llama_state_get_data(ctx, state_mem);
+        fwrite(state_mem, 1, state_size, slm_state_fp);
+        fclose(slm_state_fp);
+        save_slm_state = false;
+        printf("%s: DONE saving SLM state...\n", __func__);
+    }
+
+    // compute max_len output
+    int max_len = std::min(params.n_len, (n_past + 64));
+
+    while (n_past <= max_len) {
         // sample the last token just received
         {
             auto n_vocab = llama_n_vocab(model);
@@ -302,7 +331,7 @@ int slm_inference(gpt_params& params) {
             const llama_token new_token_id = llama_sample_token_greedy(ctx, &candidates_p);
 
             // is it an end of generation - are we done?
-            if (llama_token_is_eog(model, new_token_id) || (n_past > params.n_len)) {
+            if (llama_token_is_eog(model, new_token_id)) {
                 printf("\n");
                 break;
             }
@@ -321,11 +350,10 @@ int slm_inference(gpt_params& params) {
                 break;
             }
 
-            // push this new token for next evaluation
+            // save this new token for next evaluation
             // llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
-
-            embd_inp.clear();
-            embd_inp.push_back(new_token_id);
+            embd.clear();
+            embd.push_back(new_token_id);
 
             n_decode += 1;
         }
@@ -334,11 +362,13 @@ int slm_inference(gpt_params& params) {
         n_past += 1;
 
         // evaluate the current batch with the transformer model
-        if (llama_decode(ctx, llama_batch_get_one(&embd_inp[0], 1, n_past, 0))) {
+        if (llama_decode(ctx, llama_batch_get_one(&embd[0], 1, n_past, 0))) {
             printf("%s : failed to eval, return code %d\n", __func__, 1);
             return 1;
         }
     }
+
+    return 0;
 }
 
 int slm_infer(gpt_params& params) {
