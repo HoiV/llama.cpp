@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
             pos = 0;
         }
 
-        if (params.pfc_mode) {
+        if (params.pfc_mode && !params.pfx_shared.empty()) {
             params.prompt = full_prompt.substr(pos);
         }
         else {
