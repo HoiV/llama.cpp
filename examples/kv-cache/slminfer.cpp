@@ -118,7 +118,7 @@ int slm_init(gpt_params& params) {
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
             tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
 
-#if 0 // use llama_state_load_file()
+#if 1 // use llama_state_load_file()
             // build the cache file directory
             params.pfx_file = pfx_file_path(params.pfx_shared);
             // load the cache and create one if it does not exist
@@ -129,10 +129,14 @@ int slm_init(gpt_params& params) {
                                        session_tokens.data(),
                                        session_tokens.capacity(),
                                        &n_token_count_out)) {
+                printf("%s: Load state file failed: %s\n", __func__, params.pfx_file.c_str());
                 session_tokens.resize(0);
-                return 1;
+                save_slm_state = true;
+                tokens_shared.clear();
+                params.pfx_shared = "";
             }
             else {
+                printf("%s: Loading saved state...\n", __func__);
                 session_tokens.resize(n_token_count_out);
                 llama_set_rng_seed(ctx, params.seed);
                 // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
@@ -141,6 +145,7 @@ int slm_init(gpt_params& params) {
                 GGML_ASSERT(tokens_shared.size() <= session_tokens.size());
                 for (size_t i = 0; i < tokens_shared.size(); i++) {
                     GGML_ASSERT(tokens_shared[i] == session_tokens[i]);
+                    // printf("%d: %d - %d\n", i, tokens_shared[i], session_tokens[i]);
                     if (tokens_shared[i] != session_tokens[i]) {
                         printf("Mismatched pfx tokens!!!!\n");
                         return 1;
@@ -198,8 +203,8 @@ int slm_inference(gpt_params& params) {
 
     // for custom_prompt always clear the cache since we want 
     // every prompt to start from the same beginning
-    llama_kv_cache_clear(ctx);
-    embd_inp.clear();
+    // llama_kv_cache_clear(ctx);
+    //embd_inp.clear();
     
     if (params.pfc_mode) {
         // remove any "future" tokens that we might have inherited from the previous session
@@ -263,7 +268,7 @@ int slm_inference(gpt_params& params) {
     for (int i = prompt_index; i < embd_inp.size(); i++) {
         embd.push_back(embd_inp[i]);
     }
-    n_past = 0;
+    // n_past = 0;
     // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
     printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
@@ -288,7 +293,27 @@ int slm_inference(gpt_params& params) {
     int64_t t2_start = ggml_time_us();
     printf("t2-t1 = %.2fms\n", ((t2_start - t1_start) / 1000.0f));
 
+    if (params.pfc_mode && save_slm_state) {
+        session_tokens.insert(session_tokens.end(), embd_inp.begin(), embd_inp.end());
+    }
+
     if (save_slm_state) {
+#if 1 // use llama_state_load_file()
+        GGML_ASSERT(!file_exists(params.pfx_file));
+        llama_state_save_file(ctx, params.pfx_file.c_str(), session_tokens.data(), session_tokens.size());
+        save_slm_state = false;
+
+        // update token_shared
+        std::string template_prompt = params.custom_template_prompt;
+        size_t pos = template_prompt.find("{message}");
+        if (pos != std::string::npos) {
+            // build the shared prompt
+            params.pfx_shared = template_prompt.substr(0, pos);
+            // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+        }
+
+#else // use llama_set_state_data()
         // save state (rng, logits, embedding and kv_cache) to file
         printf("%s: saving SLM state...\n", __func__);
         FILE *slm_state_fp = fopen("./slm_state.bin", "wb");
@@ -299,6 +324,7 @@ int slm_inference(gpt_params& params) {
         fclose(slm_state_fp);
         save_slm_state = false;
         printf("%s: DONE saving SLM state...\n", __func__);
+#endif
     }
 
     // compute max_len output
