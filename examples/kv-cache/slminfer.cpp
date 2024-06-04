@@ -9,7 +9,6 @@ llama_model_params model_params;
 int n_decode = 0;
 bool save_slm_state = false;
 std::vector<llama_token> session_tokens;
-std::string slm_output;
 int64_t t_main_start;
 std::vector<llama_token> tokens_shared;
 
@@ -110,6 +109,9 @@ int slm_init(gpt_params& params) {
     printf("%s: n_threads = %d, n_threads_batch = %d\n\n", __func__, ctx_params.n_threads, ctx_params.n_threads_batch);
 
     if (params.pfc_mode) {
+        // start from a known point
+        llama_kv_cache_clear(ctx);
+
         std::string template_prompt = params.custom_template_prompt;
         size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
@@ -134,6 +136,9 @@ int slm_init(gpt_params& params) {
                 save_slm_state = true;
                 tokens_shared.clear();
                 params.pfx_shared = "";
+
+                // for now this plug-in should not create cache files - comment this out for cache generation
+                return 1;
             }
             else {
                 printf("%s: Loading saved state...\n", __func__);
@@ -201,11 +206,6 @@ int slm_inference(gpt_params& params) {
     int n_past = 0;
     int n_kv_pfx = 0;
 
-    // for custom_prompt always clear the cache since we want 
-    // every prompt to start from the same beginning
-    // llama_kv_cache_clear(ctx);
-    //embd_inp.clear();
-    
     if (params.pfc_mode) {
         // remove any "future" tokens that we might have inherited from the previous session
         llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
@@ -260,7 +260,7 @@ int slm_inference(gpt_params& params) {
             }
         }
 
-        printf("%s: pfc mode - tokens processed =%d - prompt_index=%d - n_past=%d\n", __func__, n_tokens_processed, prompt_index, n_past);
+        // printf("%s: pfc mode - tokens processed =%d - prompt_index=%d - n_past=%d\n", __func__, n_tokens_processed, prompt_index, n_past);
     }
 
     // build token list for inference
@@ -268,7 +268,6 @@ int slm_inference(gpt_params& params) {
     for (int i = prompt_index; i < embd_inp.size(); i++) {
         embd.push_back(embd_inp[i]);
     }
-    // n_past = 0;
     // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
     printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
@@ -287,7 +286,7 @@ int slm_inference(gpt_params& params) {
         }
 
         n_past += n_eval;
-        printf("%s: n_past = %d - n_eval = %d\n", __func__, n_past, n_eval);
+        printf("%s: decoded %d tokens\n", __func__, n_eval);
     }
 
     int64_t t2_start = ggml_time_us();
@@ -328,7 +327,10 @@ int slm_inference(gpt_params& params) {
     }
 
     // compute max_len output
-    int max_len = std::min(params.n_len, (n_past + 64));
+    int max_len = std::min(params.n_len, (n_past + 128));
+
+    std::string slm_output;
+    bool valid_reply = false;
 
     while (n_past <= max_len) {
         // sample the last token just received
@@ -358,26 +360,30 @@ int slm_inference(gpt_params& params) {
 
             // is it an end of generation - are we done?
             if (llama_token_is_eog(model, new_token_id)) {
-                printf("\n");
                 break;
             }
 
             const std::string token_str = llama_token_to_piece(ctx, new_token_id);
-            // enable the following printf for streaming replies
-            printf("%s", token_str.c_str());
-            slm_output += token_str;
-            fflush(stdout);
 
-            if (token_str.c_str()[0] == '}') {
-                // force end of output since we have what we need
-                //printf("%s", slm_output.c_str());
-                slm_output.clear();
-                printf("\n");
+            if (token_str.find('{') != std::string::npos) {
+                // accepted answers have '{' characters
+                valid_reply = true;
+            }
+
+            if (valid_reply) {
+#if 0 // enable the following printf for streaming replies
+            printf("%s", token_str.c_str());
+#else
+            slm_output += token_str;
+#endif
+            }
+
+            if (token_str.find('}') != std::string::npos) {
+                // force end of output since we have a valid JSON reply
                 break;
             }
 
             // save this new token for next evaluation
-            // llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
             embd.clear();
             embd.push_back(new_token_id);
 
@@ -393,6 +399,20 @@ int slm_inference(gpt_params& params) {
             return 1;
         }
     }
+
+    // we have reached max_len of output, hit eog char or "}"
+    if (!valid_reply) {
+        // reply not correctly formatted or unhelpful
+        printf("%s: ***** invalid formatted reply from model *****\n", __func__);
+    }
+
+    printf("%s\n", slm_output.c_str());
+    slm_output.clear();
+    valid_reply = false;
+    fflush(stdout);
+
+    int64_t t3_start = ggml_time_us();
+    printf("t3-t2 = %.2fms\n", ((t3_start - t2_start) / 1000.0f));
 
     return 0;
 }
@@ -452,6 +472,8 @@ int slm_infer(gpt_params& params) {
     // main loop
     int n_cur = batch.n_tokens;
     printf("> token generation begins - n_cur = %d\n", n_cur);
+
+    std::string slm_output;
 
     while (n_cur <= params.n_len) {
         // sample the last token just received
