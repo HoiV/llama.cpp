@@ -138,10 +138,10 @@ int slm_init(gpt_params& params) {
                 params.pfx_shared = "";
 
                 // for now this plug-in should not create cache files - comment this out for cache generation
-                return 1;
+                // return 1;
             }
             else {
-                printf("%s: Loading saved state...\n", __func__);
+                printf("%s: Loading saved state from '%s'...\n", __func__, params.pfx_file.c_str());
                 session_tokens.resize(n_token_count_out);
                 llama_set_rng_seed(ctx, params.seed);
                 // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
