@@ -50,8 +50,12 @@ bool processCustomPromptsFromFile(gpt_params& params) {
     return true;
 }
 
+int64_t t0;
 int main(int argc, char** argv) {
     gpt_params params;
+
+    ggml_time_init();
+    t0 = ggml_time_us();
 
     if (argc == 1 || argv[1][0] == '-')
     {
@@ -132,6 +136,12 @@ int main(int argc, char** argv) {
     }
 
     slm_terminate();
+    
+    t0 = ggml_time_us() - t0;
+    printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }

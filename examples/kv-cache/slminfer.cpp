@@ -6,7 +6,7 @@ llama_context *ctx;
 llama_context_params ctx_params;
 llama_model *model;
 llama_model_params model_params;
-int n_decode = 0;
+int n_tokens_generated = 0;
 bool save_slm_state = false;
 std::vector<llama_token> session_tokens;
 int64_t t_main_start;
@@ -371,9 +371,11 @@ int slm_inference(gpt_params& params) {
             }
 
             if (valid_reply) {
-#if 0 // enable the following printf for streaming replies
+#if 0
+            // enable the following printf for streaming replies
             printf("%s", token_str.c_str());
 #else
+            // batched output
             slm_output += token_str;
 #endif
             }
@@ -387,7 +389,7 @@ int slm_inference(gpt_params& params) {
             embd.clear();
             embd.push_back(new_token_id);
 
-            n_decode += 1;
+            n_tokens_generated += 1;
         }
 
         // bump current generated token index
@@ -412,7 +414,7 @@ int slm_inference(gpt_params& params) {
     fflush(stdout);
 
     int64_t t3_start = ggml_time_us();
-    printf("t3-t2 = %.2fms\n", ((t3_start - t2_start) / 1000.0f));
+    printf("> Streaming reply time = %.2fms\n", ((t3_start - t2_start) / 1000.0f));
 
     return 0;
 }
@@ -526,7 +528,7 @@ int slm_infer(gpt_params& params) {
             // push this new token for next evaluation
             llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
 
-            n_decode += 1;
+            n_tokens_generated += 1;
         }
 
         // bump current generated token index
@@ -549,12 +551,12 @@ void slm_terminate() {
 
     int64_t t_main_end = ggml_time_us();
 
-    printf("%s: decoded %d tokens in %.2f s, speed: %.2f t/s\n",
-            __func__, n_decode, (t_main_end - t_main_start) / 1000000.0f, n_decode / ((t_main_end - t_main_start) / 1000000.0f));
+    printf("%s: generated %d tokens in %.2f s, speed: %.2f t/s\n",
+            __func__, 
+            n_tokens_generated, (t_main_end - t_main_start) / 1000000.0f, 
+            n_tokens_generated / ((t_main_end - t_main_start) / 1000000.0f));
 
     llama_print_timings(ctx);
-    print_tensor_op_perf_data();
-    printf("\n");
 
     llama_free(ctx);
     llama_free_model(model);
