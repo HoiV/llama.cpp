@@ -2837,7 +2837,6 @@ inline static void ggml_vec_mad_f32_unroll(const int n, const int xs, const int 
 #endif
 }
 
-#ifdef XBOX_INVESTIGATE // slower than original version
 void ggml_vec_scale_f32(const int64_t n, float * y, const float v) {
 #ifdef GGML_SIMD
     int64_t i = 0;
@@ -2884,40 +2883,6 @@ void ggml_vec_scale_f32(const int64_t n, float * y, const float v) {
     }
 #endif
 }
-
-#else // XBOX_INVESTIGATE
-
-inline static void ggml_vec_scale_f32(const int n, float * y, const float   v) {
-#if defined(GGML_USE_ACCELERATE)
-    vDSP_vsmul(y, 1, &v, y, 1, n);
-#elif defined(GGML_SIMD)
-    const int np = (n & ~(GGML_F32_STEP - 1));
-
-    GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
-
-    GGML_F32_VEC ay[GGML_F32_ARR];
-
-    for (int i = 0; i < np; i += GGML_F32_STEP) {
-        for (int j = 0; j < GGML_F32_ARR; j++) {
-            ay[j] = GGML_F32_VEC_LOAD(y + i + j*GGML_F32_EPR);
-            ay[j] = GGML_F32_VEC_MUL(ay[j], vx);
-
-            GGML_F32_VEC_STORE(y + i + j*GGML_F32_EPR, ay[j]);
-        }
-    }
-
-    // leftovers
-    for (int i = np; i < n; ++i) {
-        y[i] *= v;
-    }
-#else
-    // scalar
-    for (int i = 0; i < n; ++i) {
-        y[i] *= v;
-    }
-#endif
-}
-#endif // XBOX_INVESTIGATE
 
 inline static void ggml_vec_scale_f16(const int n, ggml_fp16_t * y, const float v) {
 #if defined(GGML_SIMD)
@@ -3102,8 +3067,6 @@ inline static void ggml_vec_sum_f16_ggf(const int n, float * s, const ggml_fp16_
     *s = sum;
 }
 
-#ifdef XBOX_INVESTIGATE // slower than original version
-
 void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
     float max = -INFINITY;
 #ifdef GGML_SIMD
@@ -3156,21 +3119,6 @@ void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
 #endif // GGML_SIMD 
     *s = max;
 }
-
-#else // XBOX_INVESTIGATE
-
-inline static void ggml_vec_max_f32(const int n, float * s, const float * x) {
-#ifndef GGML_USE_ACCELERATE
-    float max = -INFINITY;
-    for (int i = 0; i < n; ++i) {
-        max = MAX(max, x[i]);
-    }
-    *s = max;
-#else
-    vDSP_maxv(x, 1, s, n);
-#endif
-}
-#endif // XBOX_INVESTIGATE
 
 inline static void ggml_vec_norm_inv_f32(const int n, float * s, const float * x) {
     ggml_vec_norm_f32(n, s, x);
