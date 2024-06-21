@@ -3,6 +3,8 @@
 #include "llama.h"
 #include "common.h"
 
+// Change JSON_ASSERT from assert() to GGML_ASSERT:
+#define JSON_ASSERT GGML_ASSERT
 #include "json.hpp"
 
 #include <string>
@@ -49,18 +51,18 @@ extern bool server_log_json;
 #define LOG_WARNING(MSG, ...) server_log("WARN", __func__, __LINE__, MSG, __VA_ARGS__)
 #define LOG_INFO(   MSG, ...) server_log("INFO", __func__, __LINE__, MSG, __VA_ARGS__)
 
-static inline void server_log(const char *level, const char *function, int line, const char *message, const nlohmann::ordered_json &extra);
+static inline void server_log(const char * level, const char * function, int line, const char * message, const json & extra);
 
 template <typename T>
-static T json_value(const json &body, const std::string &key, const T &default_value) {
+static T json_value(const json & body, const std::string & key, const T & default_value) {
     // Fallback null to default value
-    if (body.contains(key) && !body.at(key).is_null()){
+    if (body.contains(key) && !body.at(key).is_null()) {
         try {
-            return body.value(key, default_value);
-        }
-        catch (nlohmann::json_abi_v3_11_3::detail::type_error const&){
-            std::string message = "Wrong type supplied for parameter '" + key + "'. Expected '" + typeid(default_value).name() + "', using default value.";
-            server_log("WARN", __func__, __LINE__, message.c_str(), body);
+            return body.at(key);
+        } catch (NLOHMANN_JSON_NAMESPACE::detail::type_error const &) {
+            std::stringstream ss;
+            ss << "Wrong type supplied for parameter '" << key << "'. Expected '" << json(default_value).type_name() << "', using default value.";
+            LOG_WARNING(ss.str().c_str(), body);
             return default_value;
         }
     } else {
@@ -68,16 +70,16 @@ static T json_value(const json &body, const std::string &key, const T &default_v
     }
 }
 
-static inline void server_log(const char *level, const char *function, int line, const char *message, const nlohmann::ordered_json &extra) {
+static inline void server_log(const char * level, const char * function, int line, const char * message, const json & extra) {
     std::stringstream ss_tid;
     ss_tid << std::this_thread::get_id();
-    json log = nlohmann::ordered_json{
+    json log = json{
         {"tid",       ss_tid.str()},
         {"timestamp", time(nullptr)},
     };
 
     if (server_log_json) {
-        log.merge_patch( {
+        log.merge_patch({
             {"level",    level},
             {"function", function},
             {"line",     line},
@@ -98,7 +100,7 @@ static inline void server_log(const char *level, const char *function, int line,
         }
         std::stringstream ss;
         ss << buf << " |";
-        for (const auto& el : log.items())
+        for (const auto & el : log.items())
         {
             const std::string value = el.value().dump(-1, ' ', false, json::error_handler_t::replace);
             ss << " " << el.key() << "=" << value;
@@ -113,13 +115,6 @@ static inline void server_log(const char *level, const char *function, int line,
 //
 // chat template utils
 //
-
-// Check if the template supplied via "--chat-template" is supported or not. Returns true if it's valid
-inline bool verify_custom_template(const std::string & tmpl) {
-    llama_chat_message chat[] = {{"user", "test"}};
-    int res = llama_chat_apply_template(nullptr, tmpl.c_str(), chat, 1, true, nullptr, 0);
-    return res >= 0;
-}
 
 // Format given chat. If tmpl is empty, we take the template from model metadata
 inline std::string format_chat(const struct llama_model * model, const std::string & tmpl, const std::vector<json> & messages) {
@@ -258,6 +253,13 @@ static size_t common_part(const std::vector<llama_token> & a, const std::vector<
     return i;
 }
 
+static size_t common_part(const std::string & a, const std::string & b) {
+    size_t i;
+    for (i = 0; i < a.size() && i < b.size() && a[i] == b[i]; i++) {}
+
+    return i;
+}
+
 static bool ends_with(const std::string & str, const std::string & suffix) {
     return str.size() >= suffix.size() && 0 == str.compare(str.size() - suffix.size(), suffix.size(), suffix);
 }
@@ -369,15 +371,15 @@ static json oaicompat_completion_params_parse(
     llama_params["presence_penalty"]  = json_value(body,   "presence_penalty",  0.0);
     llama_params["seed"]              = json_value(body,   "seed",              LLAMA_DEFAULT_SEED);
     llama_params["stream"]            = json_value(body,   "stream",            false);
-    llama_params["temperature"]       = json_value(body,   "temperature",       0.0);
+    llama_params["temperature"]       = json_value(body,   "temperature",       1.0);
     llama_params["top_p"]             = json_value(body,   "top_p",             1.0);
 
     // Apply chat template to the list of messages
-    llama_params["prompt"] = format_chat(model, chat_template, body["messages"]);
+    llama_params["prompt"] = format_chat(model, chat_template, body.at("messages"));
 
     // Handle "stop" field
-    if (body.contains("stop") && body["stop"].is_string()) {
-        llama_params["stop"] = json::array({body["stop"].get<std::string>()});
+    if (body.contains("stop") && body.at("stop").is_string()) {
+        llama_params["stop"] = json::array({body.at("stop").get<std::string>()});
     } else {
         llama_params["stop"] = json_value(body, "stop", json::array());
     }
