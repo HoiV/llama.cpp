@@ -48,3 +48,31 @@ Author: Hoi Vo <hoiv@microsoft.com>
 Date:   Fri May 24 20:41:04 2024 -0700
 
     PR 10738692 - Next tranche of changes to convert tensor dispatch into a direct call
+
+10748893 - ai complete conversion to direct dispatch of tensor functions
+
+commit d191d87da84393d07a62ef959f426d8c4e2d301b (HEAD -> dc/matmul, origin/dc/matmul)
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Fri May 24 21:53:33 2024 -0700
+
+    PR 10748893 - ai complete conversion to direct dispatch of tensor functions
+
+10790116 - ai - convert ggml_compute_forward_sub_f32 to parallel execution
+
+commit 5eef4f449f55f0c674627f44ecb028ce3d121375 (HEAD -> dc/matmul, origin/dc/matmul)
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Fri May 24 22:39:03 2024 -0700
+
+    PR 10790116 - ai - convert ggml_compute_forward_sub_f32 to parallel execution
+
+PR 10800462 - ai - vectorize ggml_fp16_to_fp32 and simplify asserts.
+PR 10807564 - ai parallelize ggml_compute_forward_get_rows
+
+commit 76d7f1c1f05fee4cba1b3be8e221120e8a07c791 (HEAD -> dc/matmul, origin/dc/matmul)
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Fri May 24 23:59:53 2024 -0700
+
+    PR 10800462 - ai - vectorize ggml_fp16_to_fp32 and simplify asserts.
+    PR 10807564 - ai parallelize ggml_compute_forward_get_rows
+
+
