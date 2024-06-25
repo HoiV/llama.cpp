@@ -214,6 +214,9 @@ int slm_inference(gpt_params& params) {
         n_past = tokens_shared.size();
         n_kv_pfx = tokens_shared.size();
     } else {
+        // start from a known point
+        llama_kv_cache_clear(ctx);
+
         n_consumed = 0;
         n_past = 0;
         n_kv_pfx = 0;
