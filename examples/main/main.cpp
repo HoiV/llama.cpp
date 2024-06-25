@@ -803,13 +803,11 @@ int main(int argc, char ** argv) {
                 }
 #if 0
                 if (!json_start) {
+                    // Console/Stream Output
                     printf("[%d-%d]:~%s~", token_generated, json_start? 1 : 0, token_str.c_str());
 #else
                 printf("%s", token_str.c_str());
 #endif
-
-                // Console/Stream Output
-                fprintf(stdout, "%s", token_str.c_str());
 
                 // Record Displayed Tokens To Log
                 // Note: Generated tokens are created one by one hence this check
