@@ -6,10 +6,10 @@ llama_context *ctx;
 llama_context_params ctx_params;
 llama_model *model;
 llama_model_params model_params;
-int n_tokens_generated = 0;
+static int n_tokens_generated = 0;
 bool save_slm_state = false;
 std::vector<llama_token> session_tokens;
-int64_t t_main_start;
+static int64_t t_token_generation = 0;
 std::vector<llama_token> tokens_shared;
 
 std::vector<llama_token> llama_tokenize(
@@ -195,8 +195,6 @@ int slm_init(gpt_params& params) {
         tokens_shared.clear();
     }
 
-    t_main_start = ggml_time_us();
-
     return 0;
 }
 
@@ -273,7 +271,7 @@ int slm_inference(gpt_params& params) {
     }
     // printf("%s: decode: %s\n", __func__, LOG_TOKENS_TOSTR_PRETTY(ctx, embd).c_str());
 
-    printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
+    // printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
     int64_t t1_start = ggml_time_us();
 
     // decode the remaining prompt not covered by the shared portion
@@ -289,11 +287,11 @@ int slm_inference(gpt_params& params) {
         }
 
         n_past += n_eval;
-        printf("%s: decoded %d tokens\n", __func__, n_eval);
+        // printf("%s: decoded %d tokens\n", __func__, n_eval);
     }
 
     int64_t t2_start = ggml_time_us();
-    printf("t2-t1 = %.2fms\n", ((t2_start - t1_start) / 1000.0f));
+    printf("Prompt eval time = %.2fms\n", ((t2_start - t1_start) / 1000.0f));
 
     if (params.pfc_mode && save_slm_state) {
         session_tokens.insert(session_tokens.end(), embd_inp.begin(), embd_inp.end());
@@ -398,7 +396,7 @@ int slm_inference(gpt_params& params) {
         // bump current generated token index
         n_past += 1;
 
-        // evaluate the current batch with the transformer model
+        // decode the output for the new generated token
         if (llama_decode(ctx, llama_batch_get_one(&embd[0], 1, n_past, 0))) {
             printf("%s : failed to eval, return code %d\n", __func__, 1);
             return 1;
@@ -419,6 +417,7 @@ int slm_inference(gpt_params& params) {
     int64_t t3_start = ggml_time_us();
     printf("> Streaming reply time = %.2fms\n", ((t3_start - t2_start) / 1000.0f));
 
+    t_token_generation += (t3_start - t2_start);
     return 0;
 }
 
@@ -556,8 +555,8 @@ void slm_terminate() {
 
     printf("%s: generated %d tokens in %.2f s, speed: %.2f t/s\n",
             __func__, 
-            n_tokens_generated, (t_main_end - t_main_start) / 1000000.0f, 
-            n_tokens_generated / ((t_main_end - t_main_start) / 1000000.0f));
+            n_tokens_generated, (t_token_generation / 1000000.0f), 
+            n_tokens_generated / (t_token_generation / 1000000.0f));
 
     llama_print_timings(ctx);
 
