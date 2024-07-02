@@ -75,4 +75,30 @@ Date:   Fri May 24 23:59:53 2024 -0700
     PR 10800462 - ai - vectorize ggml_fp16_to_fp32 and simplify asserts.
     PR 10807564 - ai parallelize ggml_compute_forward_get_rows
 
+=================================================================
+
+e:\Xbox-B612\src\llama.dc_matmul>git log
+commit f3d7572921c4811721203830f3dd3bc26b20fde8 (HEAD -> dc/matmul_cp_f3d757292, origin/dc/matmul, dc/matmul)
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Tue Jun 18 18:35:33 2024 -0700
+
+    Remove Xbox-Investigate on a few vectorized routines that were deemed slow (not anymore)
+
+commit ca380c1e1b69fbed2eb4df6c6e0994d77acc6606
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Sun Jun 23 01:34:07 2024 -0700
+
+    Update where we are for dc/matmul
+
+...
+Last checkin for dc/matmul_cp_f3d757292
+
+e:\Xbox-B612\src\llama.merge>git show --name-only f3d757292
+commit f3d7572921c4811721203830f3dd3bc26b20fde8 (HEAD -> dc/matmul, origin/dc/matmul)
+Author: Hoi Vo <hoiv@microsoft.com>
+Date:   Tue Jun 18 18:35:33 2024 -0700
+
+    Remove Xbox-Investigate on a few vectorized routines that were deemed slow (not anymore)
+
+ggml.c
 
