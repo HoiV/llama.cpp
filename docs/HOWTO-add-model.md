@@ -17,7 +17,7 @@ Also, it is important to check that the examples and main ggml backends (CUDA, M
 ### 1. Convert the model to GGUF
 
 This step is done in python with a `convert` script using the [gguf](https://pypi.org/project/gguf/) library.
-Depending on the model architecture, you can use either [convert.py](../convert.py) or [convert-hf-to-gguf.py](../convert-hf-to-gguf.py).
+Depending on the model architecture, you can use either [convert-hf-to-gguf.py](../convert-hf-to-gguf.py) or [examples/convert-legacy-llama.py](../examples/convert-legacy-llama.py) (for `llama/llama2` models in `.pth` format).
 
 The convert script reads the model configuration, tokenizer, tensor names+data and converts them to GGUF metadata and tensors.
 
@@ -96,11 +96,11 @@ NOTE: The dimensions in `ggml` are typically in the reverse order of the `pytorc
 
 This is the funniest part, you have to provide the inference graph implementation of the new model architecture in `llama_build_graph`.
 
-Have a look to existing implementation like `build_llama`, `build_dbrx` or `build_bert`.
+Have a look at existing implementation like `build_llama`, `build_dbrx` or `build_bert`.
 
-When implementing a new graph, please note that the underlying `ggml` backends might not support them all, support of missing backend operations can be added in another PR.
+When implementing a new graph, please note that the underlying `ggml` backends might not support them all, support for missing backend operations can be added in another PR.
 
-Note: to debug the inference graph: you can use [eval-callback](../examples/eval-callback).
+Note: to debug the inference graph: you can use [llama-eval-callback](../examples/eval-callback).
 
 ## GGUF specification
 
