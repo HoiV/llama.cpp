@@ -65,16 +65,7 @@ typedef sycl::half2 ggml_half2;
 // QK = number of values after dequantization
 // QK_K = super-block size
 
-#if 1 // Xbox Only (removed from master)
-#ifdef GGML_QKK_64
-#define QK_K 64u
-#define K_SCALE_SIZE 4
-#else
-#define QK_K 256u
-#endif
-#else // Xbox Only
 #define QK_K 256
-#endif // Xbox Only
 #define K_SCALE_SIZE 12
 
 #if defined(GGML_COMMON_DECL_CUDA) || defined(GGML_COMMON_DECL_HIP) || defined(GGML_COMMON_DECL_SYCL)
