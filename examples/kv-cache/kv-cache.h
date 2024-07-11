@@ -19,6 +19,11 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
 
 struct gpt_params {
     uint32_t seed = 42;   // RNG seed - default was 0xFFFFFFFF

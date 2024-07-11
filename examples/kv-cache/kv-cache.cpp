@@ -3,11 +3,100 @@
 
 #include "kv-cache.h"
 
+namespace console {
+    enum display_t {
+        reset = 0,
+        prompt,
+        stats,
+        error
+    };
+
+    void init(bool use_simple_io, bool use_advanced_display);
+    void cleanup();
+    void set_display(display_t display);
+}
+
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_BOLD          "\x1b[1m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+
 int current_custom_prompt_index = 0;
 std::vector<std::string> custom_prompts;
 std::vector<std::string>::iterator custom_prompts_it;
 std::string custom_prompts_output;
 bool switch_prompt = false; // set true every time switch to a new prompt
+
+namespace console {
+
+    //
+    // Console state
+    //
+
+    static bool      color_display    = false;
+    static display_t current_display  = reset;
+    static FILE*     out              = stdout;
+    static void*     hConsole;
+
+    //
+    // Init and cleanup
+    //
+
+    void init(bool use_color) {
+        color_display = use_color;
+
+        // Windows-specific console initialization
+        DWORD dwMode = 0;
+        hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hConsole == INVALID_HANDLE_VALUE || !GetConsoleMode(hConsole, &dwMode)) {
+            hConsole = GetStdHandle(STD_ERROR_HANDLE);
+            if (hConsole != INVALID_HANDLE_VALUE && (!GetConsoleMode(hConsole, &dwMode))) {
+                hConsole = nullptr;
+            }
+        }
+        if (hConsole) {
+            // Check conditions combined to reduce nesting
+            if (color_display && !(dwMode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) &&
+                !SetConsoleMode(hConsole, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+                color_display = false;
+            }
+            // Set console output codepage to UTF8
+            SetConsoleOutputCP(CP_UTF8);
+        }
+    }
+
+    void cleanup() {
+        // Reset console display
+        set_display(reset);
+    }
+
+    //
+    // Display and IO
+    //
+
+    // Keep track of current display and only emit ANSI code if it changes
+    void set_display(display_t display) {
+        if (color_display && current_display != display) {
+            fflush(stdout);
+            switch(display) {
+                case reset:
+                    fprintf(out, ANSI_COLOR_RESET);
+                    break;
+                case stats:
+                    fprintf(out, ANSI_COLOR_YELLOW);
+                    break;
+                case prompt:
+                    fprintf(out, ANSI_BOLD ANSI_COLOR_GREEN);
+                    break;
+                case error:
+                    fprintf(out, ANSI_BOLD ANSI_COLOR_RED);
+            }
+            current_display = display;
+            fflush(out);
+        }
+    }
+}
 
 bool processCustomPromptsFromFile(gpt_params& params) {
     std::ifstream cpfile(params.custom_p_file);
@@ -86,6 +175,7 @@ int main(int argc, char** argv) {
         params.pfc_mode = true;
     }
 
+    console::init(true);
     printf("[%s]: processing cpf input file [%s]\n", __func__, params.custom_p_file.c_str());
     processCustomPromptsFromFile(params);
     custom_prompts_it = custom_prompts.begin();
@@ -122,10 +212,14 @@ int main(int argc, char** argv) {
             params.prompt = full_prompt;
         }
 
+        console::set_display(console::prompt);
         printf("> Running with custom prompt => [%d/%zd]: [%s]\n",
             prompt_index++,
             custom_prompts.size(),
             custom_prompt.c_str());
+
+        // reset for the output
+        console::set_display(console::reset);
 
         // running an inference based on a prompt
         slm_inference(params);
@@ -137,11 +231,14 @@ int main(int argc, char** argv) {
 
     slm_terminate();
     
+    console::set_display(console::stats);
     t0 = ggml_time_us() - t0;
     printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
 #ifdef GGML_TENSOR_OP_PERF
     print_tensor_op_perf_data();
 #endif // GGML_TENSOR_OP_PERF
+
+    console::cleanup();
 
     return 0;
 }
