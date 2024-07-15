@@ -3,6 +3,10 @@
 #include "llama.h"
 #include "log.h"
 
+#ifdef GGML_USE_OPENMP
+#include <omp.h>
+#endif
+
 #include <cmath>
 #include <cstdio>
 #include <fstream>

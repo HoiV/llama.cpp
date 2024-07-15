@@ -3,6 +3,8 @@
 
 #include "kv-cache.h"
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 namespace console {
     enum display_t {
         reset = 0,
@@ -157,14 +159,20 @@ int main(int argc, char** argv) {
     }
 
     if (argc >= 3) {
-        unsigned int n_threads = std::stoi(argv[2]);
+        int n_threads = std::stoi(argv[2]);
         if (n_threads <= 0) {
             n_threads = std::thread::hardware_concurrency();
             if (n_threads > 0) {
                 n_threads = (n_threads <= 4) ? n_threads : (n_threads / 2);
             }
         }
-        params.n_threads = n_threads;
+
+#ifdef GGML_USE_OPENMP
+        params.n_threads = MIN(n_threads, omp_get_max_threads());
+#else
+        params.n_threads = MIN(n_threads, std::thread::hardware_concurrency());
+#endif
+        printf("%s: Number of hw threads asked: %d - actual number: %d\n", __func__, n_threads, params.n_threads);
     }
 
     if (argc >= 4) {
