@@ -10221,7 +10221,7 @@ void ggml_compute_forward_dup(
         return;
     }
 
-    switch (src0->type) {
+switch (src0->type) {
         case GGML_TYPE_F16:
             {
                 ggml_compute_forward_dup_f16(params, dst);
@@ -20791,6 +20791,11 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     };
 
     DECLSPEC_CACHEALIGN struct ggml_compute_state * workers = alloca(sizeof(struct ggml_compute_state)*n_threads);
+
+#ifndef GGML_TENSOR_OP_PERF
+    const int64_t perf_start_cycles  = ggml_perf_cycles();
+    const int64_t perf_start_time_us = ggml_perf_time_us();
+#endif
 
     //
     // create thread pool.

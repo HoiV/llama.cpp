@@ -1819,7 +1819,7 @@ inline static void ggml_vec_set_f16(const int n, ggml_fp16_t * x, const int32_t 
 
 inline static void ggml_vec_set_bf16(const int n, ggml_bf16_t * x, const ggml_bf16_t v) { for (int i = 0; i < n; ++i) x[i] = v; }
 
-#ifdef GGML_TENSOR_OP_PERF
+#if 0 // def GGML_TENSOR_OP_PERF
 inline static void ggml_vec_add_f32s (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i] + y[i]; }
 #endif
 
@@ -1918,7 +1918,7 @@ void ggml_vec_add_f32(const int32_t n, float * z, const float * x, const float *
 #endif // GGML_SIMD
 }
 
-#ifdef GGML_TENSOR_OP_PERF
+#if 0 // def GGML_TENSOR_OP_PERF
 
 inline static void ggml_vec_add1_f32(const int n, float * z, const float * x, const float   v) { for (int i = 0; i < n; ++i) z[i]  = x[i] + v;    }
 inline static void ggml_vec_acc_f32 (const int n, float * y, const float * x)                  { for (int i = 0; i < n; ++i) y[i] += x[i];        }
@@ -10311,8 +10311,10 @@ void ggml_compute_forward_add_f32(
 #ifdef GGML_USE_ACCELERATE
                 vDSP_vadd(src0_ptr + r*ne10, 1, src1_ptr, 1, dst_ptr + r*ne10, 1, ne10);
 #else
-#ifdef GGML_TENSOR_OP_PERF
+#if 0 // def GGML_TENSOR_OP_PERF
                 ggml_vec_add_f32s(ne10, dst_ptr + r*ne10, src0_ptr + r*ne10, src1_ptr);
+#else
+                ggml_vec_add_f32(ne10, dst_ptr + r*ne10, src0_ptr + r*ne10, src1_ptr);
 #endif
 #endif
             }
@@ -20814,6 +20816,11 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     DECLSPEC_CACHEALIGN struct ggml_compute_state * workers = alloca(sizeof(struct ggml_compute_state)*n_threads);
 
+#ifndef GGML_TENSOR_OP_PERF
+    const int64_t perf_start_cycles  = ggml_perf_cycles();
+    const int64_t perf_start_time_us = ggml_perf_time_us();
+#endif
+
     //
     // create thread pool.
     //
@@ -20875,6 +20882,8 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
             ggml_graph_compute_thread(&workers[omp_get_thread_num()]);
         }
     } else {
+        workers[0].ith = 0;
+        workers[0].shared = &state_shared;
         ggml_graph_compute_thread(&workers[0]);
     }
 
