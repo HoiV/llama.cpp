@@ -463,14 +463,18 @@ int main(int argc, char ** argv) {
                         client.valid_reply = true;
                     }
 
-                    //if (client.valid_reply) {
+                    if (client.valid_reply) {
                         // batched output
                         client.response += token_str;
-                        client.sampled = id;
-                    //}
+                    } 
 
-                    // force end of output if we have a valid JSON reply
-                    if (token_str.find('}') != std::string::npos) {
+                    // tracking for next decode iteration
+                    client.sampled = id;
+
+                    // force end of output if we have a valid JSON reply or never detected
+                    // a '{' character during decoding phase
+                    if ((token_str.find('}') != std::string::npos) ||
+                        ((client.n_decoded > 5) && !client.valid_reply)) {
                         // delete only the generated part of the sequence, i.e. keep the system prompt in the cache
                         llama_kv_cache_seq_rm(ctx, client.id + 1, -1, -1);
                         llama_kv_cache_seq_cp(ctx, 0, client.id + 1, -1, -1);
@@ -478,7 +482,7 @@ int main(int argc, char ** argv) {
                         const auto t_main_end = ggml_time_us();
 
                         LOG_TEE("\nClient %3d, seq %3d/%3d, prompt %4d t, response %4d t, time %5.2f s, speed %5.2f t/s, cache miss %d "
-                                "\nInput:    %s\nResponse: %s\n\n",
+                                "\nInput:    %s\nResponse: \n%s\n\n",
                                 client.id, client.seq_id, n_seq, client.n_prompt, client.n_decoded,
                                 (t_main_end - client.t_start_prompt) / 1e6,
                                 (double) (client.n_prompt + client.n_decoded) / (t_main_end - client.t_start_prompt) * 1e6,
