@@ -438,6 +438,25 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.custom_p_file = argv[i];
         return true;
     }
+    if (arg == "-pfc" || arg == "--prefix-cache") {
+        if ((++i >= argc) || (argv[i][0] == '-')) {
+            // if no name is specified then a computed hashed name is used
+            --i;
+        } else {
+            // a valid prefix cache is specified
+            params.pfx_cache_file = argv[i];
+        }
+        params.use_prefix_cache = true;
+        return true;
+    }
+    if (arg == "--prefix-cache-dir") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.pfx_cache_dir = argv[i];
+        return true;
+    }
     if (arg == "-n" || arg == "--predict" || arg == "--n-predict") {
         if (++i >= argc) {
             invalid_param = true;

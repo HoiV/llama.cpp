@@ -115,6 +115,8 @@ struct gpt_params {
     std::string rpc_servers          = ""; // comma separated list of RPC servers
     std::string script               = "";  // copied script input file
     std::string custom_p_file        = "";  // custom prompts input file
+    std::string pfx_cache_dir        = "./llama_cache"; // default prefix cache directory
+    std::string pfx_cache_file       = "default";  // prefix cache file 
 
     std::vector<std::string> in_files;   // all input files
     std::vector<std::string> antiprompt; // strings upon which more user input is prompted (a.k.a. reverse prompts)
@@ -175,6 +177,7 @@ struct gpt_params {
     bool check_tensors     = false; // validate tensor data
     bool scripted          = false; // input is scripted
     bool custom_prompts_on = false; // custom prompts are available
+    bool use_prefix_cache  = false; // use prefix cache if it exists and create one if it is not present
 
     std::string cache_type_k = "f16"; // KV cache data type for the K
     std::string cache_type_v = "f16"; // KV cache data type for the V
