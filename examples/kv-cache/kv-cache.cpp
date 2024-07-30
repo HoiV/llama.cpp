@@ -208,18 +208,15 @@ int main(int argc, char** argv) {
         if (pos != std::string::npos) {
             full_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
         }
-        else {
-            pos = 0;
-        }
 
         if (params.pfc_mode && !params.pfx_shared.empty()) {
-            params.prompt = full_prompt.substr(pos);
-        }
-        else {
-            // non pfc mode 
-            params.prompt = full_prompt;
-        }
+            params.prompt = ::trim(custom_prompt);
 
+        } else {
+            // non pfc mode 
+            params.prompt = ::trim(full_prompt);
+        }
+    
         console::set_display(console::prompt);
         printf("> Running with custom prompt => [%d/%zd]: [%s]\n",
             prompt_index++,

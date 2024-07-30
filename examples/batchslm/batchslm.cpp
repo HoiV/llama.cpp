@@ -34,17 +34,24 @@ std::vector<std::string> custom_prompts;
 
 // trim whitespace from the beginning and end of a string
 static std::string trim(const std::string & str) {
-    size_t start = 0;
-    size_t end = str.size();
+    if (str.empty()) {
+        return str; // Return early if the string is empty
+    }
 
-    while (start < end && isspace(str[start])) {
+    size_t start = 0;
+    size_t end = str.length();
+
+    // trim leading white space
+    while ((start < end) && isspace(str[start])) {
         start += 1;
     }
 
-    while (end > start && isspace(str[end - 1])) {
+    // trim trailing white space
+    while ((end > start) && isspace(str[end - 1])) {
         end -= 1;
     }
 
+    GGML_ASSERT(end >= start);
     return str.substr(start, end - start);
 }
 
@@ -143,7 +150,8 @@ bool processCustomPromptsFromFile(const std::string& custom_p_file) {
         if (templatePromptMode) {
             custom_template_prompt += line + '\n';
         } else if (userPromptMode) {
-            custom_prompts.push_back(line);
+            line.erase(std::remove(line.begin(), line.end(), '\"'), line.end());
+            custom_prompts.push_back(::trim(line));
         }
     }
 
@@ -175,8 +183,69 @@ std::string pfx_file_path(std::string pfx, std::string dir, std::string file) {
     return full_file_path;
 }
 
+bool pfc_init(gpt_params& params, 
+              llama_context * ctx,
+              std::string shared_context_string, 
+              std::vector<llama_token> tokens_shared) {
+    bool rc = true;
+
+    const llama_model * model = llama_get_model(ctx);
+    std::string pfx_cache_dir = "./llama_cache";
+
+    // start from a known point
+    llama_kv_cache_clear(ctx);
+
+    // build the shared prompt
+    // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
+    // std::vector<llama_token> tokens_pfx = llama_tokenize(model, shared_context_string, false, false);
+
+    // build the cache file directory
+    std::string pfx_file = pfx_file_path(shared_context_string, pfx_cache_dir, params.pfx_cache_file);
+
+    // load the cache and create one if it does not exist
+    std::vector<llama_token> session_tokens;
+    session_tokens.resize(params.n_ctx);
+    // indicate first time through to reduce output
+    size_t n_token_count_out = 0xffffffff;
+    if (llama_state_load_file(ctx, 
+                              pfx_file.c_str(),
+                              session_tokens.data(),
+                              session_tokens.capacity(),
+                              &n_token_count_out)) {
+        printf("%s: Loading saved state successfully from '%s' (size %zd)...\n", __func__, pfx_file.c_str(), tokens_shared.size());
+        session_tokens.resize(n_token_count_out);
+        llama_set_rng_seed(ctx, params.seed);
+        // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
+
+        // sanity check
+        GGML_ASSERT(tokens_shared.size() <= session_tokens.size());
+        for (size_t i = 0; i < tokens_shared.size(); i++) {
+            if (tokens_shared[i] != session_tokens[i]) {
+                printf("Mismatched pfx tokens [%zd]-(%2X %2X %2X)-(%2X %2X %2X)!\n", i, 
+                    tokens_shared[i-1], tokens_shared[i], tokens_shared[i+1],
+                    session_tokens[i-1], session_tokens[i], session_tokens[i+1]);
+                rc = false;
+            }
+        }
+
+        //printf("%s: token_shared=%zd - %s\n", __func__, tokens_shared.size(), LOG_TOKENS_TOSTR_PRETTY(ctx, tokens_shared).c_str());
+
+        // remove any "future" tokens that we might have inherited from the previous session
+        llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
+
+    } else {
+        printf("%s: Load state file failed: %s\n", __func__, pfx_file.c_str());
+        rc = false;
+    }
+
+    return rc;
+}
+
 int main(int argc, char ** argv) {
     gpt_params params;
+
+    ggml_time_init();
+    const auto t_main_start = ggml_time_us();
 
     srand(params.seed);
 
@@ -205,23 +274,57 @@ int main(int argc, char ** argv) {
     llama_model * model = NULL;
     llama_context * ctx = NULL;
 
+#if 0
+
     // load the target model
     std::tie(model, ctx) = llama_init_from_gpt_params(params);
+    if (ctx == NULL) {
+        printf("%s: error: failed to create the llama_context\n" , __func__);
+        return 1;
+    }
+
+#else
+
+    // initialize the model with more customized params
+    llama_model_params model_params = llama_model_default_params();
+
+    model = llama_load_model_from_file(params.model.c_str(), model_params);
+    if (model == NULL) {
+        printf("%s: error: unable to load model\n" , __func__);
+        return 1;
+    }
+
+    // initialize the context
+    llama_context_params ctx_params = llama_context_default_params();
+
+    ctx_params.seed  = params.seed;
+    ctx_params.n_ctx = params.n_ctx;
+    ctx_params.n_batch = params.n_ctx;
+    ctx_params.n_threads = params.n_threads;
+    ctx_params.n_threads_batch = params.n_threads;
+
+    ctx = llama_new_context_with_model(model, ctx_params);
+    if (ctx == NULL) {
+        printf("%s: error: failed to create the llama_context\n" , __func__);
+        return 1;
+    }
+
+#endif
 
     // load the prompts from an external file if there are any
     if (params.custom_prompts_on) {
         // cpf mode
         printf("[%s]: processing cpf input file [%s]\n", __func__, params.custom_p_file.c_str());
         processCustomPromptsFromFile(params.custom_p_file);
-        int index = 0;
         // reset system prompt to using the custom template prompt instead
         k_system = custom_template_prompt;
-        size_t pos = custom_template_prompt.find("\"{message}\"");
+        size_t pos = custom_template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared context for all prompts
-            k_system = custom_template_prompt.substr(0, pos);
+            k_system = ::trim(custom_template_prompt.substr(0, pos));
         }
         // refresh prompts with custom_prompts
+        int index = 0;
         for (const auto& prompt : custom_prompts) {
             k_prompts.resize(index + 1);
             k_prompts[index] = prompt;
@@ -229,8 +332,10 @@ int main(int argc, char ** argv) {
         }
         printf("    cpf custom prompts %3d\n", index);
         printf("    cpf system prompt size %3I64d \n", k_system.length());
+
     } else if (params.prompt.empty()) {
         printf("\nNo external prompt file so proceed with build-in defaults...\n");
+
     } else {
         // Output each line of the input params.prompts vector and copy to k_prompts
         int index = 0;
@@ -256,7 +361,8 @@ int main(int argc, char ** argv) {
     }
 
     std::vector<llama_token> tokens_system;
-    tokens_system = ::llama_tokenize(ctx, k_system, true);
+    // tokens_system = ::llama_tokenize(ctx, k_system, true);
+    tokens_system = llama_tokenize(model, k_system, false, false);
     const int32_t n_tokens_system = tokens_system.size();
 
     llama_seq_id g_seq_id = 0;
@@ -271,14 +377,25 @@ int main(int argc, char ** argv) {
 
     struct llama_kv_cache_view kvc_view = llama_kv_cache_view_init(ctx, n_clients);
 
-    const auto t_main_start = ggml_time_us();
-
-    LOG_TEE("%s: Simulating parallel requests from clients:\n", __func__);
+    // LOG_TEE("%s: Simulating parallel requests from clients:\n", __func__);
     LOG_TEE("%s: n_parallel = %d, n_sequences = %d, cont_batching = %d, system tokens = %d, context = %d\n\n", 
         __func__, n_clients, n_seq, cont_batching, n_tokens_system, n_ctx);
 
-    {
+    if (params.use_prefix_cache && 
+        pfc_init(params, ctx, k_system, tokens_system)) {
+        // if prefix cache is specified then initialize it
+        for (int32_t i = 0; i < n_tokens_system; ++i) {
+            llama_batch_add(batch, tokens_system[i], i, { 0 }, false);
+        }
+
+        // assign the system KV cache to all parallel sequences
+        for (int32_t i = 1; i <= n_clients; ++i) {
+            llama_kv_cache_seq_cp(ctx, 0, i, -1, -1);
+        }            
+
+    } else {
         LOG_TEE("%s: Evaluating the system prompt ...\n", __func__);
+        const auto t_eval_start = ggml_time_us();
 
         for (int32_t i = 0; i < n_tokens_system; ++i) {
             llama_batch_add(batch, tokens_system[i], i, { 0 }, false);
@@ -293,11 +410,13 @@ int main(int argc, char ** argv) {
         for (int32_t i = 1; i <= n_clients; ++i) {
             llama_kv_cache_seq_cp(ctx, 0, i, -1, -1);
         }
-
-        LOG_TEE("\n");
+        const auto t_eval_end = ggml_time_us();
+        LOG_TEE("%s: system prompt evaluation DONE in %5.2fs\n", 
+            __func__,
+            (t_eval_end - t_eval_start) / 1e6);
     }
 
-    LOG_TEE("Processing parallel requests ...\n\n");
+    LOG_TEE("%s: Processing parallel requests ...\n\n", __func__);
 
     while (true) {
         if (dump_kv_cache) {
@@ -330,7 +449,7 @@ int main(int argc, char ** argv) {
                 llama_kv_cache_seq_cp(ctx, 0, i, -1, -1);
             }
 
-            LOG_TEE("%s: clearing the KV cache\n", __func__);
+            // LOG_TEE("%s: clearing the KV cache\n", __func__);
         }
 
         // insert new sequences for decoding
@@ -344,7 +463,7 @@ int main(int argc, char ** argv) {
 
                     client.input    = k_prompts[g_seq_id % k_prompts.size()];
                     if (params.custom_prompts_on) {
-                        client.prompt   = client.input + "\n<|end|>\n<|Assistant|>\nYou: ";
+                        client.prompt   = client.input + "\"\n<|end|>\n<|Assistant|>\nYou:";
                     } else {
                         client.prompt   = client.input + "\nAssistant:";
                     }
@@ -370,7 +489,7 @@ int main(int argc, char ** argv) {
                     client.valid_reply = false;
                     client.i_batch   = batch.n_tokens - 1;
 
-                    LOG_TEE("Client %3d, seq %4d, started decoding ...\n", client.id, client.seq_id);
+                    // LOG_TEE("Client %3d, seq %4d, started decoding ...\n", client.id, client.seq_id);
 
                     g_seq_id += 1;
 
@@ -382,7 +501,7 @@ int main(int argc, char ** argv) {
             }
         }
 
-        printf(".");
+        // printf(".");
 
         if (batch.n_tokens == 0) {
             break;
@@ -431,7 +550,7 @@ int main(int argc, char ** argv) {
                 continue;
             }
 
-            LOG("%s : decoded batch of %d tokens\n", __func__, n_tokens);
+            // LOG_TEE("%s : decoded batch of %d tokens\n", __func__, n_tokens);
 
             for (auto & client : clients) {
                 if (client.i_batch < (int) i || client.i_batch >= (int) (i + n_tokens)) {
@@ -474,7 +593,7 @@ int main(int argc, char ** argv) {
                     // force end of output if we have a valid JSON reply or never detected
                     // a '{' character during decoding phase
                     if ((token_str.find('}') != std::string::npos) ||
-                        ((client.n_decoded > 5) && !client.valid_reply)) {
+                        ((client.n_decoded > 128) && !client.valid_reply)) {
                         // delete only the generated part of the sequence, i.e. keep the system prompt in the cache
                         llama_kv_cache_seq_rm(ctx, client.id + 1, -1, -1);
                         llama_kv_cache_seq_cp(ctx, 0, client.id + 1, -1, -1);
@@ -483,7 +602,7 @@ int main(int argc, char ** argv) {
 
                         LOG_TEE("\nClient %3d, seq %3d/%3d, prompt %4d t, response %4d t, time %5.2f s, speed %5.2f t/s, cache miss %d "
                                 "\nInput:    %s\nResponse: \n%s\n\n",
-                                client.id, client.seq_id, n_seq, client.n_prompt, client.n_decoded,
+                                client.id, (client.seq_id + 1), n_seq, client.n_prompt, client.n_decoded,
                                 (t_main_end - client.t_start_prompt) / 1e6,
                                 (double) (client.n_prompt + client.n_decoded) / (t_main_end - client.t_start_prompt) * 1e6,
                                 n_cache_miss,
@@ -507,15 +626,14 @@ int main(int argc, char ** argv) {
         
                     if (client.n_decoded > 2 &&
                             (llama_token_is_eog(model, id) ||
-                             ((params.n_predict > 0) && ((client.n_decoded + client.n_prompt) >= params.n_predict)) ||
-                             client.response.find("User:") != std::string::npos ||
-                             client.response.find('\n') != std::string::npos)) {
+                             ((params.n_predict > 0) && ((client.n_decoded + client.n_prompt) >= params.n_predict)))) {
+#if 0 // no reverse prompt for our scenario                                
                         // basic reverse prompt
                         const size_t pos = client.response.find("User:");
                         if (pos != std::string::npos) {
                             client.response = client.response.substr(0, pos);
                         }
-        
+#endif
                         // delete only the generated part of the sequence, i.e. keep the system prompt in the cache
                         llama_kv_cache_seq_rm(ctx, client.id + 1, -1, -1);
                         llama_kv_cache_seq_cp(ctx, 0, client.id + 1, -1, -1);
@@ -543,6 +661,7 @@ int main(int argc, char ** argv) {
     }
 
     const auto t_main_end = ggml_time_us();
+    printf("\n\n total elapsed time %7.2fsec\n", (double) (t_main_end - t_main_start) / (1000. * 1000.));
 
     LOG_TEE("\n\nSummary stats:%s: n_parallel = %d, n_sequences = %d, cont_batching = %d, system tokens = %d\n", 
         __func__, n_clients, n_seq, cont_batching, n_tokens_system);
@@ -572,6 +691,10 @@ int main(int argc, char ** argv) {
     llama_free_model(model);
 
     llama_backend_free();
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
 
     fprintf(stderr, "\n\n");
 

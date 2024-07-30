@@ -49,3 +49,26 @@ struct gpt_params {
 int slm_inference(gpt_params& params);
 int slm_init(gpt_params& params);
 void slm_terminate();
+
+// trim whitespace from the beginning and end of a string
+static std::string trim(const std::string & str) {
+    if (str.empty()) {
+        return str; // Return early if the string is empty
+    }
+
+    size_t start = 0;
+    size_t end = str.length();
+
+    // trim leading white space
+    while ((start < end) && isspace(str[start])) {
+        start += 1;
+    }
+
+    // trim trailing white space
+    while ((end > start) && isspace(str[end - 1])) {
+        end -= 1;
+    }
+
+    GGML_ASSERT(end >= start);
+    return str.substr(start, end - start);
+}

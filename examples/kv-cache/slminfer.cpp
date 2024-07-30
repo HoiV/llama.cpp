@@ -116,7 +116,7 @@ int slm_init(gpt_params& params) {
         size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared prompt
-            params.pfx_shared = template_prompt.substr(0, pos);
+            params.pfx_shared = ::trim(template_prompt.substr(0, pos));
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
             tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
 
@@ -139,9 +139,9 @@ int slm_init(gpt_params& params) {
 
                 // for now this plug-in should not create cache files - comment this out for cache generation
                 // return 1;
-            }
-            else {
-                printf("%s: Loading saved state from '%s'...\n", __func__, params.pfx_file.c_str());
+
+            } else {
+                printf("%s: Loading saved state from '%s' (size %zd)...\n", __func__, params.pfx_file.c_str(), tokens_shared.size());
                 session_tokens.resize(n_token_count_out);
                 llama_set_rng_seed(ctx, params.seed);
                 // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
@@ -149,10 +149,10 @@ int slm_init(gpt_params& params) {
                 // sanity check
                 GGML_ASSERT(tokens_shared.size() <= session_tokens.size());
                 for (size_t i = 0; i < tokens_shared.size(); i++) {
-                    GGML_ASSERT(tokens_shared[i] == session_tokens[i]);
-                    // printf("%d: %d - %d\n", i, tokens_shared[i], session_tokens[i]);
                     if (tokens_shared[i] != session_tokens[i]) {
-                        printf("Mismatched pfx tokens!!!!\n");
+                        printf("Mismatched pfx tokens [%zd]-%2X %2X %2X-%2X %2X %2X!!!!\n", i, 
+                                tokens_shared[i-1], tokens_shared[i], tokens_shared[i+1],
+                                session_tokens[i-1], session_tokens[i], session_tokens[i+1]);
                         return 1;
                     }
                 }
@@ -184,13 +184,12 @@ int slm_init(gpt_params& params) {
 
 #endif
 
-        }
-        else {
+        } else {
             // no shared prompt detected
             tokens_shared.clear();
         }
-    }
-    else {
+
+    } else {
         // No pfc mode
         tokens_shared.clear();
     }
@@ -211,6 +210,9 @@ int slm_inference(gpt_params& params) {
         n_consumed = tokens_shared.size();
         n_past = tokens_shared.size();
         n_kv_pfx = tokens_shared.size();
+
+        // re-apply the template since it was destroyed in pfc mode
+        params.prompt.append("\"\n<|end|>\n<|Assistant|>\nYou:");
     } else {
         // start from a known point
         llama_kv_cache_clear(ctx);
@@ -299,7 +301,6 @@ int slm_inference(gpt_params& params) {
 
     if (save_slm_state) {
 #if 1 // use llama_state_load_file()
-        GGML_ASSERT(!file_exists(params.pfx_file));
         llama_state_save_file(ctx, params.pfx_file.c_str(), session_tokens.data(), session_tokens.size());
         save_slm_state = false;
 
@@ -308,7 +309,7 @@ int slm_inference(gpt_params& params) {
         size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared prompt
-            params.pfx_shared = template_prompt.substr(0, pos);
+            params.pfx_shared = ::trim(template_prompt.substr(0, pos));
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
             tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
         }
