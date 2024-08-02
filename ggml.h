@@ -751,6 +751,7 @@ extern "C" {
 
     // misc
 
+    void ggml_select_omp(void);
     GGML_API void    ggml_time_init(void); // call this once at the beginning of the program
     GGML_API int64_t ggml_time_ms(void);
     GGML_API int64_t ggml_time_us(void);

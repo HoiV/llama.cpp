@@ -1974,6 +1974,7 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
     const int64_t nb = k / QK_K;
 
 #if QK_K == 256
+
 #ifdef __AVX2__
     __m256 * yv = (void *)y;
 
@@ -1983,16 +1984,13 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
 
         const uint64_t * q = (const uint64_t *)x[i].qs;
     
-        __m256 dlv = _mm256_broadcast_ss(&d);
-        __m128i q2iz = {0};
-    
+        const __m256 dlv = _mm256_broadcast_ss(&d);
+        const __m128i q2iz = {0};
+
         uint32_t is = 0;
         for (int64_t l = 0; l < QK_K; l += 128) {
 
             for (int64_t j = 0; j < 4; j++) {
-                __m128i q2i;
-                __m256 q2v;
-                __m256i q2vi;
         
                 uint32_t sc = x[i].scales[is++];
                 uint64_t scale = sc & 0xF;
@@ -2000,14 +1998,17 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
                 __m256 mlv = _mm256_broadcast_ss(&ml);
         
                 for (int64_t k = 0; k < 2; k++) {
-                    q2i = _mm_insert_epi64(q2iz,
-                                           ((q[k] >> (j * 2)) & 0x0303030303030303) * scale,
-                                           0);
+                    const __m128i q1i = _mm_insert_epi64(q2iz,
+                                                         ((q[k] >> (j * 2)) & 0x0303030303030303) * scale,
+                                                         0);
     
-                    q2vi = _mm256_cvtepi8_epi32(q2i);
-                    q2v = _mm256_cvtepi32_ps(q2vi);
-                    *yv++ = _mm256_fmsub_ps(dlv, q2v, mlv);
+                    const __m256i q1vi = _mm256_cvtepi8_epi32(q1i);
+                    const __m256 q1v = _mm256_cvtepi32_ps(q1vi);
+                    const __m256 y1 = _mm256_fmsub_ps(dlv, q1v, mlv);
+                    _mm256_storeu_ps(y + (k * 8), y1);
                 }
+
+                y += 16;  
     
                 sc = x[i].scales[is++];
                 scale = sc & 0xF;
@@ -2015,20 +2016,25 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
                 mlv = _mm256_broadcast_ss(&ml);
         
                 for (int64_t k = 0; k < 2; k++) {
-                    q2i = _mm_insert_epi64(q2iz,
-                                           ((q[k + 2] >> (j * 2)) & 0x0303030303030303) * scale,
-                                           0);
+                    const __m128i q2i = _mm_insert_epi64(q2iz,
+                                                         ((q[k + 2] >> (j * 2)) & 0x0303030303030303) * scale,
+                                                         0);
     
-                    q2vi = _mm256_cvtepi8_epi32(q2i);
-                    q2v = _mm256_cvtepi32_ps(q2vi);
-                    *yv++ = _mm256_fmsub_ps(dlv, q2v, mlv);
+                    const __m256i q2vi = _mm256_cvtepi8_epi32(q2i);
+                    const __m256 q2v = _mm256_cvtepi32_ps(q2vi);
+                    const __m256 y2 = _mm256_fmsub_ps(dlv, q2v, mlv);
+                    _mm256_storeu_ps(y + (k * 8), y2); 
                 }
+
+                y += 16;
             }
     
             q += 4;
         }
     }
+
 #else
+
     for (int64_t i = 0; i < nb; i++) {
 
         const float d = GGML_FP16_TO_FP32(x[i].d);
@@ -2055,8 +2061,11 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
             q += 32;
         }
     }
+
 #endif // __AVX2__ 
+
 #else
+
     for (int64_t i = 0; i < nb; i++) {
 
         const float d = GGML_FP16_TO_FP32(x[i].d);
@@ -2076,7 +2085,9 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
         }
         y += QK_K;
     }
+
 #endif
+
 }
 
 void quantize_row_q2_K(const float * restrict x, void * restrict vy, int64_t k) {
@@ -2625,13 +2636,158 @@ void quantize_row_q4_K_reference(const float * restrict x, block_q4_K * restrict
 
 void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int64_t k) {
     assert(k % QK_K == 0);
-    const int nb = k / QK_K;
+    const int64_t nb = k / QK_K;
 
-    for (int i = 0; i < nb; i++) {
-        const uint8_t * q = x[i].qs;
+    for (int64_t i = 0; i < nb; i++) {
 
-        const float d   = GGML_FP16_TO_FP32(x[i].d);
+#if QK_K == 256
+
+        const float d = GGML_FP16_TO_FP32(x[i].d);
         const float min = GGML_FP16_TO_FP32(x[i].dmin);
+
+#if defined(__AVX2__) || defined(__AVX512F__)
+
+        const uint32_t kmask1 = 0x3f3f3f3f;
+        const uint32_t kmask2 = 0x0f0f0f0f;
+        const uint32_t kmask4 = 0xc0c0c0c0;
+
+#if 0 // def __AVX512F__
+
+        const __m128i kmaskq = _mm_set1_epi8(0xf);
+
+#else
+
+        const uint64_t kmaskq = 0x0f0f0f0f0f0f0f0full;
+        const __m128i qiz = _mm_setzero_si128();
+
+#endif // __AVX512F__
+
+        union {
+            uint32_t utmp[4];
+            struct {
+                uint8_t scale[8];
+                uint8_t mins[8];
+            };
+        } sm;
+
+        //
+        // Unpack 8 scale and 8 minimum values.
+        //
+        // The scale values are the first 8 bytes and the min values are the second 8 bytes.
+        //
+
+        const uint32_t * vscales = (uint32_t *)x[i].scales;
+        sm.utmp[3] = ((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2);
+        sm.utmp[2] = vscales[1] & kmask1;
+        sm.utmp[1] = (vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2);
+        sm.utmp[0] = vscales[0] & kmask1;
+
+        //
+        // Initialize pointer to q array.
+        //
+
+        const uint64_t * q = (uint64_t *)x[i].qs;
+
+        for (int64_t j = 0; j < QK_K / 32; j += 2) {
+
+            //
+            // Compute scale and minimum values for first set of 32 quant values.
+            //
+
+            const float d1 = (float)sm.scale[j] * d;
+            const float m1 = (float)sm.mins[j] * min;
+
+#if 0 // def __AVX512F__
+
+            const __m512 d1v = _mm512_broadcastss_ps(_mm_load_ss(&d1));
+            const __m512 m1v = _mm512_broadcastss_ps(_mm_load_ss(&m1));
+
+            //
+            // Dequantize first 32 quant values from the low quant nibble.
+            //
+
+            for (int64_t k = 0; k < 2; ++k) {
+                const __m128i q1iq = _mm_loadu_epi8(q + (k * 2));
+                const __m128i q1i = _mm_and_si128(q1iq, kmaskq);
+                const __m512i q1vi = _mm512_cvtepi8_epi32(q1i);
+                const __m512 q1v = _mm512_cvtepi32_ps(q1vi);
+                const __m512 y1 = _mm512_fmsub_ps(d1v, q1v, m1v);
+                _mm512_storeu_ps(y + (k * 16), y1);
+            }
+
+#else
+
+            const __m256 d1v = _mm256_broadcast_ss(&d1);
+            const __m256 m1v = _mm256_broadcast_ss(&m1);
+
+            //
+            // Dequantize first 32 quant values from the low quant nibble.
+            //
+
+            for (int64_t k = 0; k < 4; ++k) {
+                const __m128i q1i = _mm_insert_epi64(qiz, q[k] & kmaskq, 0);
+                const __m256i q1vi = _mm256_cvtepi8_epi32(q1i);
+                const __m256 q1v = _mm256_cvtepi32_ps(q1vi);
+                const __m256 y1 = _mm256_fmsub_ps(d1v, q1v, m1v);
+                _mm256_storeu_ps(y + (k * 8), y1);
+            }
+
+#endif // __AVX512F__
+
+            y += 32;
+
+            //
+            // Compute scale and minimum values for second set of 32 quant values.
+            //
+
+            const float d2 = (float)sm.scale[j + 1] * d;
+            const float m2 = (float)sm.mins[j + 1] * min;
+
+#if 0 // def __AVX512F__
+
+            const __m512 d2v = _mm512_broadcastss_ps(_mm_load_ss(&d2));
+            const __m512 m2v = _mm512_broadcastss_ps(_mm_load_ss(&m2));
+
+            //
+            // Dequantize first 32 quant values from the high quant nibble.
+            //
+
+            for (int64_t k = 0; k < 2; ++k) {
+                const __m128i q2iq = _mm_loadu_epi8(q + (k * 2));
+                const __m128i q2is = _mm_srli_epi16(q2iq, 4);
+                const __m128i q2i = _mm_and_si128(q2is, kmaskq);
+                const __m512i q2vi = _mm512_cvtepi8_epi32(q2i);
+                const __m512 q2v = _mm512_cvtepi32_ps(q2vi);
+                const __m512 y2 = _mm512_fmsub_ps(d2v, q2v, m2v);
+                _mm512_storeu_ps(y + (k * 16), y2);
+            }
+
+#else
+
+            const __m256 d2v = _mm256_broadcast_ss(&d2);
+            const __m256 m2v = _mm256_broadcast_ss(&m2);
+
+            //
+            // Dequantize second 32 quant values from the high quant nibble.
+            //
+
+            for (int64_t k = 0; k < 4; ++k) {
+                const __m128i q2i = _mm_insert_epi64(qiz, (q[k] >> 4) & kmaskq, 0);
+                const __m256i q2vi = _mm256_cvtepi8_epi32(q2i);
+                const __m256 q2v = _mm256_cvtepi32_ps(q2vi);
+                const __m256 y2 = _mm256_fmsub_ps(d2v, q2v, m2v);
+                _mm256_storeu_ps(y + (k * 8), y2);
+            }
+
+#endif // __AVX512F__
+
+            q += 4;
+            y += 32;
+        }
+
+#else
+
+        const uint8_t * q = x[i].qs;
 
         int is = 0;
         uint8_t sc, m;
@@ -2644,6 +2800,25 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
             for (int l = 0; l < 32; ++l) *y++ = d2 * (q[l]  >> 4) - m2;
             q += 32; is += 2;
         }
+
+#endif // __AVX__
+
+#else
+
+        const uint8_t * q = x[i].qs;
+
+        const float dall = GGML_FP16_TO_FP32(x[i].d[0]);
+        const float mall = GGML_FP16_TO_FP32(x[i].d[1]);
+        const float d1 = dall * (x[i].scales[0] & 0xF), m1 = mall * (x[i].scales[0] >> 4);
+        const float d2 = dall * (x[i].scales[1] & 0xF), m2 = mall * (x[i].scales[1] >> 4);
+        for (int l = 0; l < 32; ++l) {
+            y[l+ 0] = d1 * (q[l] & 0xF) - m1;
+            y[l+32] = d2 * (q[l] >>  4) - m2;
+        }
+        y += QK_K;
+
+#endif
+
     }
 }
 
@@ -3671,7 +3846,9 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32_t k) {
     assert(k % QK_K == 0);
     const int32_t nb = k / QK_K;
+
 #if defined(__AVX2__) || defined(__AVX512F__)
+
     for (int64_t i = 0; i < nb; i++) {
 
 #if 0 // def __AVX512F__
@@ -3786,21 +3963,6 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, uint32
 #endif // __AVX512F__
 
 #ifdef __AVXVNNI__
-
-#if 0
-        __m128i sbytes;
-        __m128i dwords;
-        __m128i ones = _mm_set1_epi8(0x1);
-        __m128i zero = _mm_setzero_si128();
-
-        for (int64_t j = 0; j < QK_K / 16; ++j) {
-            sbytes = _mm_loadu_si128((const __m128i *)(y->qs + j * 16));
-            dwords = _mm_dpbusd_epi32(zero, ones, sbytes);
-            dwords = _mm_add_epi32(dwords, _mm_srli_si128(dwords, 8));
-            dwords = _mm_add_epi32(dwords, _mm_srli_si128(dwords, 4));
-            y->bsums[j] = _mm_extract_epi16(dwords, 0);
-        }
-#endif // #if 0
 
         int16_t * bsums = y->bsums;
         __m256i dwords;

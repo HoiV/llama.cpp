@@ -13004,6 +13004,10 @@ static uint8_t llama_token_to_byte(const llama_vocab& vocab, llama_token id) {
         default:
             GGML_ASSERT(false);
     }
+
+    GGML_UNREACHABLE();
+
+    return 0;
 }
 
 static llama_token llama_byte_to_token(const llama_vocab & vocab, uint8_t ch) {
@@ -13027,6 +13031,10 @@ static llama_token llama_byte_to_token(const llama_vocab & vocab, uint8_t ch) {
         default:
             GGML_ASSERT(false);
     }
+
+    GGML_UNREACHABLE();
+
+    return 0;
 }
 
 static void llama_escape_whitespace(std::string & text) {
