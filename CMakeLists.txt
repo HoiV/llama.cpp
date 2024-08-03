@@ -47,7 +47,7 @@ else()
     set(LLAMA_BLAS_VENDOR_DEFAULT "Generic")
 endif()
 
-set(LLAMA_LLAMAFILE_DEFAULT ON)
+set(LLAMA_LLAMAFILE_DEFAULT OFF)
 
 # general
 option(BUILD_SHARED_LIBS                "build shared libraries"                                OFF)

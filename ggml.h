@@ -707,19 +707,7 @@ extern "C" {
     };
 
 
-    // compute types
-
-    // NOTE: the INIT or FINALIZE pass is not scheduled unless explicitly enabled.
-    // This behavior was changed since https://github.com/ggerganov/llama.cpp/pull/1995.
-    enum ggml_task_type {
-        GGML_TASK_TYPE_INIT = 0,
-        GGML_TASK_TYPE_COMPUTE,
-        GGML_TASK_TYPE_FINALIZE,
-    };
-
     struct ggml_compute_params {
-        enum ggml_task_type type;
-
         // ith = thread index, nth = number of threads
         int ith, nth;
 
@@ -727,6 +715,7 @@ extern "C" {
         size_t wsize;
         void * wdata;
         volatile long * barrier0;
+        volatile long * barrier1;
     };
 
     // numa strategies
@@ -1309,11 +1298,13 @@ extern "C" {
             struct ggml_tensor  * a,
             struct ggml_tensor  * b);
 
+#if 0 // not referenced
     // a -> b, in-place, return view(b)
     GGML_API struct ggml_tensor * ggml_cpy_inplace( 
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             struct ggml_tensor  * b);
+#endif
 
     GGML_API struct ggml_tensor * ggml_cast(
             struct ggml_context * ctx,

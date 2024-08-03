@@ -1976,7 +1976,6 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint
 #if QK_K == 256
 
 #ifdef __AVX2__
-    __m256 * yv = (void *)y;
 
     for (int64_t i = 0; i < nb; i++) {
         const float d = GGML_FP16_TO_FP32(x[i].d);

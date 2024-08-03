@@ -12514,6 +12514,34 @@ static int llama_decode_internal(
 
         ggml_cgraph * gf = llama_build_graph(lctx, u_batch, false);
 
+#if 0 // Xbox Investigate
+            printf("==== Build graph (%s) ====", __func__);
+            size_t mem_total = 0;
+            size_t mem_max = 0;
+            for (size_t i = 0; i < gf->n_nodes; i++) {
+                ggml_tensor* node = gf->nodes[i];
+                size_t cur = 0;
+                if (!(node->view_src || node->data)) {
+                    cur = ggml_nbytes(node);
+                    mem_total += cur;
+                    if (cur > 0) {
+                        printf("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
+                        mem_max = std::max(mem_max, cur);
+                        if (node->op == GGML_OP_MUL_MAT) {
+                            printf("A(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
+                            printf("B(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
+                            printf("C(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                        }
+                    }
+                }
+                else {
+                    printf("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
+                }
+            }
+            printf("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
+            printf("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);
+#endif
+
         // the output is always the last tensor in the graph
         struct ggml_tensor * res  = gf->nodes[gf->n_nodes - 1];
         struct ggml_tensor * embd = gf->nodes[gf->n_nodes - 2];
@@ -12943,6 +12971,34 @@ static void llama_kv_cache_update_internal(struct llama_context & lctx) {
         int n_past = lctx.cparams.n_ctx - n_tokens;
         llama_token token = llama_token_bos(&lctx.model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
         ggml_cgraph * gf = llama_build_graph(lctx, llama_batch_get_one(&token, n_tokens, n_past, 0), true);
+
+#if 0 // Xbox Investigate
+            printf("==== Worst-case graph (%s) ====", __func__);
+            size_t mem_total = 0;
+            size_t mem_max = 0;
+            for (size_t i = 0; i < gf->n_nodes; i++) {
+                ggml_tensor* node = gf->nodes[i];
+                size_t cur = 0;
+                if (!(node->view_src || node->data)) {
+                    cur = ggml_nbytes(node);
+                    mem_total += cur;
+                    if (cur > 0) {
+                        printf("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
+                        mem_max = std::max(mem_max, cur);
+                        if (node->op == GGML_OP_MUL_MAT) {
+                            printf("A(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
+                            printf("B(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
+                            printf("C(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                        }
+                    }
+                }
+                else {
+                    printf("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
+                }
+            }
+            printf("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
+            printf("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);
+#endif
 
         // initialize scheduler with the worst-case graph
         ggml_backend_sched_reset(lctx.sched);
@@ -16687,7 +16743,9 @@ struct llama_context * llama_new_context_with_model(
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
             ggml_cgraph * gf = llama_build_graph(*ctx, llama_batch_get_one(&token, n_tokens, n_past, 0), true);
 
-            /*size_t mem_total = 0;
+#if 0 // Xbox Investigate
+            printf("==== Worst-case graph (%s) ====", __func__);
+            size_t mem_total = 0;
             size_t mem_max = 0;
             for (size_t i = 0; i < gf->n_nodes; i++) {
                 ggml_tensor* node = gf->nodes[i];
@@ -16696,21 +16754,22 @@ struct llama_context * llama_new_context_with_model(
                     cur = ggml_nbytes(node);
                     mem_total += cur;
                     if (cur > 0) {
-                        LLAMA_LOG_INFO("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
+                        printf("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
                         mem_max = std::max(mem_max, cur);
                         if (node->op == GGML_OP_MUL_MAT) {
-                            LLAMA_LOG_INFO("A(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
-                            LLAMA_LOG_INFO("B(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
-                            LLAMA_LOG_INFO("C(%s): [%u, %u, %u, %u]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                            printf("A(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
+                            printf("B(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
+                            printf("C(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
                         }
                     }
                 }
                 else {
-                    LLAMA_LOG_INFO("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
+                    printf("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
                 }
             }
-            LLAMA_LOG_INFO("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
-            LLAMA_LOG_INFO("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);*/
+            printf("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
+            printf("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);
+#endif
 
             // initialize scheduler with the worst-case graph
             if (!ggml_backend_sched_reserve(ctx->sched, gf)) {
