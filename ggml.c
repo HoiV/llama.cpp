@@ -4159,6 +4159,7 @@ static void ggml_setup_op_has_task_pass(void) {
     {   // SKIPPED
         bool * p = GGML_OP_IS_SKIPPED;
 
+        p[GGML_OP_NONE] = true;
         p[GGML_OP_RESHAPE] = true;
         p[GGML_OP_VIEW] = true;
         p[GGML_OP_PERMUTE] = true;
@@ -4578,7 +4579,7 @@ static inline bool ggml_is_padded_1d(const struct ggml_tensor * tensor) {
         tensor->nb[3] == tensor->nb[2]*tensor->ne[2];
 }
 
-GGML_CALL bool ggml_is_empty(const struct ggml_tensor * tensor) {
+inline bool ggml_is_empty(const struct ggml_tensor * tensor) {
     for (int i = 0; i < GGML_MAX_DIMS; ++i) {
         if (tensor->ne[i] == 0) {
             // empty if any dimension has no elements
@@ -4586,22 +4587,6 @@ GGML_CALL bool ggml_is_empty(const struct ggml_tensor * tensor) {
         }
     }
     return false;
-}
-
-bool ggml_is_valid_for_compute(const struct ggml_tensor * tensor) {
-    if (tensor->op == GGML_OP_NONE) {
-        return false;
-    }
-    if (ggml_is_empty(tensor)) {
-        return false;
-    }
-    if (tensor->op == GGML_OP_MUL_MAT) {
-        if (ggml_is_empty(tensor->src[0]) ||
-            ggml_is_empty(tensor->src[1])) {
-                return false;
-            }
-    }
-    return true;
 }
 
 bool ggml_are_same_shape(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
@@ -6865,14 +6850,12 @@ struct ggml_tensor * ggml_cpy(
     return ggml_cpy_impl(ctx, a, b, false);
 }
 
-#if 0 // not referenced
 struct ggml_tensor * ggml_cpy_inplace(
          struct ggml_context * ctx,
          struct ggml_tensor * a,
          struct ggml_tensor * b) {
     return ggml_cpy_impl(ctx, a, b, true);
 }
-#endif
 
 struct ggml_tensor * ggml_cast(
         struct ggml_context * ctx,
@@ -20198,13 +20181,13 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     do {
 
         //
-        // Check if compute should be aborted. This code is now obsolete.
+        // Check if compute should be aborted.
         //
 
-//        if (shared->abort_callback && shared->abort_callback(shared->abort_data)) {
-//            shared->node_n += 1;
-//            return GGML_EXIT_ABORTED;
-//        }
+        if (shared->abort_callback && shared->abort_callback(shared->abort_data)) {
+            shared->node_n += 1;
+            return GGML_EXIT_ABORTED;
+        }
 
         //
         // Collect threads for next iteration.
@@ -20240,12 +20223,12 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
                 GGML_ASSERT(op < GGML_OP_COUNT);
 
                 //
-                // If the operation is nop'ed, then skip it now.
+                // If the operation is nop'ed or empty, then skip it now.
                 //
                 // N.B. All nop'ed tensors have no side effects.
                 //
 
-                if (GGML_OP_IS_SKIPPED[op]) {
+                if (GGML_OP_IS_SKIPPED[op] || ggml_is_empty(node)) {
                     continue;
                 }
 
@@ -20312,9 +20295,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             params.nth = shared->n_tasks;
             node = shared->node;
             // printf("--> %s: dispatching // %s-(%s)\n", __func__, node->name, ggml_op_name(node->op));fflush(stdout);
-            if (ggml_is_valid_for_compute(node)) {
-                ggml_compute_op_dispatch[node->op](&params, node);
-            }
+            ggml_compute_op_dispatch[node->op](&params, node);
         }
 
     } while(true);
