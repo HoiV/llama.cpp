@@ -283,6 +283,20 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+// 0000004f`da67e600 00007ff6`b4f985ca     batchslmza!ggml_compute_forward_mul_mat+0x1e2 [xbox\gamecore\so2001\z-slmapp\za-ggml\ggml.c @ 13450]
+// 0000004f`da67e7a0 00007ff6`b4f98f31     batchslmza!ggml_graph_compute_thread+0x19a [xbox\gamecore\so2001\z-slmapp\za-ggml\ggml.c @ 20245]
+// 0000004f`da67e810 00007ff6`b4f9c544     batchslmza!ggml_graph_compute+0x351 [xbox\gamecore\so2001\z-slmapp\za-ggml\ggml.c @ 20524]
+// 0000004f`da67e9e0 00007ff6`b4f9ea1c     batchslmza!ggml_backend_cpu_graph_compute+0xa4 [xbox\gamecore\so2001\z-slmapp\za-ggml\ggml-backend.c @ 812]
+// 0000004f`da67ea60 00007ff6`b4f3f2f3     batchslmza!ggml_backend_sched_compute_splits+0x14c [xbox\gamecore\so2001\z-slmapp\za-ggml\ggml-backend.c @ 1777]
+// 0000004f`da67eb70 00007ff6`b4f4d2ff     batchslmza!llama_decode_internal+0xba3 [xbox\gamecore\so2001\z-slmapp\batchslm\llama.cpp @ 12585]
+// 0000004f`da67ed70 00007ff6`b4ec0c9a     batchslmza!llama_decode+0x2f [xbox\gamecore\so2001\z-slmapp\batchslm\llama.cpp @ 18376]
+// 0000004f`da67edf0 00007ff6`b4ea51f1     batchslmza!llama_init_from_gpt_params+0x93a [xbox\gamecore\so2001\z-slmapp\batchslm\common.cpp @ 2476]
+// 0000004f`da67efa0 00007ff6`b4fcd263     batchslmza!main+0xf1 [xbox\gamecore\so2001\z-slmapp\batchslm\batchslm.cpp @ 283]
+// (Inline Function) --------`--------     batchslmza!invoke_main+0x22 [VCCRT\vcstartup\src\startup\exe_common.inl @ 78]
+// 0000004f`da67fda0 00007ff8`0381257d     batchslmza!__scrt_common_main_seh+0x10b [VCCRT\vcstartup\src\startup\exe_common.inl @ 288]
+// 0000004f`da67fde0 00007ff8`0462af28     KERNEL32!BaseThreadInitThunk+0x1d
+// 0000004f`da67fe10 00000000`00000000     ntdll!RtlUserThreadStart+0x28
+
 #else
 
     // initialize the model with more customized params

@@ -12515,7 +12515,8 @@ static int llama_decode_internal(
         ggml_cgraph * gf = llama_build_graph(lctx, u_batch, false);
 
 #if 0 // Xbox Investigate
-            printf("==== Build graph (%s) ====", __func__);
+        {
+            printf("==== Build graph (%s) ====\n", __func__);
             size_t mem_total = 0;
             size_t mem_max = 0;
             for (size_t i = 0; i < gf->n_nodes; i++) {
@@ -12528,9 +12529,11 @@ static int llama_decode_internal(
                         printf("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
                         mem_max = std::max(mem_max, cur);
                         if (node->op == GGML_OP_MUL_MAT) {
-                            printf("A(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
-                            printf("B(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
-                            printf("C(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                            ggml_tensor *src0 = node->src[0];
+                            ggml_tensor *src1 = node->src[1];
+                            printf("A-%s(%s): [%llu, %llu, %llu, %llu]\n", src0->name, ggml_type_name(src0->type), src0->ne[3], src0->ne[2], src0->ne[1], src0->ne[0]);
+                            printf("B-%s(%s): [%llu, %llu, %llu, %llu]\n", src1->name, ggml_type_name(src1->type), src1->ne[3], src1->ne[2], src1->ne[1], src1->ne[0]);
+                            printf("C-%s(%s): [%llu, %llu, %llu, %llu]\n", node->name, ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
                         }
                     }
                 }
@@ -12540,6 +12543,7 @@ static int llama_decode_internal(
             }
             printf("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
             printf("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);
+        }
 #endif
 
         // the output is always the last tensor in the graph

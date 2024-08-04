@@ -139,9 +139,11 @@ extern "C" {
 #ifndef __SSE3__
 #define __SSE3__
 #endif
-#ifndef __AVXVNNI__
-#define __AVXVNNI__
-#endif
+#if defined(__AVX512F__)
+  #ifndef __AVXVNNI__
+    #define __AVXVNNI__
+  #endif
+#endif // AVX512
 #ifndef __AVXVNNIINT8__
 //#define __AVXVNNIINT8__
 #endif

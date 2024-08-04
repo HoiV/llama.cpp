@@ -4588,6 +4588,22 @@ GGML_CALL bool ggml_is_empty(const struct ggml_tensor * tensor) {
     return false;
 }
 
+bool ggml_is_valid_for_compute(const struct ggml_tensor * tensor) {
+    if (tensor->op == GGML_OP_NONE) {
+        return false;
+    }
+    if (ggml_is_empty(tensor)) {
+        return false;
+    }
+    if (tensor->op == GGML_OP_MUL_MAT) {
+        if (ggml_is_empty(tensor->src[0]) ||
+            ggml_is_empty(tensor->src[1])) {
+                return false;
+            }
+    }
+    return true;
+}
+
 bool ggml_are_same_shape(const struct ggml_tensor * t0, const struct ggml_tensor * t1) {
     static_assert(GGML_MAX_DIMS == 4, "GGML_MAX_DIMS is not 4 - update this function");
 
@@ -13457,12 +13473,12 @@ void ggml_compute_forward_mul_mat(
     //00000045`079ef7a0 00007ff8`0462af28     KERNEL32!BaseThreadInitThunk+0x1d
     //00000045`079ef7d0 00000000`00000000     ntdll!RtlUserThreadStart+0x28
     // if (strcmp(src0->name, "blk.0.attn_qkv.weight") == 0) __debugbreak();
-    printf("--%d-%d-%s\n", ith, nth, type_traits[type].type_name);
-    printf("   %llu %llu %llu %llu\n", ne0, ne1, ne2, ne3);
-    printf("   %llu %llu %llu %llu\n", ne01, ne11, ne12, ne13);
-    printf("   %s(%s): [%llu, %llu, %llu, %llu]\n", src0->name, ggml_type_name(src0->type), src0->ne[3], src0->ne[2], src0->ne[1], src0->ne[0]);
-    printf("   %s(%s): [%llu, %llu, %llu, %llu]\n", src1->name, ggml_type_name(src1->type), src1->ne[3], src1->ne[2], src1->ne[1], src1->ne[0]);
-    printf("   %s(%s): [%llu, %llu, %llu, %llu]\n", dst->name,  ggml_type_name(dst->type),  dst->ne[3],  dst->ne[2],  dst->ne[1],  dst->ne[0]);
+    //printf("--%d-%d-%s\n", ith, nth, type_traits[type].type_name);
+    //printf("   %llu %llu %llu %llu\n", ne0, ne1, ne2, ne3);
+    //printf("   %llu %llu %llu %llu\n", ne01, ne11, ne12, ne13);
+    printf("   >> %s(%s): [%llu, %llu, %llu, %llu]\n", src0->name, ggml_type_name(src0->type), src0->ne[3], src0->ne[2], src0->ne[1], src0->ne[0]);
+    printf("   >> %s(%s): [%llu, %llu, %llu, %llu]\n", src1->name, ggml_type_name(src1->type), src1->ne[3], src1->ne[2], src1->ne[1], src1->ne[0]);
+    printf("   >> %s(%s): [%llu, %llu, %llu, %llu]\n", dst->name,  ggml_type_name(dst->type),  dst->ne[3],  dst->ne[2],  dst->ne[1],  dst->ne[0]);
 #endif
 
     GGML_ASSERT(ne0 == ne01);
@@ -20295,7 +20311,10 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             params.ith = state->ith;
             params.nth = shared->n_tasks;
             node = shared->node;
-            ggml_compute_op_dispatch[node->op](&params, node);
+            // printf("--> %s: dispatching // %s-(%s)\n", __func__, node->name, ggml_op_name(node->op));fflush(stdout);
+            if (ggml_is_valid_for_compute(node)) {
+                ggml_compute_op_dispatch[node->op](&params, node);
+            }
         }
 
     } while(true);

@@ -75,4 +75,15 @@ Date:   Fri May 24 23:59:53 2024 -0700
     PR 10800462 - ai - vectorize ggml_fp16_to_fp32 and simplify asserts.
     PR 10807564 - ai parallelize ggml_compute_forward_get_rows
 
+Pickup changes up to PR pullrequest/11177694
+    PR 11177694: move tensor init and finalize processing and execution synchronization out of
+the tensor dispatcher loop to the target tensor computation. Most tensors have neither an
+init or finalize requirement and this removes branch and test code from a critical path to
+the actually tensor code. This change also enables both init and finalize code to run in
+parallel which was previously not available (a special case was in place for mul_mat).
+
+******************* CHANGE notice for latest change in llama.cpp *******************
+To get static libs: e:\Xbox-B612\src\llama.cpp>cmake .. -DBUILD_SHARED_LIBS=OFF -DGGML_STATIC=ON
+The default is to generate ggml.dll and llama.dll
+************************************************************************************
 
