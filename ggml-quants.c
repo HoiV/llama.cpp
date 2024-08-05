@@ -1607,19 +1607,43 @@ void dequantize_row_q5_1(const block_q5_1 * restrict x, float * restrict y, int6
 }
 
 void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int64_t k) {
-    static const int qk = QK8_0;
+    const uint32_t qk = QK8_0;
+    const uint32_t ql = k;
 
-    assert(k % qk == 0);
+    assert(ql % qk == 0);
 
-    const int nb = k / qk;
+    const uint64_t nb = ql / qk;
 
-    for (int i = 0; i < nb; i++) {
+#if defined(__AVX2__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x->d));
+        __m128i qs[4];
+        __m256 qp[4];
+
+        for (uint64_t j = 0; j < (qk / 8); j++) {
+            qs[j] = _mm_loadu_si64(&x->qs[j * 8]);
+            qp[j] = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qs[j]));
+            qp[j] = _mm256_mul_ps(qp[j], d);
+            _mm256_storeu_ps(y + j * 8, qp[j]);
+        }
+
+        x += 1;
+        y += 32;
+    }
+
+#else
+
+    for (uint64_t i = 0; i < nb; i++) {
         const float d = GGML_FP16_TO_FP32(x[i].d);
 
         for (int j = 0; j < qk; ++j) {
             y[i*qk + j] = x[i].qs[j]*d;
         }
     }
+
+#endif // __AVX2__
+
 }
 
 //
