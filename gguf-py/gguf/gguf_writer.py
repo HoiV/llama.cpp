@@ -240,11 +240,14 @@ class GGUFWriter:
                 dtype = GGMLQuantizationType.I32
             elif tensor_dtype == np.int64:
                 dtype = GGMLQuantizationType.I64
+            elif tensor_dtype == np.uint8:
+                dtype = GGMLQuantizationType.I2
             else:
                 raise ValueError("Only F16, F32, F64, I8, I16, I32, I64 tensors are supported for now")
         else:
             dtype = raw_dtype
-            if tensor_dtype == np.uint8:
+            # Exclude I2 for Bitnet.
+            if tensor_dtype == np.uint8 and raw_dtype != GGMLQuantizationType.I2:
                 tensor_shape = quant_shape_from_byte_shape(tensor_shape, raw_dtype)
 
         self.tensors[name] = TensorInfo(shape=tensor_shape, dtype=dtype, nbytes=tensor_nbytes)

@@ -413,6 +413,14 @@ class TensorNameMap:
         MODEL_TENSOR.ATTN_KV_A_NORM: (
             "model.layers.{bid}.self_attn.kv_a_layernorm", # deepseek2
         ),
+        
+        MODEL_TENSOR.ATTN_SUB_NORM: (
+            "layers.{bid}.attention.attn_sub_norm",  # persimmon
+        ),
+        
+        MODEL_TENSOR.FFN_SUB_NORM: (
+            "layers.{bid}.feed_forward.ffn_sub_norm",  # persimmon
+        ),
     }
 
     # architecture-specific block mappings

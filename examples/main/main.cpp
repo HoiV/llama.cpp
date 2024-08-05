@@ -789,18 +789,18 @@ int main(int argc, char ** argv) {
             for (auto id : embd) {
                 const std::string token_str = llama_token_to_piece(ctx, id, params.special);
 
-                token_generated++;
-                if (!json_start && (token_str.find('{') != std::string::npos)) {
-                    json_start = true;
-                    token_generated = 0;
-                }
-                if (!json_start && (token_generated > 5)) {
-                    // detect the model is not behaving - stop and restart
-                    is_interacting = true;
-                    restart_prompt = true;
-                    printf("\nModel hallucination - RESET...\n");
-                    break;
-                }
+                // token_generated++;
+                // if (!json_start && (token_str.find('{') != std::string::npos)) {
+                //     json_start = true;
+                //     token_generated = 0;
+                // }
+                // if (!json_start && (token_generated > 5)) {
+                //     // detect the model is not behaving - stop and restart
+                //     is_interacting = true;
+                //     restart_prompt = true;
+                //     printf("\nModel hallucination - RESET...\n");
+                //     break;
+                // }
 #if 0
                 if (!json_start) {
                     // Console/Stream Output
@@ -820,12 +820,12 @@ int main(int argc, char ** argv) {
                     output_ss << token_str;
                 }
 
-                if (params.custom_prompts_on && (token_str.c_str()[0] == '}')) {
-                    // for custom prompt only - if we hit a "}" we should stop generating
-                    is_interacting = true;
-                    restart_prompt = false;
-                    break;
-                }
+                // if (params.custom_prompts_on && (token_str.c_str()[0] == '}')) {
+                //     // for custom prompt only - if we hit a "}" we should stop generating
+                //     is_interacting = true;
+                //     restart_prompt = false;
+                //     break;
+                // }
                 fflush(stdout);
             }
         }

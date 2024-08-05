@@ -149,6 +149,7 @@ class MODEL_ARCH(IntEnum):
     OLMO       = auto()
     ARCTIC     = auto()
     DEEPSEEK2  = auto()
+    BITNET     = auto()
 
 
 class MODEL_TENSOR(IntEnum):
@@ -200,6 +201,8 @@ class MODEL_TENSOR(IntEnum):
     ATTN_KV_B          = auto()
     ATTN_Q_A_NORM      = auto()
     ATTN_KV_A_NORM     = auto()
+    FFN_SUB_NORM       = auto()
+    ATTN_SUB_NORM      = auto()
 
 
 MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
@@ -237,6 +240,7 @@ MODEL_ARCH_NAMES: dict[MODEL_ARCH, str] = {
     MODEL_ARCH.OLMO:           "olmo",
     MODEL_ARCH.ARCTIC:         "arctic",
     MODEL_ARCH.DEEPSEEK2:      "deepseek2",
+    MODEL_ARCH.BITNET:         "bitnet",
 }
 
 TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
@@ -288,6 +292,8 @@ TENSOR_NAMES: dict[MODEL_TENSOR, str] = {
     MODEL_TENSOR.ATTN_KV_B:          "blk.{bid}.attn_kv_b",
     MODEL_TENSOR.ATTN_Q_A_NORM:      "blk.{bid}.attn_q_a_norm",
     MODEL_TENSOR.ATTN_KV_A_NORM:     "blk.{bid}.attn_kv_a_norm",
+    MODEL_TENSOR.ATTN_SUB_NORM:      "blk.{bid}.attn_sub_norm",
+    MODEL_TENSOR.FFN_SUB_NORM:       "blk.{bid}.ffn_sub_norm",
 }
 
 MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
@@ -498,6 +504,24 @@ MODEL_TENSORS: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
         MODEL_TENSOR.FFN_UP,
         MODEL_TENSOR.ATTN_Q_NORM,
         MODEL_TENSOR.ATTN_K_NORM,
+    ],
+    MODEL_ARCH.BITNET: [
+        MODEL_TENSOR.ATTN_Q,
+        MODEL_TENSOR.ATTN_K,
+        MODEL_TENSOR.ATTN_V,
+        MODEL_TENSOR.TOKEN_EMBD,
+        MODEL_TENSOR.OUTPUT_NORM,
+        MODEL_TENSOR.ROPE_FREQS,
+        MODEL_TENSOR.ATTN_NORM,
+        MODEL_TENSOR.ATTN_QKV,
+        MODEL_TENSOR.ATTN_OUT,
+        MODEL_TENSOR.ATTN_ROT_EMBD,
+        MODEL_TENSOR.FFN_NORM,
+        MODEL_TENSOR.FFN_GATE,
+        MODEL_TENSOR.FFN_DOWN,
+        MODEL_TENSOR.FFN_UP,
+        MODEL_TENSOR.ATTN_SUB_NORM,
+        MODEL_TENSOR.FFN_SUB_NORM,
     ],
     MODEL_ARCH.QWEN: [
         MODEL_TENSOR.TOKEN_EMBD,
@@ -903,6 +927,7 @@ class GGMLQuantizationType(IntEnum):
     F64     = 28
     IQ1_M   = 29
     BF16    = 30
+    I2      = 31
 
 
 # TODO: add GGMLFileType from ggml_ftype in ggml.h
@@ -944,6 +969,7 @@ class LlamaFileType(IntEnum):
     MOSTLY_IQ4_XS        = 30  # except 1d tensors
     MOSTLY_IQ1_M         = 31  # except 1d tensors
     MOSTLY_BF16          = 32  # except 1d tensors
+    MOSTLY_I2            = 33  # except 1d tensors
 
     GUESSED              = 1024  # not specified in the model file
 
@@ -1017,6 +1043,7 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.F64:     (1, 8),
     GGMLQuantizationType.IQ1_M:   (256, QK_K // 8 + QK_K // 16  + QK_K // 32),
     GGMLQuantizationType.BF16:    (1, 2),
+    GGMLQuantizationType.I2:      (4, 1),
 }
 
 

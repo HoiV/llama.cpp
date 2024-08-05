@@ -137,6 +137,9 @@ option(LLAMA_SYCL_F16                        "llama: use 16 bit floats for sycl 
 set(LLAMA_SYCL_TARGET   "INTEL" CACHE STRING "llama: sycl target device")
 option(LLAMA_CPU_HBM                         "llama: use memkind for CPU HBM"                   OFF)
 set(LLAMA_SCHED_MAX_COPIES  "4" CACHE STRING "llama: max input copies for pipeline parallelism")
+option(LLAMA_TMAC                            "llama: use TMAC"                                  OFF)
+option(LLAMA_TMAC_SYSLIB                     "llama: use TMAC system library"                   OFF)
+option(LLAMA_TMAC_TVM_THREADPOOL             "llama: use TVM threadpool for TMAC"               OFF)
 
 option(LLAMA_BUILD_TESTS                     "llama: build tests"    ${LLAMA_STANDALONE})
 option(LLAMA_BUILD_EXAMPLES                  "llama: build examples" ${LLAMA_STANDALONE})
@@ -862,6 +865,37 @@ if (LLAMA_KOMPUTE)
     endif()
 endif()
 
+if (LLAMA_TMAC)
+    find_package(TMAC)
+
+    if (TMAC_FOUND)
+        message(STATUS "TMAC found")
+
+        add_compile_definitions(GGML_USE_TMAC)
+
+        set(GGML_HEADERS_TMAC ggml-tmac.h)
+        set(GGML_SOURCES_TMAC ggml-tmac.cpp)
+
+        link_directories(${TMAC_LIB_DIR})
+        # TODO: link t_mac_object when LLAMA_TMAC_SYSLIB
+
+        if (LLAMA_TMAC_TVM_THREADPOOL)
+            add_compile_definitions(TMAC_USE_TVM_THREADPOOL)
+            set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} t_mac)
+        else()
+            if ((NOT ${CMAKE_C_COMPILER_ID} MATCHES "Clang") OR
+                (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
+                message(FATAL_ERROR "Clang is required for T-MAC compilation")
+            endif()
+
+            set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} t_mac_no_tvm)
+            set(GGML_SOURCES_TMAC ${GGML_SOURCES_TMAC} ${TMAC_KERNELS_SOURCE})
+        endif()
+    else()
+        message(WARNING "TMAC not found")
+    endif()
+endif()
+
 if (LLAMA_CPU_HBM)
     find_library(memkind memkind REQUIRED)
 
@@ -1095,6 +1129,12 @@ if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64" OR CMAKE_GENERATOR_PLATFORM_LWR STR
             # Raspberry Pi 3, 4, Zero 2 (32-bit)
             list(APPEND ARCH_FLAGS -mno-unaligned-access)
         endif()
+        if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64" AND LLAMA_TMAC AND TMAC_FOUND)
+            # Jetson AGX Orin
+            # We need fullfp16 for T-MAC
+            # TODO: check_cxx_source_compiles
+            list(APPEND ARCH_FLAGS -march=armv8.2a+fp16)
+        endif()
         if (LLAMA_SVE)
             list(APPEND ARCH_FLAGS -march=armv8.6-a+sve)
         endif()
@@ -1108,7 +1148,9 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
         if (LLAMA_NATIVE)
             include(cmake/FindSIMD.cmake)
         endif ()
-        if (LLAMA_AVX512)
+        # Can't use LLAMA_AVX512 with Clang for MSVC
+        # with error: conflicting types for '_m_prefetchw
+        if (LLAMA_AVX512 AND (NOT ${CMAKE_C_COMPILER_ID} MATCHES "Clang") AND (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
             list(APPEND ARCH_FLAGS /arch:AVX512)
             # MSVC has no compile-time flags enabling specific
             # AVX512 extensions, neither it defines the
@@ -1274,6 +1316,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_VULKAN}    ${GGML_HEADERS_VULKAN}
             ${GGML_SOURCES_ROCM}      ${GGML_HEADERS_ROCM}
             ${GGML_SOURCES_BLAS}      ${GGML_HEADERS_BLAS}
+            ${GGML_SOURCES_TMAC}      ${GGML_HEADERS_TMAC}
             ${GGML_SOURCES_LLAMAFILE} ${GGML_HEADERS_LLAMAFILE}
             )
 

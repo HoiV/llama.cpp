@@ -383,6 +383,7 @@ extern "C" {
         GGML_TYPE_F64     = 28,
         GGML_TYPE_IQ1_M   = 29,
         GGML_TYPE_BF16    = 30,
+        GGML_TYPE_I2      = 31,
         GGML_TYPE_COUNT,
     };
 
@@ -424,6 +425,7 @@ extern "C" {
         GGML_FTYPE_MOSTLY_IQ4_XS  = 22, // except 1d tensors
         GGML_FTYPE_MOSTLY_IQ1_M   = 23, // except 1d tensors
         GGML_FTYPE_MOSTLY_BF16    = 24, // except 1d tensors
+        GGML_FTYPE_MOSTLY_I2      = 25, // except 1d tensors
     };
 
     // available tensor operations:

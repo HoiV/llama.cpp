@@ -16,6 +16,7 @@
 *.log
 *.metallib
 *.o
+*.pth
 *.so
 *.tmp
 
