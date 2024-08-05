@@ -391,6 +391,10 @@ int main(int argc, char ** argv) {
 
     struct llama_kv_cache_view kvc_view = llama_kv_cache_view_init(ctx, n_clients);
 
+    if (params.use_omp) {
+        ggml_select_omp();
+    }
+
     // LOG_TEE("%s: Simulating parallel requests from clients:\n", __func__);
     LOG_TEE("%s: n_parallel = %d, n_sequences = %d, cont_batching = %d, system tokens = %d, context = %d\n\n", 
         __func__, n_clients, n_seq, cont_batching, n_tokens_system, n_ctx);

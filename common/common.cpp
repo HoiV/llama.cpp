@@ -438,6 +438,10 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.custom_p_file = argv[i];
         return true;
     }
+    if (arg == "-omp") {
+        params.use_omp = true;
+        return true;
+    }
     if (arg == "-pfc" || arg == "--prefix-cache") {
         if ((++i >= argc) || (argv[i][0] == '-')) {
             // if no name is specified then a computed hashed name is used
