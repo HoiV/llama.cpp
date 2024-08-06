@@ -6590,7 +6590,8 @@ struct ggml_tensor * ggml_mul_mat(
     const int64_t ne[4] = { a->ne[1], b->ne[1], b->ne[2], b->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    result->op   = GGML_OP_MUL_MAT;
+    result->op = GGML_OP_MUL_MAT;
+    result->is_empty = ggml_is_empty(result);
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
     result->src[1] = b;
@@ -6646,7 +6647,8 @@ struct ggml_tensor * ggml_mul_mat_id(
     const int64_t ne[4] = { as->ne[1], ids->ne[0], b->ne[2], 1 };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    result->op   = GGML_OP_MUL_MAT_ID;
+    result->op = GGML_OP_MUL_MAT_ID;
+    result->is_empty = ggml_is_empty(result);
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = as;
     result->src[1] = b;
@@ -20228,7 +20230,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
                 // N.B. All nop'ed tensors have no side effects.
                 //
 
-                if (GGML_OP_IS_SKIPPED[op] || ggml_is_empty(node)) {
+                if (GGML_OP_IS_SKIPPED[op] | node->is_empty) {
                     continue;
                 }
 
@@ -20261,9 +20263,12 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             //
 
             shared->node = node;
-            shared->n_tasks = node->n_tasks;
-            shared->b0 = node->n_tasks; 
-            shared->b1 = node->n_tasks; 
+
+            const n_tasks = node->n_tasks;
+            shared->n_tasks = n_tasks;
+            shared->b0 = n_tasks; 
+            shared->b1 = n_tasks;
+
             atomic_store(&shared->n_active, shared->n_threads);
             shared->node_n = node_n;
 

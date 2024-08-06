@@ -621,7 +621,11 @@ extern "C" {
         struct ggml_tensor * grad;
         struct ggml_tensor * src[GGML_MAX_SRC];
 
-        int n_tasks;
+        struct {
+            int n_tasks : 16;
+            int is_empty : 8;
+            int reserved : 8;
+        };
 
         // performance - not used but required for size and alignment
         // performance
