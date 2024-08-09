@@ -81,6 +81,10 @@ int slm_init(gpt_params& params) {
     // init LLM
     llama_backend_init();
 
+    if (params.openmp) {
+        ggml_select_omp();
+    }
+
     // initialize the model
     model_params = llama_model_default_params();
 

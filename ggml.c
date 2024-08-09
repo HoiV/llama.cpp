@@ -29,9 +29,7 @@
 #include <syscall.h>
 #endif
 
-#ifdef GGML_USE_OPENMP
 #include <omp.h>
-#endif
 
 #ifdef GGML_USE_METAL
 #include <unistd.h>
@@ -1733,7 +1731,7 @@ struct DECLSPEC_CACHEALIGN ggml_compute_state_shared {
     const uint8_t * cplan_work_data;    // cplan work data
     const bool (*abort_callback)(void * data); // abort ggml_graph_compute when true
     const void * abort_callback_data;
-    const int n_threads;
+    int n_threads;
     const int graph_n_nodes;            // number of graph tensor nodes
     DECLSPEC_CACHEALIGN atomic_int node_n; // active graph tensor node index
 };
@@ -20746,6 +20744,13 @@ static enum ggml_status ggml_graph_compute_parallel(struct ggml_compute_state * 
 }
 #endif // Xbox Unused
 
+bool ggml_use_omp = false;
+
+void ggml_select_omp(void) {
+    ggml_use_omp = true;
+    printf("********** omp selected ************\n");
+}
+
 enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
 #ifdef GGML_TENSOR_OP_PERF
     int64_t tensor_index = cgraph->n_nodes;
@@ -20770,9 +20775,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     int n_threads = cplan->n_threads;
 
-#if defined(GGML_USE_OPENMP)
     n_threads = MIN(n_threads, omp_get_max_threads());
-#endif
 
     struct ggml_compute_state_shared state_shared = {
         .n_active = n_threads,
@@ -20798,52 +20801,68 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #endif
 
     //
-    // create thread pool.
+    // Initialize worker state.
     //
 
-    for (int j = n_threads; j > 1; j -= 1) {
-        workers[j - 1].ith = j - 1;
-        workers[j - 1].shared = &state_shared;
-
-#ifdef GGML_TENSOR_OP_PERF
-        atomic_fetch_add(&thread_create_count, 1);
-        int64_t t1 = ggml_time_us();
-#endif // GGML_TENSOR_OP_PERF
-
-        const int rc = ggml_thread_create(&workers[j - 1].thrd,
-                                          NULL,
-                                          ggml_graph_compute_thread,
-                                          &workers[j - 1]);
-
-        GGML_ASSERT(rc == 0);
-
-#ifdef GGML_TENSOR_OP_PERF
-        t1 = ggml_time_us() - t1;
-        atomic_fetch_add64(&thread_create_time, t1);
-#endif // GGML_TENSOR_OP_PERF
-
-        GGML_ASSERT(rc == 0);
-        UNUSED(rc);
+    for (int j = 0; j < n_threads; j += 1) {
+        workers[j].ith = j;
+        workers[j].shared = &state_shared;
     }
 
-    workers[0].ith = 0;
-    workers[0].shared = &state_shared;
+#ifdef GGML_TENSOR_OP_PERF
+    atomic_fetch_add(&thread_create_count, 1);
+#endif // GGML_TENSOR_OP_PERF
 
-    // this is a work thread too
+    //
+    // create thread pool and execute tensor graph.
+    //
 
-    int compute_status = ggml_graph_compute_thread(&workers[0]);
-    GGML_ASSERT(compute_status == 0);
+    int compute_status = GGML_STATUS_SUCCESS;
+    if (ggml_use_omp) {
+        if (n_threads > 1) {
+            #pragma omp parallel num_threads(n_threads)
+            {
+                ggml_graph_compute_thread(&workers[omp_get_thread_num()]);
+            }
+        } else {
+            ggml_graph_compute_thread(&workers[0]);
+        }
 
-    // wait for thread pool threads to finish.
+    } else {
+        for (int j = n_threads; j > 1; j -= 1) {
 
-    for (int j = n_threads; j > 1; j -= 1) {
-        const int rc = ggml_thread_join(workers[j - 1].thrd, NULL);
-        GGML_ASSERT(rc == 0);
+#ifdef GGML_TENSOR_OP_PERF
+            int64_t t1 = ggml_time_us();
+#endif // GGML_TENSOR_OP_PERF
+
+            const int rc = ggml_thread_create(&workers[j - 1].thrd,
+                                              NULL,
+                                              ggml_graph_compute_thread,
+                                              &workers[j - 1]);
+
+            GGML_ASSERT(rc == 0);
+
+#ifdef GGML_TENSOR_OP_PERF
+            t1 = ggml_time_us() - t1;
+            atomic_fetch_add64(&thread_create_time, t1);
+#endif // GGML_TENSOR_OP_PERF
+
+            GGML_ASSERT(rc == 0);
+            UNUSED(rc);
+        }
+
+        // this is a work thread too
+
+        compute_status = ggml_graph_compute_thread(&workers[0]);
+        GGML_ASSERT(compute_status == 0);
+
+        // wait for thread pool threads to finish.
+
+        for (int j = n_threads; j > 1; j -= 1) {
+            const int rc = ggml_thread_join(workers[j - 1].thrd, NULL);
+            GGML_ASSERT(rc == 0);
+        }
     }
-
-#ifdef GGML_USE_VULKAN
-    ggml_vk_graph_cleanup();
-#endif
 
 #ifdef GGML_TENSOR_OP_PERF
     t0 = ggml_time_us() - t0;
