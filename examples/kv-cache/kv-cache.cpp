@@ -167,11 +167,7 @@ int main(int argc, char** argv) {
             }
         }
 
-#ifdef GGML_USE_OPENMP
         params.n_threads = MIN(n_threads, omp_get_max_threads());
-#else
-        params.n_threads = MIN(n_threads, std::thread::hardware_concurrency());
-#endif
         printf("%s: Number of hw threads asked: %d - actual number: %d\n", __func__, n_threads, params.n_threads);
     }
 
@@ -181,6 +177,10 @@ int main(int argc, char** argv) {
 
     if (argc >= 5) {
         params.pfc_mode = true;
+    }
+
+   if (argc >= 6) {
+        params.openmp = true;
     }
 
     console::init(true);

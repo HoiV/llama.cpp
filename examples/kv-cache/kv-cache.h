@@ -39,10 +39,11 @@ struct gpt_params {
     std::string prompt                 = "";
     std::string custom_p_file          = "custom_prompts.txt";  // custom prompts input file
     std::string custom_template_prompt = "";
-    std::string pfx_shared             = "";   // shared prompt for prefix cache
-    std::string pfx_file               = "";   // file name for prefix cache
+    std::string pfx_shared             = "";    // shared prompt for prefix cache
+    std::string pfx_file               = "";    // file name for prefix cache
     bool pfc_mode                      = false; // prefix cache mode
-    bool first_prompt                  = true; // indicate first time through
+    bool first_prompt                  = true;  // indicate first time through
+    bool openmp                        = false; // true when openmp is present
 };
 
 
