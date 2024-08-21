@@ -55,4 +55,8 @@ else()
     add_subdirectory(train-text-from-scratch)
     add_subdirectory(kv-cache)
     add_subdirectory(batchslm)
+    add_subdirectory(mjZ)
+    add_subdirectory(bZM)
 endif()
+
+#    add_subdirectory(frotz)

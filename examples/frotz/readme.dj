@@ -1,0 +1,27 @@
+Changes in V2.40:
+
+  * Quetzal save file support.
+
+  * Use the `-R' command line option to enable save/restore of old Frotz
+    format save files.
+
+  * More memory-efficient undo scheme based on the method used in
+    Evin Robertson's Nitfol interpreter.
+
+  * If the ZCODE_PATH environment variable is defined, search it for
+    game, graphics and sound files.  If ZCODE_PATH is not defined, try
+    INFOCOM_PATH.
+
+  * Added "ZSTRICT" error checking.
+
+  * err.c: New source file to handle runtime_error () and the
+    additional ZSTRICT errors consistently.
+
+  * sound.c:z_sound_effect: Assume sound number 0 refers to current sound.
+    screen.c:z_set_cursor: 
+        if (y == 0)		/* use cursor line if y-coordinate is 0 */
+	    y = wp[win].y_cursor;
+        if (x == 0)		/* use cursor row if x-coordinate is 0 */
+	    x = wp[win].x_cursor;
+    Fixes incorrect cursor positioning in some games (e.g. the
+    help screen in dumont.z5).

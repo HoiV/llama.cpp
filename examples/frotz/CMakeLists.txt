@@ -1,0 +1,6 @@
+set(TARGET frotz)
+add_executable(${TARGET} buffer.c djfrotz.h djinit.c djinput.c djmouse.c djpic.c djsample.c djscreen.c djtext.c err.c fastmem.c files.c fontdata.h getopt.c hotkey.c input.c main.c math.c process.c quetzal.c random.c redirect.c screen.c sound.c stream.c table.c text.c variable.c)
+install(TARGETS ${TARGET} RUNTIME)
+target_include_directories(kv PUBLIC .)
+target_link_libraries(${TARGET} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_11)

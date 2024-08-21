@@ -1,0 +1,29 @@
+CC=gcc
+
+# Define your optimization flags.
+# Debugging (don't use)
+#OPTS=-g 
+# Standard
+OPTS=-O2 -fomit-frame-pointer
+
+# These defines add various features to the interpreter:
+#    -DUSE_QUETZAL:   Use the interpreter-independent QUETZAL format for save
+#                     files.
+#    -DSOUND_SUPPORT: Enable sound support.
+
+DEFS=-DUSE_QUETZAL -DSOUND_SUPPORT
+
+CFLAGS=$(OPTS) $(DEFS)
+LD=gcc
+LDFLAGS=-s
+
+OBJS=buffer.o djinit.o djinput.o djmouse.o djpic.o \
+	djsample.o djscreen.o djtext.o err.o fastmem.o files.o \
+	getopt.o hotkey.o input.o main.o math.o object.o \
+	process.o quetzal.o random.o redirect.o screen.o \
+	sound.o stream.o table.o text.o variable.o
+
+all: frotz.exe
+
+frotz.exe: $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $^
