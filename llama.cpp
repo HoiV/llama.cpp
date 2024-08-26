@@ -17734,6 +17734,7 @@ static uint32_t llama_model_ftype_rank(llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_Q6_K:   return 6;
         case LLAMA_FTYPE_MOSTLY_Q8_0: return 8;
         case LLAMA_FTYPE_MOSTLY_F16:  return 16;
+        case LLAMA_FTYPE_MOSTLY_BF16: return 16;
         case LLAMA_FTYPE_ALL_F32:     return 32;
         default: return 0;
     }
