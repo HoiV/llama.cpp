@@ -55,6 +55,7 @@ option(LLAMA_STATIC                     "llama: static link libraries"          
 option(LLAMA_NATIVE                     "llama: enable -march=native flag"                      ON)
 option(LLAMA_LTO                        "llama: enable link time optimization"                  OFF)
 option(LLAMA_CCACHE                     "llama: use ccache if available"                        ON)
+option(LLAMA_IQK                        "llama: use iqk lib"                                    OFF)
 
 # debug
 option(LLAMA_ALL_WARNINGS               "llama: enable all compiler warnings"                   ON)
@@ -406,6 +407,10 @@ if (LLAMA_LLAMAFILE)
 
     set(GGML_HEADERS_LLAMAFILE sgemm.h)
     set(GGML_SOURCES_LLAMAFILE sgemm.cpp)
+endif()
+
+if (LLAMA_IQK)
+    set (GGML_SOURCES_IQK iqk_mul_mat.cpp iqk_mul_mat.h iqk_quantize.cpp)
 endif()
 
 if (LLAMA_CUBLAS)
@@ -1150,8 +1155,15 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
         endif ()
         # Can't use LLAMA_AVX512 with Clang for MSVC
         # with error: conflicting types for '_m_prefetchw
-        if (LLAMA_AVX512 AND (NOT ${CMAKE_C_COMPILER_ID} MATCHES "Clang") AND (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
-            list(APPEND ARCH_FLAGS /arch:AVX512)
+        # if (LLAMA_AVX512 AND (NOT ${CMAKE_C_COMPILER_ID} MATCHES "Clang") AND (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
+        if (LLAMA_AVX512)
+            if (LLAMA_IQK)
+                message(STATUS "Using optimized iqk matrix multiplications")
+                add_compile_definitions(GGML_USE_IQK_MULMAT)
+            endif ()
+            list(APPEND ARCH_FLAGS /std:c++17)
+            add_compile_definitions(_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
+            list(APPEND ARCH_FLAGS /arch:AVX2 /arch:AVX512 /fp:fast /d2jumptablerdata /Zc:forScope /O2 /Ob1)
             # MSVC has no compile-time flags enabling specific
             # AVX512 extensions, neither it defines the
             # macros corresponding to the extensions.
@@ -1169,7 +1181,7 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
                 add_compile_definitions($<$<COMPILE_LANGUAGE:CXX>:__AVX512BF16__>)
             endif()
         elseif (LLAMA_AVX2)
-            list(APPEND ARCH_FLAGS /arch:AVX2)
+            list(APPEND ARCH_FLAGS /arch:AVX2 /fp:fast /d2jumptablerdata /Zc:forScope /O2 /Ob1)
         elseif (LLAMA_AVX)
             list(APPEND ARCH_FLAGS /arch:AVX)
         endif()
@@ -1307,6 +1319,7 @@ add_library(ggml OBJECT
             ggml-backend.h
             ggml-quants.c
             ggml-quants.h
+            ${GGML_SOURCES_IQK}
             ${GGML_SOURCES_CUDA}      ${GGML_HEADERS_CUDA}
             ${GGML_SOURCES_METAL}     ${GGML_HEADERS_METAL}
             ${GGML_SOURCES_RPC}       ${GGML_HEADERS_RPC}

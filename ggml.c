@@ -6,6 +6,10 @@
 #include "ggml-quants.h"
 #include "ggml.h"
 
+#if GGML_USE_IQK_MULMAT
+#include "iqk_mul_mat.h"
+#include "iqk_quantize.h"
+#endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h> // using malloc.h with MSC/MINGW
@@ -12418,6 +12422,7 @@ static void ggml_compute_forward_mul_mat(
 
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
+    ggml_from_float_t const from_float            = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
 
     GGML_ASSERT(ne0 == ne01);
@@ -12438,8 +12443,52 @@ static void ggml_compute_forward_mul_mat(
     // broadcast factors
     const int64_t r2 = ne12 / ne02;
     const int64_t r3 = ne13 / ne03;
-    UNUSED(r2);
-    UNUSED(r3);
+
+#if GGML_USE_IQK_MULMAT
+    if ((dst->type == GGML_TYPE_F32) && ((ne12*ne13)%nth == 0)) {
+        int counter = 0;
+        int64_t t1 = ggml_time_us();
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+                if (counter++ % nth == ith) {
+                    if (!iqk_mul_mat(ne01, ne11, ne00,
+                                src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                                src1->type, (const char *)src1->data + i12*nb12 + i13*nb13, nb11/ggml_type_size(src1->type),
+                                (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                                0, 1)) {
+                        goto IQK_MulMat_Not_Available1;
+                    }
+                }
+            }
+        }
+        int64_t t2 = ggml_time_us();
+        printf("[01]: iqk_mul_mat: (%s)*(%s)->(%s):%I64d-%I64d-%I64d\n"
+               "             type: (%s) (%s) (%s)\n",
+                           src0->name, src1->name, dst->name, ne01, ne11, ne00,
+                           ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type));
+        printf("   -- counter=[%d]:<%d> us\n", counter, (int)(t2 - t1));
+        return;
+    }
+    if (dst->type == GGML_TYPE_F32) {
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+                if (!iqk_mul_mat(ne01, ne11, ne00,
+                            src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                            src1->type, (const char *)src1->data + i12*nb12 + i13*nb13, nb11/ggml_type_size(src1->type),
+                            (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                            ith, nth)) {
+                    goto IQK_MulMat_Not_Available1;
+                } else {
+                    printf("[02]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
+                        ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
+                        ne01, ne11, ne00);
+                }
+            }
+        }
+        return;
+    }
+IQK_MulMat_Not_Available1:;
+#endif
 
     // nb01 >= nb00 - src0 is not transposed
     //   compute by src0 rows
@@ -12556,11 +12605,11 @@ static void ggml_compute_forward_mul_mat(
                 }
             }
         }
-#endif
+#endif // TMAC_USE_TVM_THREADPOOL
 
         return;
     }
-#endif
+#endif // GGML_USE_TMAC
 
 #if GGML_USE_LLAMAFILE
     const bool src1_cont = ggml_is_contiguous(src1);
@@ -12616,9 +12665,34 @@ UseGgmlGemm1:;
         return;
     }
 
+    const void* wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+
+#if GGML_USE_IQK_MULMAT
+    if (src1->type != vec_dot_type && dst->type == GGML_TYPE_F32) {
+        int64_t t1 = ggml_time_us();
+        const size_t row_size = ggml_row_size(vec_dot_type, ne10);
+        for (int64_t i13 = 0; i13 < ne13; i13++)
+            for (int64_t i12 = 0; i12 < ne12; i12++)
+                if (!iqk_mul_mat(ne01, ne11, ne00,
+                            src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                            vec_dot_type, (const char *)wdata + (i12*ne11 + i13*ne12*ne11)*row_size, row_size/ggml_type_size(vec_dot_type),
+                            (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                            ith, nth)) {
+                    goto IQK_MulMat_Not_Available2;
+                } else {
+                    printf("[03]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
+                       ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
+                       ne01, ne11, ne00);
+                }
+        int64_t t2 = ggml_time_us();
+        printf("   -- [%s]-<%d> us\n", dst->name, (int)(t2 - t1));
+        return;
+    }
+IQK_MulMat_Not_Available2:;
+#endif
+
 #if GGML_USE_LLAMAFILE
     if (src1->type != vec_dot_type) {
-        const void* wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
         const size_t row_size = ggml_row_size(vec_dot_type, ne10);
 
         for (int64_t i13 = 0; i13 < ne13; i13++)
