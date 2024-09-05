@@ -562,6 +562,39 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
+// ******* WARNING: This is a simple version of this function to get perfavx.exe to run with a zo based dll.
+//
+
+void
+ggml_vec_dot_f16_f32(
+    int n,
+    float * s,
+    size_t bs,
+    const ggml_fp16_t * x,
+    size_t bx,
+    const float * y,
+    size_t by,
+    int nrc)
+{
+    UNUSED(n);
+    UNUSED(bs);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(nrc);
+
+    __m128 sum = _mm_set_ss(0.0);
+
+    for (int i = 0; i < n; i++) {
+        const float xf = GGML_FP16_TO_FP32(x[i]);
+
+        sum = _mm_fmadd_ss(_mm_set_ss(xf), _mm_set_ss(y[i]), sum);
+    }
+
+    *s = _mm_cvtss_f32(sum);
+}
+
+// ******* WARNING: 
+
 void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, ggml_fp16_t * restrict x, size_t bx, ggml_fp16_t * restrict y, size_t by, int nrc);
 static void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc);
