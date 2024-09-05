@@ -4646,6 +4646,28 @@ static inline int ggml_up(int n, int m) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ggml_init_tables(void)
+{
+    // initialize GELU, Quick GELU, SILU and EXP F32 tables
+    const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+
+    for (int i = 0; i < (1 << 16); ++i) {
+        union {
+            uint16_t u16;
+            ggml_fp16_t fp16;
+        } u = {i};
+        float f = ggml_table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(u.fp16);
+        ggml_table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
+        ggml_table_gelu_quick_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_quick_f32(f));
+    }
+
+    const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+
+    GGML_PRINT_DEBUG("%s: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+
+    return;
+}
+
 struct ggml_context * ggml_init(struct ggml_init_params params) {
     // make this function thread safe
     ggml_critical_section_start();
@@ -4657,23 +4679,8 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
         ggml_time_init();
 
         // initialize GELU, Quick GELU, SILU and EXP F32 tables
-        {
-            const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-            for (int i = 0; i < (1 << 16); ++i) {
-                union {
-                    uint16_t u16;
-                    ggml_fp16_t fp16;
-                } u = {i};
-                float f = ggml_table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(u.fp16);
-                ggml_table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
-                ggml_table_gelu_quick_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_quick_f32(f));
-            }
-
-            const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
-
-            GGML_PRINT_DEBUG("%s: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-        }
+        ggml_init_tables();
 
         // initialize g_state
         {
