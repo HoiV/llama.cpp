@@ -2039,8 +2039,6 @@ void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_acc1_f32: %I64d\n", n);
-
     if (xn) {
         GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
         GGML_F32_VEC ay[GGML_F32_ARR];
@@ -2088,7 +2086,6 @@ void ggml_vec_sub_f32(const int64_t n, float * z, const float * x, const float *
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_sub_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC ax[GGML_F32_ARR];
         GGML_F32_VEC ay[GGML_F32_ARR];
@@ -2226,7 +2223,6 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
     const int32_t xor_pat = 0x80000000;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_neg_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC vx = GGML_F32_VEC_SET1(*(float *)&xor_pat);
         GGML_F32_VEC ax[GGML_F32_ARR];
@@ -2373,7 +2369,6 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_div_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC ax[GGML_F32_ARR];
         GGML_F32_VEC ay[GGML_F32_ARR];
@@ -3066,7 +3061,7 @@ inline static void ggml_vec_dot_f16_unroll(const int n, const int xs, float * re
     }
 }
 
-inline static void ggml_vec_mad_f32(const int n, float * restrict y, const float * restrict x, const float v) {
+void ggml_vec_mad_f32(const int n, float * restrict y, const float * restrict x, const float v) {
 #if defined(GGML_SIMD)
     const int np = (n & ~(GGML_F32_STEP - 1));
 
@@ -3097,7 +3092,7 @@ inline static void ggml_vec_mad_f32(const int n, float * restrict y, const float
 #endif
 }
 
-inline static void ggml_vec_mad_f16(const int n, ggml_fp16_t * restrict y, const ggml_fp16_t * restrict x, const float v) {
+void ggml_vec_mad_f16(const int n, ggml_fp16_t * restrict y, const ggml_fp16_t * restrict x, const float v) {
 #if defined(GGML_SIMD)
     const int np = (n & ~(GGML_F16_STEP - 1));
 
@@ -3129,7 +3124,7 @@ inline static void ggml_vec_mad_f16(const int n, ggml_fp16_t * restrict y, const
 }
 
 // xs and vs are byte strides of x and v
-inline static void ggml_vec_mad_f32_unroll(const int n, const int xs, const int vs, float * restrict y, const float * restrict xv, const float * restrict vv) {
+void ggml_vec_mad_f32_unroll(const int n, const int xs, const int vs, float * restrict y, const float * restrict xv, const float * restrict vv) {
 
     const float * restrict x[GGML_VEC_MAD_UNROLL];
     const float * restrict v[GGML_VEC_MAD_UNROLL];
@@ -4650,6 +4645,28 @@ static inline int ggml_up(int n, int m) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ggml_init_tables(void)
+{
+    // initialize GELU, Quick GELU, SILU and EXP F32 tables
+    const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
+
+    for (int i = 0; i < (1 << 16); ++i) {
+        union {
+            uint16_t u16;
+            ggml_fp16_t fp16;
+        } u = {i};
+        float f = ggml_table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(u.fp16);
+        ggml_table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
+        ggml_table_gelu_quick_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_quick_f32(f));
+    }
+
+    const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
+
+    GGML_PRINT_DEBUG("%s: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
+
+    return;
+}
+
 struct ggml_context * ggml_init(struct ggml_init_params params) {
     // make this function thread safe
     ggml_critical_section_start();
@@ -4661,23 +4678,8 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
         ggml_time_init();
 
         // initialize GELU, Quick GELU, SILU and EXP F32 tables
-        {
-            const uint64_t t_start = ggml_time_us(); UNUSED(t_start);
 
-            for (int i = 0; i < (1 << 16); ++i) {
-                union {
-                    uint16_t u16;
-                    ggml_fp16_t fp16;
-                } u = {i};
-                float f = ggml_table_f32_f16[i] = GGML_COMPUTE_FP16_TO_FP32(u.fp16);
-                ggml_table_gelu_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_f32(f));
-                ggml_table_gelu_quick_f16[i] = GGML_FP32_TO_FP16(ggml_gelu_quick_f32(f));
-            }
-
-            const uint64_t t_end = ggml_time_us(); UNUSED(t_end);
-
-            GGML_PRINT_DEBUG("%s: GELU, Quick GELU, SILU and EXP tables initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
-        }
+        ggml_init_tables();
 
         // initialize g_state
         {
