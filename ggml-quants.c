@@ -3944,7 +3944,7 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 
 //===================================== Q8_K ==============================================
 
-void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict y, uint64_t k) {
+void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict y, int64_t k) {
     assert(k % QK_K == 0);
     const int32_t nb = k / QK_K;
 

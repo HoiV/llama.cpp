@@ -12422,7 +12422,6 @@ static void ggml_compute_forward_mul_mat(
 
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
-    ggml_from_float_t const from_float            = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
 
     GGML_ASSERT(ne0 == ne01);
