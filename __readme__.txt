@@ -87,3 +87,99 @@ To get static libs: e:\Xbox-B612\src\llama.cpp>cmake .. -DBUILD_SHARED_LIBS=OFF 
 The default is to generate ggml.dll and llama.dll
 ************************************************************************************
 
+D:\llama.cpp\llama.cpf_clang\build>cmake .. -T CLangCL -DBUILD_SHARED_LIBS=ON -DGGML_STATIC=OFF
+-- Building for: Visual Studio 17 2022
+-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.22631.
+-- The C compiler identification is Clang 17.0.3 with MSVC-like command-line
+-- The CXX compiler identification is Clang 17.0.3 with MSVC-like command-line
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.31.0.vfs.0.1")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Could NOT find OpenMP_C (missing: OpenMP_C_FLAGS OpenMP_C_LIB_NAMES)
+-- Could NOT find OpenMP_CXX (missing: OpenMP_CXX_FLAGS OpenMP_CXX_LIB_NAMES)
+-- Could NOT find OpenMP (missing: OpenMP_C_FOUND OpenMP_CXX_FOUND)
+CMake Warning at CMakeLists.txt:312 (message):
+  OpenMP not found
+
+
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with LLAMA_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: AMD64
+-- CMAKE_GENERATOR_PLATFORM:
+-- x86 detected
+-- Performing Test HAS_AVX_1
+-- Performing Test HAS_AVX_1 - Failed
+-- Performing Test HAS_AVX_2
+-- Performing Test HAS_AVX_2 - Success
+-- Performing Test HAS_AVX2_1
+-- Performing Test HAS_AVX2_1 - Failed
+-- Performing Test HAS_AVX2_2
+-- Performing Test HAS_AVX2_2 - Success
+-- Performing Test HAS_FMA_1
+-- Performing Test HAS_FMA_1 - Failed
+-- Performing Test HAS_FMA_2
+-- Performing Test HAS_FMA_2 - Success
+-- Performing Test HAS_AVX512_1
+-- Performing Test HAS_AVX512_1 - Failed
+-- Performing Test HAS_AVX512_2
+-- Performing Test HAS_AVX512_2 - Success
+-- Configuring done (17.2s)
+-- Generating done (0.4s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    GGML_STATIC
+
+
+-- Build files have been written to: D:/llama.cpp/llama.cpf_clang/build
+
+D:\llama.cpp\llama.cpf_clang\build>cmake --build . -j 12 --config RelWithDebInfo --target llama-bench
+MSBuild version 17.11.2+c078802d4 for .NET Framework
+
+  1>Checking Build System
+  Generating build details from Git
+  -- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.31.0.vfs.0.1")
+  Building Custom Rule D:/llama.cpp/llama.cpf_clang/common/CMakeLists.txt
+  build_info.vcxproj -> D:\llama.cpp\llama.cpf_clang\build\common\build_info.dir\RelWithDebInfo\build_info.lib
+...
+D:\llama.cpp\llama.cpf_clang\unicode.cpp(18,20): warning : unused function 'unicode_cpts_to_utf8' [-Wunused-function] [
+D:\llama.cpp\llama.cpf_clang\build\llama.vcxproj]
+  Auto build dll exports
+  llama.vcxproj -> D:\llama.cpp\llama.cpf_clang\build\bin\RelWithDebInfo\llama.dll
+  Building Custom Rule D:/llama.cpp/llama.cpf_clang/common/CMakeLists.txt
+D:\llama.cpp\llama.cpf_clang\common\grammar-parser.cpp(413,17): warning : unused function 'print_rule_binary' [-Wunused
+-function] [D:\llama.cpp\llama.cpf_clang\build\common\common.vcxproj]
+D:\llama.cpp\llama.cpf_clang\common\json-schema-to-grammar.cpp(122,20): warning : unused function 'repeat' [-Wunused-fu
+nction] [D:\llama.cpp\llama.cpf_clang\build\common\common.vcxproj]
+  common.vcxproj -> D:\llama.cpp\llama.cpf_clang\build\common\RelWithDebInfo\common.lib
+  Building Custom Rule D:/llama.cpp/llama.cpf_clang/examples/llama-bench/CMakeLists.txt
+  llama-bench.vcxproj -> D:\llama.cpp\llama.cpf_clang\build\bin\RelWithDebInfo\llama-bench.exe
+
+D:\llama.cpp\llama.cpf_clang\build>dir bin\RelWithDebInfo
+ Volume in drive D is New Volume
+ Volume Serial Number is 8030-7123
+
+ Directory of D:\llama.cpp\llama.cpf_clang\build\bin\RelWithDebInfo
+
+09/03/2024  12:09 PM    <DIR>          .
+09/03/2024  12:08 PM    <DIR>          ..
+09/03/2024  12:09 PM           973,312 llama-bench.exe
+09/03/2024  12:09 PM         8,359,936 llama-bench.pdb
+09/03/2024  12:09 PM         2,469,376 llama.dll
+09/03/2024  12:09 PM        10,575,872 llama.pdb
+               4 File(s)     22,378,496 bytes
+               2 Dir(s)  1,397,066,555,392 bytes free

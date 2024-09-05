@@ -5,6 +5,10 @@
 #include "ggml-quants.h"
 #include "ggml.h"
 
+#if GGML_USE_IQK_MULMAT
+#include "iqk_mul_mat.h"
+#include "iqk_quantize.h"
+#endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h> // using malloc.h with MSC/MINGW
@@ -1731,7 +1735,7 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
         if (np) {
             do {
                 for (int64_t j = 0; j < GGML_F16_ARR; j++) {
-                    ax[j] = _mm_loadu_ph(x + i + j * GGML_F16_EPR);
+                    ax[j] = _mm_loadu_si128((__m128i *)(x + i + j * GGML_F16_EPR));
                     ay[j] = _mm256_cvtph_ps(ax[j]);
                     _mm256_storeu_ps((y + i + j * GGML_F16_EPR), ay[j]); 
                 }
@@ -1742,7 +1746,7 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
 
         if (xn > np) {
             do {
-                ax[0] = _mm_loadu_ph(x + i);
+                ax[0] = _mm_loadu_si128((__m128i *)(x + i));
                 ay[0] = _mm256_cvtph_ps(ax[0]);
                 _mm256_storeu_ps((y + i), ay[0]); 
                 i += GGML_F16_EPR;
@@ -1769,7 +1773,7 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
 }
 
 void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
-#if defined(GGML_SIMD) 
+#if defined(GGML_SIMD)
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
@@ -1783,7 +1787,7 @@ void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
                 for (int64_t j = 0; j < GGML_F32_ARR; j++) {
                     ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
                     ay[j] = _mm256_cvtps_ph(ax[j], _MM_FROUND_TO_NEAREST_INT);
-                    _mm_storeu_ph((y + i + j * GGML_F32_EPR), ay[j]); 
+                    _mm_storeu_si128((__m128i *)(y + i + j * GGML_F32_EPR), ay[j]); 
                 }
 
                 i += GGML_F32_STEP;
@@ -1794,7 +1798,7 @@ void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
             do {
                 ax[0] = _mm256_loadu_ps(x + i);
                 ay[0] = _mm256_cvtps_ph(ax[0], _MM_FROUND_TO_NEAREST_INT);
-                _mm_storeu_ph((y + i), ay[0]); 
+                _mm_storeu_si128((__m128i *)(y + i), ay[0]); 
                 i += GGML_F32_EPR;
             } while (i < xn);
         }
@@ -13485,6 +13489,52 @@ void ggml_compute_forward_mul_mat(
     const int64_t r2 = ne12/ne02;
     const int64_t r3 = ne13/ne03;
 
+#if GGML_USE_IQK_MULMAT
+    if ((dst->type == GGML_TYPE_F32) && ((ne12*ne13)%nth == 0)) {
+        int counter = 0;
+        int64_t t1 = ggml_time_us();
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+                if (counter++ % nth == ith) {
+                    if (!iqk_mul_mat(ne01, ne11, ne00,
+                                src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                                src1->type, (const char *)src1->data + i12*nb12 + i13*nb13, nb11/ggml_type_size(src1->type),
+                                (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                                0, 1)) {
+                        goto IQK_MulMat_Not_Available1;
+                    }
+                }
+            }
+        }
+        int64_t t2 = ggml_time_us();
+        printf("[01]: iqk_mul_mat: (%s)*(%s)->(%s):%I64d-%I64d-%I64d\n"
+               "             type: (%s) (%s) (%s)\n",
+                           src0->name, src1->name, dst->name, ne01, ne11, ne00,
+                           ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type));
+        printf("   -- counter=[%d]:<%d> us\n", counter, (int)(t2 - t1));
+        return;
+    }
+    if (dst->type == GGML_TYPE_F32) {
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+                if (!iqk_mul_mat(ne01, ne11, ne00,
+                            src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                            src1->type, (const char *)src1->data + i12*nb12 + i13*nb13, nb11/ggml_type_size(src1->type),
+                            (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                            ith, nth)) {
+                    goto IQK_MulMat_Not_Available1;
+                } else {
+                    printf("[02]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
+                        ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
+                        ne01, ne11, ne00);
+                }
+            }
+        }
+        return;
+    }
+IQK_MulMat_Not_Available1:;
+#endif
+
     // nb01 >= nb00 - src0 is not transposed
     //   compute by src0 rows
 
@@ -13601,7 +13651,7 @@ void ggml_compute_forward_mul_mat(
         GGML_ASSERT(src1_type == GGML_TYPE_F32);
 
         //
-        // Distribute the src1 converion over all threads.
+        // Distribute the src1 conversion over all threads.
         //
 
         const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
@@ -13633,6 +13683,34 @@ void ggml_compute_forward_mul_mat(
         row_size = ggml_row_size(src1_type, ne10);
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
+
+#if GGML_USE_IQK_MULMAT
+    const void * wdata_iqk = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+
+    if ((src1->type != vec_dot_type) && (dst->type == GGML_TYPE_F32)) {
+        int64_t t1 = ggml_time_us();
+        const size_t row_size = ggml_row_size(vec_dot_type, ne10);
+        for (int64_t i13 = 0; i13 < ne13; i13++) {
+            for (int64_t i12 = 0; i12 < ne12; i12++) {
+                if (!iqk_mul_mat(ne01, ne11, ne00,
+                            src0->type, (const char *)src0->data + i12/r2*nb02 + i13/r3*nb03, nb01/ggml_type_size(src0->type),
+                            vec_dot_type, (const char *)wdata_iqk + (i12*ne11 + i13*ne12*ne11)*row_size, row_size/ggml_type_size(vec_dot_type),
+                            (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
+                            ith, nth)) {
+                    goto IQK_MulMat_Not_Available2;
+                } else {
+                    printf("[03]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
+                       ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
+                       ne01, ne11, ne00);
+                }
+            }
+        }
+        int64_t t2 = ggml_time_us();
+        printf("   -- [%s]-<%d> us\n", dst->name, (int)(t2 - t1));
+        return;
+    }
+IQK_MulMat_Not_Available2:;
+#endif
 
     // Compute the blocking factor based on the number of elements in a row. The
     // goal of the blocking factor is to localize cache residency by limiting the
@@ -14410,7 +14488,7 @@ void ggml_compute_forward_reshape(
 
 void ggml_compute_forward_view(
         const struct ggml_compute_params * params,
-        const struct ggml_tensor * dst) {
+        struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
@@ -14420,7 +14498,7 @@ void ggml_compute_forward_view(
 
 void ggml_compute_forward_permute(
         const struct ggml_compute_params * params,
-        const struct ggml_tensor * dst) {
+        struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
@@ -14430,7 +14508,7 @@ void ggml_compute_forward_permute(
 
 void ggml_compute_forward_transpose(
         const struct ggml_compute_params * params,
-        const struct ggml_tensor * dst) {
+        struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
@@ -14440,7 +14518,7 @@ void ggml_compute_forward_transpose(
 
 static void ggml_compute_forward_get_rows_q(
         const struct ggml_compute_params * params,
-              struct ggml_tensor * dst) {
+        struct ggml_tensor * dst) {
     UNUSED(params);
 
     const struct ggml_tensor * src0 = dst->src[0];
@@ -20264,7 +20342,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 
             shared->node = node;
 
-            const n_tasks = node->n_tasks;
+            const int n_tasks = node->n_tasks;
             shared->n_tasks = n_tasks;
             shared->b0 = n_tasks; 
             shared->b1 = n_tasks;
@@ -20546,8 +20624,13 @@ static enum ggml_status ggml_graph_compute_parallel(struct ggml_compute_state * 
 bool ggml_use_omp = false;
 
 void ggml_select_omp(void) {
+#if !defined(__clang__)
     ggml_use_omp = true;
     printf("********** omp selected ************\n");
+#else
+    // With CLang OPENMP package could not be located
+    ggml_use_omp = false;
+#endif
 }
 
 enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
@@ -20574,7 +20657,9 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     int n_threads = cplan->n_threads;
 
+#if !defined(__clang__) && defined(GGML_USE_OPENMP) // CLang does not have OPENMP support
     n_threads = MIN(n_threads, omp_get_max_threads());
+#endif
 
     struct ggml_compute_state_shared state_shared = {
         .n_active = n_threads,
@@ -20618,6 +20703,8 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     int compute_status = GGML_STATUS_SUCCESS;
     if (ggml_use_omp) {
+#if !defined(__clang__)
+
         if (n_threads > 1) {
             #pragma omp parallel num_threads(n_threads)
             {
@@ -20626,6 +20713,8 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
         } else {
             ggml_graph_compute_thread(&workers[0]);
         }
+
+#endif
 
     } else {
         for (int j = n_threads; j > 1; j -= 1) {

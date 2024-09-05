@@ -413,7 +413,19 @@ extern "C" {
         GGML_TYPE_F64     = 28,
         GGML_TYPE_IQ1_M   = 29,
         GGML_TYPE_BF16    = 30,
-        GGML_TYPE_COUNT,
+        GGML_TYPE_Q4_0_4_4 = 31,
+        GGML_TYPE_Q4_0_4_8 = 32,
+        GGML_TYPE_Q4_0_8_8 = 33,
+        GGML_TYPE_IQ1_BN  = 34,
+        GGML_TYPE_IQ2_BN  = 35,
+        GGML_TYPE_Q8_K64  = 36,
+        GGML_TYPE_IQ2_K   = 37,
+        GGML_TYPE_IQ3_K   = 38,
+        GGML_TYPE_IQ4_K   = 39,
+        GGML_TYPE_IQ5_K   = 40,
+        GGML_TYPE_IQ6_K   = 41,
+        GGML_TYPE_IQ2_TN  = 42,
+         GGML_TYPE_COUNT,
     };
 
     // precision

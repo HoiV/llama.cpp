@@ -636,6 +636,8 @@ int main(int argc, char ** argv) {
                     }
 
                 } else {
+                    // no custom promts
+        
                     client.response += token_str;
                     client.sampled = id;
         
