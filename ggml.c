@@ -2082,7 +2082,6 @@ void ggml_vec_sub_f32(const int64_t n, float * z, const float * x, const float *
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_sub_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC ax[GGML_F32_ARR];
         GGML_F32_VEC ay[GGML_F32_ARR];
@@ -2220,7 +2219,6 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
     const int32_t xor_pat = 0x80000000;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_neg_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC vx = GGML_F32_VEC_SET1(*(float *)&xor_pat);
         GGML_F32_VEC ax[GGML_F32_ARR];
@@ -2367,7 +2365,6 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_div_f32: %I64d\n", n);
     if (xn) {
         GGML_F32_VEC ax[GGML_F32_ARR];
         GGML_F32_VEC ay[GGML_F32_ARR];
