@@ -2035,8 +2035,6 @@ void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
-    printf("ggml_vec_acc1_f32: %I64d\n", n);
-
     if (xn) {
         GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
         GGML_F32_VEC ay[GGML_F32_ARR];
