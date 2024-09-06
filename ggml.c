@@ -13055,7 +13055,6 @@ static void ggml_compute_forward_norm(
 // ggml_compute_forward_group_rms_norm
 
 static void ggml_compute_forward_rms_norm_f32(
-static void ggml_compute_forward_rms_norm_f32(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
 
