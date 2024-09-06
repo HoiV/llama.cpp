@@ -2537,9 +2537,58 @@ void ggml_vec_sum_f32(const int64_t n, float * s, const float * x) {
     *s = sumf;
 }
 
-float ggml_vec_sumsq_f32(const int64_t n, const float * x) {
+void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
     float sumf = 0.0f;
-#ifdef GGML_SIMD
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        __m512 sum[GGML_F32_ARR];
+        __m512 ax[GGML_F32_ARR];
+
+        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        sum[0] = _mm512_setzero_ps();
+        sum[1] = _mm512_setzero_ps();
+        sum[2] = _mm512_setzero_ps();
+        sum[3] = _mm512_setzero_ps();
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                    sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]); 
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = _mm512_loadu_ps(x + i);
+                sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]); 
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+    
+        // reduce sum0..sum3 to sum0
+        GGML_F32_VEC_REDUCE512(sumf, sum);
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            sumf += x[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#elif defined(__AVX2__)
+
     int64_t i = 0;
     const int64_t xn = (n & ~(GGML_F32_EPR - 1));
 
@@ -2548,9 +2597,10 @@ float ggml_vec_sumsq_f32(const int64_t n, const float * x) {
         GGML_F32_VEC ax[GGML_F32_ARR];
         const int64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
-            sum[j] = GGML_F32_VEC_ZERO;
-        }
+        sum[0] = _mm256_setzero_ps();
+        sum[1] = _mm256_setzero_ps();
+        sum[2] = _mm256_setzero_ps();
+        sum[3] = _mm256_setzero_ps();
 
         if (np) {
             do {
@@ -2582,14 +2632,17 @@ float ggml_vec_sumsq_f32(const int64_t n, const float * x) {
             i += 1;
         } while (i < n);
     }
+
 #else
+
     // scalar
     for (int64_t i = 0; i < n; ++i) {
         sumf += x[i] * x[i];
     }
-#endif
 
-    return sumf;
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
+
+    *s = sumf;
 }
 
 void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
@@ -13037,7 +13090,9 @@ static void ggml_compute_forward_rms_norm_f32(
                 float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
                 ggml_vec_cpy_f32(ne00, y, x); 
 
-                const float mean = ggml_vec_sumsq_f32(ne00, x) * recip;
+                float sum;
+                ggml_vec_sumsq_f32(ne00, &sum, x);
+                const float mean = sum * recip;
                 const float scale = 1.0f /sqrtf(mean + eps);
                 ggml_vec_scale_f32(ne00, y, scale);
             }
