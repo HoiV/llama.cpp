@@ -57,6 +57,7 @@ else()
     add_subdirectory(batchslm)
     add_subdirectory(mjZ)
     add_subdirectory(bZM)
+    add_subdirectory(perfavx)
 endif()
 
 #    add_subdirectory(frotz)
