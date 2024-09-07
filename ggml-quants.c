@@ -2752,7 +2752,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
         const uint32_t kmask2 = 0x0f0f0f0f;
         const uint32_t kmask4 = 0xc0c0c0c0;
 
-#if 0 // def __AVX512F__
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
         const __m128i kmaskq = _mm_set1_epi8(0xf);
 
@@ -2761,7 +2761,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
         const uint64_t kmaskq = 0x0f0f0f0f0f0f0f0full;
         const __m128i qiz = _mm_setzero_si128();
 
-#endif // __AVX512F__
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
         union {
             uint32_t utmp[4];
@@ -2798,7 +2798,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
             const float d1 = (float)sm.scale[j] * d;
             const float m1 = (float)sm.mins[j] * min;
 
-#if 0 // def __AVX512F__
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
             const __m512 d1v = _mm512_broadcastss_ps(_mm_load_ss(&d1));
             const __m512 m1v = _mm512_broadcastss_ps(_mm_load_ss(&m1));
@@ -2833,7 +2833,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
                 _mm256_storeu_ps(y + (k * 8), y1);
             }
 
-#endif // __AVX512F__
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
             y += 32;
 
@@ -2844,7 +2844,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
             const float d2 = (float)sm.scale[j + 1] * d;
             const float m2 = (float)sm.mins[j + 1] * min;
 
-#if 0 // def __AVX512F__
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
             const __m512 d2v = _mm512_broadcastss_ps(_mm_load_ss(&d2));
             const __m512 m2v = _mm512_broadcastss_ps(_mm_load_ss(&m2));
@@ -2880,7 +2880,7 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
                 _mm256_storeu_ps(y + (k * 8), y2);
             }
 
-#endif // __AVX512F__
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
             q += 4;
             y += 32;
@@ -2902,9 +2902,9 @@ void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int6
             q += 32; is += 2;
         }
 
-#endif // __AVX__
+#endif // defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
-#else
+#else // QK_K == 256
 
         const uint8_t * q = x[i].qs;
 
