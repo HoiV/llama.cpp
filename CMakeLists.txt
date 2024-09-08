@@ -1125,6 +1125,8 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
                 list(APPEND ARCH_FLAGS /fp:fast /d2jumptablerdata)
             endif()
             message(STATUS "Enable AVX512 support")
+            message(STATUS "Add flag to generate AVX512 intrinsincs")
+            add_compile_definitions(__GEN_AVX512__)
             list(APPEND ARCH_FLAGS /arch:AVX2 /arch:AVX512 /Zc:forScope /O2 /Ob1)
             # MSVC has no compile-time flags enabling specific
             # AVX512 extensions, neither it defines the
