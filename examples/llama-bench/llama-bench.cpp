@@ -207,7 +207,7 @@ static const cmd_params cmd_params_defaults = {
     /* type_k               */ {GGML_TYPE_F16},
     /* type_v               */ {GGML_TYPE_F16},
     /* n_threads            */ {cpu_get_num_math()},
-    /* n_gpu_layers         */ {99},
+    /* n_gpu_layers         */ {0},
     /* rpc_servers          */ {""},
     /* split_mode           */ {LLAMA_SPLIT_MODE_LAYER},
     /* main_gpu             */ {0},
