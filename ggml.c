@@ -2201,7 +2201,7 @@ void ggml_vec_scale_f32(const int n, float * y, const float   v) {
 #endif
 }
 
-inline static void ggml_vec_scale_f16(const int n, ggml_fp16_t * y, const float v) {
+void ggml_vec_scale_f16(const int n, ggml_fp16_t * y, const float v) {
 #if defined(GGML_SIMD)
     const int np = (n & ~(GGML_F16_STEP - 1));
 
@@ -2637,13 +2637,15 @@ inline static void ggml_vec_sum_f16_ggf(const int n, float * s, const ggml_fp16_
 //
 
 void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
-    float sumf = 0.0f;
+    __m128 sumf = _mm_setzero_ps();
+    __m128 xv;
 
     for (int64_t i = 0; i < n; ++i) {
-        sumf += x[i] * x[i];
+        xv = _mm_load_ss(&x[i]);
+        sumf = _mm_fmadd_ss(xv, xv, sumf);
     }
 
-    *s = sumf;
+    _mm_store_ss(s, sumf);
 }
 
 inline static void ggml_vec_sum_bf16_ggf(const int n, float * s, const ggml_bf16_t * x) {
