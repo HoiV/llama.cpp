@@ -4011,33 +4011,105 @@ void ggml_vec_scale_f32(const int64_t n, float * y, const float v) {
 
 }
 
-inline static void ggml_vec_scale_f16(const int n, ggml_fp16_t * y, const float v) {
-#if defined(GGML_SIMD)
-    const int np = (n & ~(GGML_F16_STEP - 1));
+void ggml_vec_scale_f16(const int n, ggml_fp16_t * y, const float v) {
 
-    GGML_F16_VEC vx = GGML_F16_VEC_SET1(v);
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    GGML_F16_VEC ay[GGML_F16_ARR];
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F16_EPR16 - 1));  
 
-    for (int i = 0; i < np; i += GGML_F16_STEP) {
-        for (int j = 0; j < GGML_F16_ARR; j++) {
-            ay[j] = GGML_F16_VEC_LOAD(y + i + j*GGML_F16_EPR, j);
-            ay[j] = GGML_F16_VEC_MUL(ay[j], vx);
+    if (xn) {
+        __m512 vx = _mm512_set1_ps(v);
+        __m512 ay[GGML_F16_ARR];
+        __m256i az[GGML_F16_ARR];
 
-            GGML_F16_VEC_STORE(y + i + j*GGML_F16_EPR, ay, j);
+        const int64_t np = (n & ~(GGML_F16_STEP16 - 1));
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F16_ARR; j++) {
+                    ay[j] = _mm512_cvtph_ps(_mm256_loadu_si256((__m256i const *)(y + i + j * GGML_F16_EPR16)));
+                    ay[j] = _mm512_mul_ps(ay[j], vx);
+                    az[j] = _mm512_cvtps_ph(ay[j], _MM_FROUND_TO_NEAREST_INT);
+                    _mm256_storeu_si256((__m256i *)(y + i + j * GGML_F16_EPR16), az[j]); 
+                } 
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ay[0] = _mm512_cvtph_ps(_mm256_loadu_si256((__m256i const *)(y + i)));
+                ay[0] = _mm512_mul_ps(ay[0], vx);
+                az[0] = _mm512_cvtps_ph(ay[0], _MM_FROUND_TO_NEAREST_INT);  
+                _mm256_storeu_si256((__m256i *)(y + i), az[0]); 
+                i += GGML_F16_EPR16;
+            } while (i < xn);
         }
     }
 
     // leftovers
-    for (int i = np; i < n; ++i) {
-        y[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(y[i])*v);
+    if (n & (GGML_F16_EPR16 - 1)) {
+        do {
+            y[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(y[i]) * v);
+            i += 1;
+        } while (i < n);
     }
+
+#elif defined(__AVX2__)
+
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F16_EPR - 1));  
+
+    if (xn) {
+        __m256 vx = _mm256_set1_ps(v);
+        __m256 ay[GGML_F16_ARR];
+        __m128i az[GGML_F16_ARR];
+
+        const int64_t np = (n & ~(GGML_F16_STEP - 1));
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F16_ARR; j++) {
+                    ay[j] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const *)(y + i + j * GGML_F16_EPR)));
+                    ay[j] = _mm256_mul_ps(ay[j], vx);
+                    az[j] = _mm256_cvtps_ph(ay[j], _MM_FROUND_TO_NEAREST_INT);
+                    _mm_storeu_si128((__m128i *)(y + i + j * GGML_F16_EPR), az[j]); 
+                } 
+    
+                i += GGML_F16_STEP;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ay[0] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i const *)(y + i)));
+                ay[0] = _mm256_mul_ps(ay[0], vx);
+                az[0] = _mm256_cvtps_ph(ay[0], _MM_FROUND_TO_NEAREST_INT);
+                _mm_storeu_si128((__m128i *)(y + i), az[0]);
+                i += GGML_F16_EPR;
+            } while (i < xn);
+        }
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR - 1)) {
+        do {
+            y[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(y[i]) * v);
+            i += 1;
+        } while (i < n);
+    }
+
 #else
+
     // scalar
-    for (int i = 0; i < n; ++i) {
-        y[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(y[i])*v);
+    for (int64_t i = 0; i < n; ++i) {
+        y[i] = GGML_FP32_TO_FP16(GGML_FP16_TO_FP32(y[i]) * v);
     }
-#endif
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
+
 }
 
 inline static void ggml_vec_norm_f32 (const int n, float * s, const float * x) { ggml_vec_dot_f32(n, s, 0, x, 0, x, 0, 1); *s = sqrtf(*s);   }

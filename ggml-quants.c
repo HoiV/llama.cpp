@@ -3856,11 +3856,10 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
 
     for (int64_t i = 0; i < nb; i++) {
 
-        float max = 0;
-        float amax = 0;
+        int32_t max = 0;
+        int32_t amax = 0;
 
         for (int j = 0; j < QK_K; ++j) {
-            float ax = fabsf(x[j]);
 
             //
             // Compare absolute value of ax (x[j]) with the absolute value of amax.
@@ -3882,9 +3881,10 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
             //      and not nans or underflowed values.
             //
 
-            if (*((int32_t *)(&ax)) > *((int32_t *)(&amax))) {
-                amax = ax;
-                max = x[j];
+            const int32_t amaxi = *((int32_t *)&x[j]) & 0x7fffffff;
+            if (amaxi > amax) {
+                amax = amaxi;
+                max = *((int32_t *)&x[j]);
             }
         }
 
@@ -3909,10 +3909,10 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
             goto next_block;
         }
 
-        //const float iscale = -128.f/max;
+        //const float iscale = -128.f/ *((float *)&max);
         // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
 
-        const float iscale = -127.f / max;
+        const float iscale = -127.f / *((float *)&max);
 
         //
         // This value is a magic value, that when added to an intermediate float quant value
@@ -7430,7 +7430,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
         const __m128i prod = _mm_madd_epi16(_mm256_extracti128_si256(mins_and_scales, 1), q8s);
 
         const __m128 prod_m = _mm_mul_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod));
-        acc = _mm256_add_ps(acc, _mm256_insertf32x4(zero256, prod_m, 0));
+        acc = _mm256_add_ps(acc, _mm256_insertf128_ps(zero256, prod_m, 0));
 
         __m256i sumi = _mm256_setzero_si256();
 
