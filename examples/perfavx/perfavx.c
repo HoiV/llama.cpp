@@ -308,7 +308,16 @@ ggml_vec_max_f32 (
     float * s,
     const float * x);
 
-typedef void (*PFN_ggml_vec_scale_f32)(const int32_t, float * y, const float v);
+typedef void (*PFN_ggml_vec_scale_f16)(const int32_t, ggml_fp16_t *, const float);
+PFN_ggml_vec_scale_f16 pfn_ggml_vec_scale_f16_AVX2;
+PFN_ggml_vec_scale_f16 pfn_ggml_vec_scale_f16_AVX512;
+void
+ggml_vec_scale_f16 (
+    const int64_t n,
+    ggml_fp16_t * y,
+    const float v);
+
+typedef void (*PFN_ggml_vec_scale_f32)(const int32_t, float *, const float);
 PFN_ggml_vec_scale_f32 pfn_ggml_vec_scale_f32_AVX2;
 PFN_ggml_vec_scale_f32 pfn_ggml_vec_scale_f32_AVX512;
 
@@ -401,6 +410,20 @@ ggml_vec_dot_q2_K_q8_K (
     size_t by,
     int nrc);
 
+typedef void (*PFN_ggml_vec_dot_q4_K_q8_K)(int, float *, size_t, const block_q4_K *, size_t, const block_q8_K *, size_t, int);
+PFN_ggml_vec_dot_q4_K_q8_K pfn_ggml_vec_dot_q4_K_q8_K_AVX2;
+PFN_ggml_vec_dot_q4_K_q8_K pfn_ggml_vec_dot_q4_K_q8_K_AVX512;
+void
+ggml_vec_dot_q4_K_q8_K (
+    int n,
+    float * s,
+    size_t bs,
+    const block_q4_K * x,
+    size_t bx,
+    const block_q8_K * y,
+    size_t by,
+    int nrc);
+
 typedef void (*PFN_ggml_vec_dot_q8_0_q8_0)(int, float *, size_t, const void *, size_t, const void *, size_t, int);
 PFN_ggml_vec_dot_q8_0_q8_0 pfn_ggml_vec_dot_q8_0_q8_0_AVX2;
 PFN_ggml_vec_dot_q8_0_q8_0 pfn_ggml_vec_dot_q8_0_q8_0_AVX512;
@@ -446,6 +469,7 @@ const uint32_t iter_vec_div_f32 = 100000;
 const uint32_t iter_vec_sum_f32 = 200000;
 const uint32_t iter_vec_sumsq_f32 = 200000;
 const uint32_t iter_vec_max_f32 = 200000;
+const uint32_t iter_vec_scale_f16 = 200000;
 const uint32_t iter_vec_scale_f32 = 200000;
 //const uint32_t iter_vec_mad_f16 = 1;
 const uint32_t iter_vec_mad_f16 = 200000;
@@ -453,6 +477,7 @@ const uint32_t iter_vec_mad_f32 = 200000;
 const uint32_t iter_vec_dot_f16 = 300000;
 const uint32_t iter_vec_dot_f32 = 300000;
 const uint32_t iter_vec_dot_f16_f32 = 300000;
+const uint32_t iter_vec_dot_q4_K_q8_K = 500000;
 const uint32_t iter_vec_dot_q2_K_q8_K = 500000;
 const uint32_t iter_vec_dot_q8_0_q8_0 = 500000;
 const uint32_t iter_dequantize_q4_k = 50000;
@@ -2983,6 +3008,148 @@ exit:
 }
 
 void
+vec_scale_f16 (
+    uint32_t vec_size,
+    benchmark_api *pbapi
+    )
+//
+// Compute the performance of the product of a vector elements and a scale value.
+//
+//  y[i] *= v
+//
+// N.B. This test repeatedly adds y[i] * v to y[i] which causes a modified y vector to be used
+//      on the next iteration where the y vector is again used as input. Although the value of
+//      the y vector is changing, the resultant number across za and zo ggml implementations
+//      can stil be compared correctly.
+//
+{
+    uint32_t i;
+    uint32_t j;
+    ggml_fp16_t * y;
+    float v;
+    //
+    // Announce perf test.
+    //
+    fprintf(logfile, "Running vec_scale_f16 performance test for AVX2/AVX512\n\n");
+
+    //
+    // Extract the API for benchmark
+    //
+
+    pfn_ggml_vec_scale_f16_AVX2 = (PFN_ggml_vec_scale_f16)pbapi->pfn_api_AVX2;
+    pfn_ggml_vec_scale_f16_AVX512 = (PFN_ggml_vec_scale_f16)pbapi->pfn_api_AVX512;
+
+    //
+    // Allocate vector of the specified size.
+    //
+    y = zalloc(vec_size * sizeof(ggml_fp16_t));
+    if (!y) {
+        fprintf(logfile, "  failed to allocate vector\n");
+        goto exit;
+    }
+    //
+    // Fill v and the y vector with random filtered values converted to float.
+    //
+    // N.B. the value of v is set to one to avoid overlowing/saturating individual values
+    //      of y[i].
+    //
+    v = 1.0f;
+    for (i = 0; i < vec_size; i += 1) {
+        y[i] = convert_f32_to_f16((float)(rand() % FLOAT_FILTER));
+    }
+    //
+    // Log raw data output.
+    //
+    log_raw_data(1, (void *)&v, "v value output:\n");
+    log_raw_data(vec_size / 2, (void *)y, "y vector input:");
+    //
+    // Announce perf test.
+    //
+    fprintf(logfile, "Running vec_scale_f16 performance test for AVX2\n\n");
+    //
+    // Run the test multiple times to get rid of outliers
+    //
+    int64_t best_time_AVX2 = MAXLONG64;
+    for (j = 0; j < iter_repeat; j += 1) {
+        //
+        // Compute the time to do iter_vec_ssale_f16 summation of the product of vector
+        // elements and v.
+        //
+    
+        const int64_t start_time = pfn_ggml_time_us();
+        for (i = 0; i < iter_vec_scale_f16; i += 1) {
+            pfn_ggml_vec_scale_f16_AVX2(vec_size, y, v);
+        }
+    
+        const int64_t total_time = pfn_ggml_time_us() - start_time;
+        if (total_time < best_time_AVX2) {
+            best_time_AVX2 = total_time;
+        }
+    }
+ 
+    //
+    // Report the total time in microseconds.
+    //
+ 
+    fprintf(logfile, "  total time for %d iterations %zdus\n\n",
+            iter_vec_scale_f16,
+            best_time_AVX2);
+    //
+    // Log raw data output.
+    //
+    log_raw_data(vec_size / 2, (void *)y, "y vector output:");
+    //
+    // Announce perf test.
+    //
+    fprintf(logfile, "Running vec_scale_f16 performance test for AVX512\n\n");
+    //
+    // Run the test multiple times for AVX512 to get rid of outliers
+    //
+    int64_t best_time_AVX512 = MAXLONG64;
+    for (j = 0; j < iter_repeat; j += 1) {
+        //
+        // Compute the time to do iter_vec_ssale_f16 summation of the product of vector
+        // elements and v.
+        //
+        const int64_t start_time = pfn_ggml_time_us();
+        for (i = 0; i < iter_vec_scale_f16; i += 1) {
+            pfn_ggml_vec_scale_f16_AVX512(vec_size, y, v);
+        }
+    
+        const int64_t total_time = pfn_ggml_time_us() - start_time;
+        if (total_time < best_time_AVX512) {
+            best_time_AVX512 = total_time;
+        }
+    }
+ 
+    //
+    // Report the total time in microseconds.
+    //
+ 
+    fprintf(logfile, "  total time for %d iterations %zdus\n\n",
+            iter_vec_scale_f16,
+            best_time_AVX512);
+ 
+    //
+    // Log raw data output.
+    //
+    log_raw_data(vec_size / 2, (void *)y, "y vector output:");
+    //
+    // Report percent increase from AVX2 to AVX512.
+    //
+    // N.B. Avoid division by zero.
+    //
+    best_time_AVX2 = max(1, best_time_AVX2); 
+    fprintf(logfile, "  vec_scale_f16: percent increase AVX2->AVX512 %zd%%\n\n",
+            (best_time_AVX2 - best_time_AVX512) * 100 / best_time_AVX2);
+exit:
+    if (y) {
+        zfree(y);
+    }
+    return;
+}
+
+void
 vec_scale_f32 (
     uint32_t vec_size,
     benchmark_api *pbapi
@@ -4295,7 +4462,7 @@ vec_dot_q2_K_q8_K (
 //
 // Compute the performance of summation of the product of q2/q8 vector elements.
 //
-//  sum = q2x[i] * q8y[i]
+//  sum += q2x[i] * q8y[i]
 //
 
 {
@@ -4312,7 +4479,7 @@ vec_dot_q2_K_q8_K (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_dot_q2_K_q8_K performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_dot_q2_K_q8_K performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4322,7 +4489,7 @@ vec_dot_q2_K_q8_K (
     pfn_ggml_vec_dot_q2_K_q8_K_AVX512 = (PFN_ggml_vec_dot_q2_K_q8_K)pbapi->pfn_api_AVX512;
 
     //
-    // Allocate f16 and f32 vectors of the specified size.
+    // Allocate vectors of the specified size.
     //
 
     x = zalloc(vec_size * sizeof(float));
@@ -4337,7 +4504,7 @@ vec_dot_q2_K_q8_K (
     //
     // Fill the x and y vectors with random filtered values converted to float.
     //
-    // N.B. Make every other one negative.
+    // N.B. Make every other y[i] negative.
 
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % 256);
@@ -4465,6 +4632,199 @@ exit:
 
     if (q2x) {
         zfree(q2x);
+    }
+
+    if (q8y) {
+        zfree(q8y);
+    }
+}
+
+void
+vec_dot_q4_K_q8_K (
+    uint32_t vec_size,
+    benchmark_api *pbapi
+    )
+
+//
+// Compute the performance of summation of the product of q2/q8 vector elements.
+//
+//  sum += q4x[i] * q8y[i]
+//
+
+{
+
+    uint32_t i;
+    uint32_t j;
+    float * x;
+    float * y;
+    float sum;
+    block_q4_K * q4x;
+    block_q8_K * q8y;
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_q4_K_q8_K performance test for AVX2/AVX512\n\n");
+
+    //
+    // Extract the API for benchmark
+    //
+
+    pfn_ggml_vec_dot_q4_K_q8_K_AVX2 = (PFN_ggml_vec_dot_q4_K_q8_K)pbapi->pfn_api_AVX2;
+    pfn_ggml_vec_dot_q4_K_q8_K_AVX512 = (PFN_ggml_vec_dot_q4_K_q8_K)pbapi->pfn_api_AVX512;
+
+    //
+    // Allocate vectors of the specified size.
+    //
+
+    x = zalloc(vec_size * sizeof(float));
+    y = zalloc(vec_size * sizeof(float));
+    q4x = zalloc(vec_size / QK_K * sizeof(block_q4_K));
+    q8y = zalloc(vec_size / QK_K * sizeof(block_q8_K));
+    if (!x || !y || !q4x || !q8y) {
+        fprintf(logfile, "  failed to allocate vectors \n");
+        goto exit;
+    }
+
+    //
+    // Fill the x and y vectors with random filtered values converted to float.
+    //
+    // N.B. Make every other y[i] negative.
+    //
+
+    for (i = 0; i < vec_size; i += 1) {
+        x[i] = (float)(rand() % 256);
+        y[i] = (float)(rand() % FLOAT_FILTER);
+        if (i & 1) {
+            y[i] = -y[i];
+        }
+    }
+
+    //
+    // Log generated raw x and y data.
+    //
+
+    log_raw_data(vec_size, (void *)x, "q4 float x data:");
+    log_raw_data(vec_size, (void *)y, "q8 float y data:");
+
+    //
+    // quantize the x and y vectors of float.
+    //
+    // N.B. The quantization routine for both AVX2 and AVX512 is identically the same.
+    //
+
+    pfn_quantize_row_q4_K_AVX512(x, q4x, vec_size);
+    pfn_quantize_row_q8_K_AVX512(y, q8y, vec_size);
+
+    //
+    // log q4 and q8 quant data.
+    //
+
+    log_q4_quant_data(vec_size, (void *)q4x);
+    log_q8_quant_data(vec_size, (void *)q8y);
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_q4_K_q8_K performance test for AVX2\n\n");
+
+    //
+    // Run the test multiple times to get rid of outliers.
+    //
+
+    int64_t best_time_AVX2 = MAXLONG64;
+
+    for (j = 0; j < iter_repeat; j += 1) {
+
+        //
+        // Compute the time to do iter_vec_dot_q4_K_q8_K summation of the product of vector elements.
+        //
+    
+        const int64_t start_time = pfn_ggml_time_us();
+        for (i = 0; i < iter_vec_dot_q4_K_q8_K; i += 1) {
+            pfn_ggml_vec_dot_q4_K_q8_K_AVX2(vec_size, &sum, 0, q4x, 0, q8y, 0, 1);
+        }
+    
+        const int64_t total_time = pfn_ggml_time_us() - start_time;
+
+        if (total_time < best_time_AVX2) {
+            best_time_AVX2 = total_time;
+        }
+    }
+ 
+    //
+    // Report the total time in microseconds.
+    //
+ 
+    fprintf(logfile, "  total time for %d iterations %zdus\n\n",
+            iter_vec_dot_q4_K_q8_K,
+            best_time_AVX2);
+ 
+    fprintf(logfile, "vector sum of products %08x\n\n", *(uint32_t *)&sum);
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_q4_K_q8_K performance test for AVX512\n\n");
+
+    //
+    // Run the test multiple times to get rid of outliers.
+    //
+
+    int64_t best_time_AVX512 = MAXLONG64;
+
+    for (j = 0; j < iter_repeat; j += 1) {
+
+        //
+        // Compute the time to do iter_vec_dot_q4_K_q8_K summation of the product of vector elements.
+        //
+    
+        const int64_t start_time = pfn_ggml_time_us();
+        for (i = 0; i < iter_vec_dot_q4_K_q8_K; i += 1) {
+            pfn_ggml_vec_dot_q4_K_q8_K_AVX512(vec_size, &sum, 0, q4x, 0, q8y, 0, 1);
+        }
+    
+        const int64_t total_time = pfn_ggml_time_us() - start_time;
+
+        if (total_time < best_time_AVX512) {
+            best_time_AVX512 = total_time;
+        }
+    }
+ 
+    //
+    // Report the total time in microseconds.
+    //
+ 
+    fprintf(logfile, "  total time for %d iterations %zdus\n\n",
+            iter_vec_dot_q4_K_q8_K,
+            best_time_AVX512);
+ 
+    fprintf(logfile, "vector sum of products %08x\n\n", *(uint32_t *)&sum);
+
+    //
+    // Report percent increase from AVX2 to AVX512.
+    //
+    // N.B. Avoid division by zero.
+    //
+
+    best_time_AVX2 = max(1, best_time_AVX2);
+    fprintf(logfile, "  vec_dot_q4_K_q8_K: percent increase AVX2->AVX512 %zd%%\n\n",
+            (best_time_AVX2 - best_time_AVX512) * 100 / best_time_AVX2);
+
+exit:
+    if (x) {
+        zfree(x);
+    }
+
+    if (y) {
+        zfree(y);
+    }
+
+    if (q4x) {
+        zfree(q4x);
     }
 
     if (q8y) {
@@ -4683,6 +5043,7 @@ main (
         { "ggml_vec_sum_f32", (void *) vec_sum_f32, NULL, NULL },
         { "ggml_vec_sumsq_f32", (void *) vec_sumsq_f32, NULL, NULL },
         { "ggml_vec_max_f32", (void *) vec_max_f32, NULL, NULL },
+        { "ggml_vec_scale_f16", (void *) vec_scale_f16, NULL, NULL },
         { "ggml_vec_scale_f32", (void *) vec_scale_f32, NULL, NULL },
         { "ggml_vec_mad_f16", (void *) vec_mad_f16, NULL, NULL },
         { "ggml_vec_mad_f32", (void *) vec_mad_f32, NULL, NULL },
@@ -4692,6 +5053,7 @@ main (
         { "ggml_vec_dot_f32", (void *) vec_dot_f32, NULL, NULL },
         { "ggml_vec_dot_f16_f32", (void *) vec_dot_f16_f32, NULL, NULL },
         { "ggml_vec_dot_q2_K_q8_K", (void *) vec_dot_q2_K_q8_K, NULL, NULL },
+        { "ggml_vec_dot_q4_K_q8_K", (void *) vec_dot_q4_K_q8_K, NULL, NULL },
         { "ggml_vec_dot_q8_0_q8_0", (void *) vec_dot_q8_0_q8_0, NULL, NULL },
     };
 
@@ -4882,7 +5244,7 @@ main (
     // between runs and between avx2 and avx512.
     //
 
-    srand(47);
+    srand(997);
 
     //
     // Compute the performance of various avx code paths.
