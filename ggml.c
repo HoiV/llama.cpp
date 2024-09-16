@@ -13449,6 +13449,7 @@ static void ggml_compute_forward_relu(
 static void ggml_compute_forward_sigmoid_f32(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
+    UNUSED(params);
 
     const struct ggml_tensor * src0 = dst->src[0];
 
