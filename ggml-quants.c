@@ -3934,8 +3934,8 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
 
     for (int64_t i = 0; i < nb; i++) {
 
-        int32_t max = 0;
-        int32_t amax = 0;
+        uint32_t max = 0;
+        uint32_t amax = 0;
 
         for (int j = 0; j < QK_K; ++j) {
 
@@ -3959,10 +3959,12 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
             //      and not nans or underflowed values.
             //
 
-            const int32_t amaxi = *((int32_t *)&x[j]) & 0x7fffffff;
+            uint32_t maxi = *((uint32_t *)&x[j]);
+            uint32_t amaxi = maxi & 0x7fffffff;
+
             if (amaxi > amax) {
                 amax = amaxi;
-                max = *((int32_t *)&x[j]);
+                max = maxi;
             }
         }
 
@@ -3975,14 +3977,13 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
             // N.B. This results in overall better code quality for this function.
             //
 
-            *((int64_t *)&(y[i].qs)[0]) = 0;
-            *((int64_t *)&(y[i].qs)[8]) = 0;
-            *((int64_t *)&(y[i].qs)[16]) = 0;
-            *((int64_t *)&(y[i].qs)[24]) = 0;
-            *((int64_t *)&(y[i].qs)[32]) = 0;
-            *((int64_t *)&(y[i].qs)[40]) = 0;
-            *((int64_t *)&(y[i].qs)[48]) = 0;
-            *((int64_t *)&(y[i].qs)[56]) = 0;
+            __m512 zv = _mm512_setzero();
+
+            *((__m512 *)&(y[i].qs)[0]) = zv;
+            *((__m512 *)&(y[i].qs)[64]) = zv;
+            *((__m512 *)&(y[i].qs)[128]) = zv;
+            *((__m512 *)&(y[i].qs)[192]) = zv;
+
 //            memset(y[i].qs, 0, QK_K);
             goto next_block;
         }

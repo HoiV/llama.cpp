@@ -477,8 +477,8 @@ const uint32_t iter_vec_mad_f32 = 200000;
 const uint32_t iter_vec_dot_f16 = 300000;
 const uint32_t iter_vec_dot_f32 = 300000;
 const uint32_t iter_vec_dot_f16_f32 = 300000;
-const uint32_t iter_vec_dot_q4_K_q8_K = 500000;
 const uint32_t iter_vec_dot_q2_K_q8_K = 500000;
+const uint32_t iter_vec_dot_q4_K_q8_K = 500000;
 const uint32_t iter_vec_dot_q8_0_q8_0 = 500000;
 const uint32_t iter_dequantize_q4_k = 50000;
 const uint32_t iter_quantize_q8_k = 50000;
@@ -788,12 +788,15 @@ vec_fp16_to_fp32 (
     uint32_t vec_size,
     benchmark_api *pbapi
     )
+
 //
 // Compute the performance of vector fp16 converted to float.
 //
 //  y[i] = x[i]
 //
+
 {
+
     uint32_t i;
     uint32_t j;
     ggml_fp16_t * x;
@@ -802,6 +805,7 @@ vec_fp16_to_fp32 (
     //
     // Announce perf test.
     //
+
     fprintf(logfile, "Running ggml_fp16_to_fp32 performance test for AVX2/AVX512\n\n");
 
     //
@@ -814,27 +818,36 @@ vec_fp16_to_fp32 (
     //
     // Allocate vectors of the required size.
     //
+
     x = zalloc(vec_size * sizeof(ggml_fp16_t));
     y = zalloc(vec_size * sizeof(float));
     if (!x || !y) {
         fprintf(logfile, "  failed to allocate vectors \n");
         goto exit;
     }
+
     //
     // Fill the vector x with random filtered ggml_fp16_t values.
     //
+
     for (i = 0; i < vec_size; i += 1) {
         x[i] = convert_f32_to_f16((float)(rand() % FLOAT_FILTER));
     }
+
     //
     // Announce perf test.
     //
+
     fprintf(logfile, "Running ggml_fp16_to_fp32 performance test for AVX2\n\n");
+
     //
     // Run the test multiple times to get rid of outliers.
     //
+
     int64_t best_time_AVX2 = MAXLONG64;
+
     for (j = 0; j < iter_repeat; j += 1) {
+
         //
         // Compute the time to do iter_fp16_to_fp32 conversion of vector elements.
         //
@@ -1070,7 +1083,7 @@ vec_add_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_add_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_add_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1099,6 +1112,12 @@ vec_add_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_add_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1227,7 +1246,7 @@ vec_add1_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_add1_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_add1_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1255,6 +1274,12 @@ vec_add1_f32 (
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_add1_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1383,7 +1408,7 @@ vec_acc_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_acc_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_acc_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1411,6 +1436,12 @@ vec_acc_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_acc_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1539,7 +1570,7 @@ vec_acc1_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_acc1_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_acc1_f32 performance test for AVX2/512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1566,6 +1597,12 @@ vec_acc1_f32 (
     for (i = 0; i < vec_size; i += 1) {
         y[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_acc1_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1686,7 +1723,7 @@ vec_sub_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_sub_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_sub_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1715,6 +1752,12 @@ vec_sub_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_sub_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1843,7 +1886,7 @@ vec_set_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_set_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_set_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -1867,6 +1910,12 @@ vec_set_f32 (
     //
 
     v = (float)(rand() % FLOAT_FILTER);
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_set_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -1987,7 +2036,7 @@ vec_cpy_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_cpy_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_cpy_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2014,6 +2063,12 @@ vec_cpy_f32 (
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_cpy_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -2138,7 +2193,7 @@ vec_neg_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_neg_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_neg_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2172,6 +2227,12 @@ vec_neg_f32 (
 
         x[i] = (float)(xc);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_neg_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -2297,7 +2358,7 @@ vec_mul_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_mul_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_mul_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2326,6 +2387,12 @@ vec_mul_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_mul_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers. 
@@ -2451,7 +2518,7 @@ vec_div_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_div_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_div_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2480,6 +2547,12 @@ vec_div_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_div_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers. 
@@ -2604,7 +2677,7 @@ vec_sum_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_sum_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_sum_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2630,6 +2703,12 @@ vec_sum_f32 (
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_sum_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -2746,7 +2825,7 @@ vec_sumsq_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_sumsq_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_sumsq_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2772,6 +2851,12 @@ vec_sumsq_f32 (
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_sumsq_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -2888,7 +2973,7 @@ vec_max_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_max_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_max_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -2914,6 +2999,12 @@ vec_max_f32 (
     for (i = 0; i < vec_size; i += 1) {
         x[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_max_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -3177,7 +3268,7 @@ vec_scale_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_scale_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_scale_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -3214,6 +3305,12 @@ vec_scale_f32 (
 
     log_raw_data(1, (void *)&v, "v value output:\n");
     log_raw_data(vec_size, (void *)y, "y vector output:");
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_scale_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -3346,7 +3443,7 @@ vec_mad_f16 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_mad_f16 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_mad_f16 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -3388,6 +3485,12 @@ vec_mad_f16 (
     log_raw_data(1, (void *)&v, "v value output:");
     log_raw_data(vec_size / 2, (void *)x, "x vector output:");
     log_raw_data(vec_size / 2, (void *)y, "y vector output:");
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_mad_f16 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -3524,7 +3627,7 @@ vec_mad_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_mad_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_mad_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -3553,6 +3656,12 @@ vec_mad_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER);
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_mad_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -3870,7 +3979,7 @@ quantize_q8_k (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running quantize_q8_k performance test for AVX2\n\n");
+    fprintf(logfile, "Running quantize_q8_k performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4031,7 +4140,7 @@ vec_dot_f16 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_dot_f16 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_dot_f16 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4059,6 +4168,12 @@ vec_dot_f16 (
         x[i] = convert_f32_to_f16((float)(rand() % FLOAT_FILTER));
         y[i] = convert_f32_to_f16((float)(rand() % FLOAT_FILTER)); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_f16 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -4180,7 +4295,7 @@ vec_dot_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_dot_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_dot_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4208,6 +4323,12 @@ vec_dot_f32 (
         x[i] = (float)(rand() % FLOAT_FILTER);
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers
@@ -4328,7 +4449,7 @@ vec_dot_f16_f32 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_dot_f16_f32 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_dot_f16_f32 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4356,6 +4477,12 @@ vec_dot_f16_f32 (
         x[i] = convert_f32_to_f16((float)(rand() % FLOAT_FILTER));
         y[i] = (float)(rand() % FLOAT_FILTER); 
     }
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_f16_f32 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -4536,6 +4663,12 @@ vec_dot_q2_K_q8_K (
 
     log_q2_quant_data(vec_size, (void *)q2x);
     log_q8_quant_data(vec_size, (void *)q8y);
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_q2_K_q8_K performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
@@ -4858,7 +4991,7 @@ vec_dot_q8_0_q8_0 (
     // Announce perf test.
     //
 
-    fprintf(logfile, "Running vec_dot_q8_0_q8_0 performance test for AVX2\n\n");
+    fprintf(logfile, "Running vec_dot_q8_0_q8_0 performance test for AVX2/AVX512\n\n");
 
     //
     // Extract the API for benchmark
@@ -4918,6 +5051,12 @@ vec_dot_q8_0_q8_0 (
 
     log_q8_0_quant_data(vec_size, (void *)q8x);
     log_q8_0_quant_data(vec_size, (void *)q8y);
+
+    //
+    // Announce perf test.
+    //
+
+    fprintf(logfile, "Running vec_dot_q8_0_q8_0 performance test for AVX2\n\n");
 
     //
     // Run the test multiple times to get rid of outliers.
