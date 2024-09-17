@@ -16741,7 +16741,7 @@ struct llama_context * llama_new_context_with_model(
             }
 
             // build worst-case graph
-            print_ctx_cpu_buffer(ctx);
+            // print_ctx_cpu_buffer(ctx);
             int n_tokens = (int)std::min(cparams.n_ctx, cparams.n_ubatch);
             int n_past = cparams.n_ctx - n_tokens;
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
@@ -16782,7 +16782,7 @@ struct llama_context * llama_new_context_with_model(
                 return nullptr;
             }
 
-            print_ctx_cpu_buffer(ctx);
+            // print_ctx_cpu_buffer(ctx);
             for (size_t i = 0; i < ctx->backends.size(); i++) {
                 ggml_backend_t backend = ctx->backends[i];
                 ggml_backend_buffer_type_t buft = backend_buft[i];
