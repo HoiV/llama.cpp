@@ -1436,5 +1436,9 @@ int main(int argc, char ** argv) {
 
     llama_backend_free();
 
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data();
+#endif // GGML_TENSOR_OP_PERF
+
     return 0;
 }
