@@ -14496,11 +14496,13 @@ void ggml_compute_forward_mul_mat(
             }
         }
         int64_t t2 = ggml_time_us();
+#if GGML_IQK_LOG
         printf("[01]: iqk_mul_mat: (%s)*(%s)->(%s):%I64d-%I64d-%I64d\n"
                "             type: (%s) (%s) (%s)\n",
                            src0->name, src1->name, dst->name, ne01, ne11, ne00,
                            ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type));
         printf("   -- counter=[%d]:<%d> us\n", counter, (int)(t2 - t1));
+#endif
         return;
     }
     if (dst->type == GGML_TYPE_F32) {
@@ -14513,9 +14515,11 @@ void ggml_compute_forward_mul_mat(
                             ith, nth)) {
                     goto IQK_MulMat_Not_Available1;
                 } else {
+#if GGML_IQK_LOG
                     printf("[02]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
                         ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
                         ne01, ne11, ne00);
+#endif
                 }
             }
         }
@@ -14541,7 +14545,7 @@ IQK_MulMat_Not_Available1:;
            ne00,
            ne01,
            ne02,
-           ne03,
+      4     ne03,
            nb00,
            nb01,
            nb02,
@@ -14688,14 +14692,18 @@ IQK_MulMat_Not_Available1:;
                             ith, nth)) {
                     goto IQK_MulMat_Not_Available2;
                 } else {
+#if GGML_IQK_LOG
                     printf("[03]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
                        ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
                        ne01, ne11, ne00);
+#endif
                 }
             }
         }
         int64_t t2 = ggml_time_us();
+#if GGML_IQK_LOG
         printf("   -- [%s]-<%d> us\n", dst->name, (int)(t2 - t1));
+#endif
         return;
     }
 IQK_MulMat_Not_Available2:;
