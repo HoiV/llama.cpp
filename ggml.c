@@ -566,40 +566,6 @@ void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restri
 void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, ggml_fp16_t * restrict x, size_t bx, ggml_fp16_t * restrict y, size_t by, int nrc);
 static void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc);
 
-//
-// ******* WARNING: This is a simple version of this function to get perfavx.exe to run with a zo based dll.
-//
-
-void
-ggml_vec_dot_f16_f32(
-    int n,
-    float * s,
-    size_t bs,
-    const ggml_fp16_t * x,
-    size_t bx,
-    const float * y,
-    size_t by,
-    int nrc)
-{
-    UNUSED(n);
-    UNUSED(bs);
-    UNUSED(bx);
-    UNUSED(by);
-    UNUSED(nrc);
-
-    __m128 sum = _mm_set_ss(0.0);
-
-    for (int i = 0; i < n; i++) {
-        const float xf = GGML_FP16_TO_FP32(x[i]);
-
-        sum = _mm_fmadd_ss(_mm_set_ss(xf), _mm_set_ss(y[i]), sum);
-    }
-
-    *s = _mm_cvtss_f32(sum);
-}
-
-// ******* WARNING: 
-
 static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     [GGML_TYPE_I2] = {
         .type_name                = "i2",
@@ -1846,6 +1812,101 @@ void ggml_vec_neg_f32 (const int n, float * y, const float * x)                 
 void ggml_vec_mul_f32 (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i]*y[i];   }
 void ggml_vec_div_f32 (const int n, float * z, const float * x, const float * y) { for (int i = 0; i < n; ++i) z[i]  = x[i]/y[i];   }
 
+//
+// ******* WARNING: This is a vectorized version of this function used only to enable
+//         perfavx.exe to run with a zo based dll. This function is not a part of the
+//         zo-ggml library.
+//
+
+void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y, const float * x) {
+    float sumf = 0.0f;
+
+#define GGML_F32_STEP8 32
+#define GGML_F32_EPR8 8
+
+#if defined(__AVX2__)
+
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F32_EPR8 - 1)); 
+
+    if (xn) {
+        __m256 vx = _mm256_set1_ps(mean);
+        __m256 sum[GGML_F32_ARR];
+        __m256 ax[GGML_F32_ARR];
+
+        const int64_t np = (n & ~(GGML_F32_STEP8 - 1));
+
+        sum[0] = _mm256_setzero_ps(); 
+        sum[1] = _mm256_setzero_ps(); 
+        sum[2] = _mm256_setzero_ps(); 
+        sum[3] = _mm256_setzero_ps();
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR8);
+                    ax[j] = _mm256_sub_ps(ax[j], vx);
+                    _mm256_storeu_ps(y + i + j * GGML_F32_EPR8, ax[j]);
+                    sum[j] = _mm256_fmadd_ps(ax[j], ax[j], sum[j]);
+                }
+    
+                i += GGML_F32_STEP8;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = _mm256_loadu_ps(x + i);
+                ax[0] = _mm256_sub_ps(ax[0], vx);
+                _mm256_storeu_ps(y + i, ax[0]);
+                sum[0] = _mm256_fmadd_ps(ax[0], ax[0], sum[0]);
+                i += GGML_F32_EPR8;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sum0
+
+        sum[0] = _mm256_add_ps(sum[0], sum[1]);
+        sum[2] = _mm256_add_ps(sum[2], sum[3]);
+        sum[0] = _mm256_add_ps(sum[0], sum[2]);
+
+        const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(sum[0]),
+                                     _mm256_extractf128_ps(sum[0], 1));
+
+        const __m128 t1 = _mm_hadd_ps(t0, t0);
+        sumf = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR8 - 1)) {
+        float bx;
+
+        do {
+            bx = x[i] - mean;
+            y[i] = bx;
+            sumf += bx * bx;
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
+    // scaler
+    for (int64_t i = 0; i < n; ++i) {
+        float bx;
+
+        bx = x[i] - mean;
+        y[i] = bx;
+        sumf += bx * bx;
+    }
+
+#endif // defined(__AVX2__)
+
+    *s = sumf;
+}
+
+// ******* WARNING:
+
 void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
    assert(nrc == 1);
    UNUSED(nrc);
@@ -1888,6 +1949,105 @@ void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restri
 
     *s = sumf;
 }
+
+//
+// ******* WARNING: This is an AVX2 vectorized version of this function used only to enable
+//         perfavx.exe to run with a zo based dll. The zo-ggml code is never built to turn
+//         on explicit AVX512 code generation.
+//
+
+void ggml_vec_dot_f16_f32(
+    const int64_t n,
+    float * s,
+    size_t bs,
+    const ggml_fp16_t * x,
+    size_t bx,
+    const float * y,
+    size_t by,
+    int nrc)
+{
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+
+#define GGML_F32_STEP8 32
+#define GGML_F32_EPR8 8
+
+    float sumf = 0.0;
+    int64_t i = 0;
+
+#if defined(__AVX2__)
+
+    const int64_t xn = (n & ~(GGML_F32_EPR8 - 1));
+
+    if (xn) {
+        __m256 sum[GGML_F32_ARR];
+        __m256 ax[GGML_F32_ARR];
+        __m256 ay[GGML_F32_ARR];
+
+        const int64_t np = (n & ~(GGML_F32_STEP8 - 1));
+
+        sum[0] = _mm256_setzero_ps();
+        sum[1] = _mm256_setzero_ps();
+        sum[2] = _mm256_setzero_ps();
+        sum[3] = _mm256_setzero_ps();
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i *)(x + i + j * GGML_F32_EPR8)));
+                    ay[j] = _mm256_loadu_ps(y + i + j * GGML_F32_EPR8);
+                    sum[j] = _mm256_fmadd_ps(ax[j], ay[j], sum[j]);
+                }
+    
+                i += GGML_F32_STEP8;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i *)(x + i)));
+                ay[0] = _mm256_loadu_ps(y + i);
+                sum[0] = _mm256_fmadd_ps(ax[0], ay[0], sum[0]);
+                i += GGML_F32_EPR8;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sumf
+
+        sum[0] = _mm256_add_ps(sum[0], sum[1]);
+        sum[2] = _mm256_add_ps(sum[2], sum[3]);
+        sum[0] = _mm256_add_ps(sum[0], sum[2]);
+
+        const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(sum[0]),
+                                     _mm256_extractf128_ps(sum[0], 1));
+
+        const __m128 t1 = _mm_hadd_ps(t0, t0);
+        sumf = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR8 - 1)) {
+        do {
+            sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
+    for (int64_t i = 0; i < n; ++i) {
+        sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
+    }
+
+#endif // defined(__AVX2__) 
+
+    *s = sumf;
+}
+
+// ******* WARNING: 
 
 static void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
@@ -10404,6 +10564,7 @@ static void ggml_compute_forward_mul(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
+    GGML_UNUSED(src1);
     GGML_ASSERT(src1->type == GGML_TYPE_F32 && "only f32 src1 supported for now");
 
     switch (src0->type) {
