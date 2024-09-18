@@ -3719,18 +3719,12 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 
 //===================================== Q8_K ==============================================
 
-<<<<<<< HEAD
 void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int32_t nb = k / QK_K;
-=======
-void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_t k) {
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
 
     const uint64_t nb = k / qk;
->>>>>>> b12938fa (More vectorizations for normsq and quantize_xxx)
 
 #if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
