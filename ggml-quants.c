@@ -864,77 +864,18 @@ void quantize_row_q8_0_reference(const float * restrict x, block_q8_0 * restrict
 }
 
 void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) {
-    assert(QK8_0 == 32);
-    assert(k % QK8_0 == 0);
-    const int nb = k / QK8_0;
+    uint64_t qk = QK8_0;
+
+    assert(qk == 32);
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
+#if defined(__AVX2__) || defined(__AVX512F__)
 
     block_q8_0 * restrict y = vy;
 
-#if defined(__ARM_NEON)
-    for (int i = 0; i < nb; i++) {
-        float32x4_t srcv [8];
-        float32x4_t asrcv[8];
-        float32x4_t amaxv[8];
-
-        for (int j = 0; j < 8; j++) srcv[j]  = vld1q_f32(x + i*32 + 4*j);
-        for (int j = 0; j < 8; j++) asrcv[j] = vabsq_f32(srcv[j]);
-
-        for (int j = 0; j < 4; j++) amaxv[2*j] = vmaxq_f32(asrcv[2*j], asrcv[2*j+1]);
-        for (int j = 0; j < 2; j++) amaxv[4*j] = vmaxq_f32(amaxv[4*j], amaxv[4*j+2]);
-        for (int j = 0; j < 1; j++) amaxv[8*j] = vmaxq_f32(amaxv[8*j], amaxv[8*j+4]);
-
-        const float amax = vmaxvq_f32(amaxv[0]);
-
-        const float d = amax / ((1 << 7) - 1);
-        const float id = d ? 1.0f/d : 0.0f;
-
-        y[i].d = GGML_FP32_TO_FP16(d);
-
-        for (int j = 0; j < 8; j++) {
-            const float32x4_t v  = vmulq_n_f32(srcv[j], id);
-            const int32x4_t   vi = vcvtnq_s32_f32(v);
-
-            y[i].qs[4*j + 0] = vgetq_lane_s32(vi, 0);
-            y[i].qs[4*j + 1] = vgetq_lane_s32(vi, 1);
-            y[i].qs[4*j + 2] = vgetq_lane_s32(vi, 2);
-            y[i].qs[4*j + 3] = vgetq_lane_s32(vi, 3);
-        }
-    }
-#elif defined(__wasm_simd128__)
-    for (int i = 0; i < nb; i++) {
-        v128_t srcv [8];
-        v128_t asrcv[8];
-        v128_t amaxv[8];
-
-        for (int j = 0; j < 8; j++) srcv[j]  = wasm_v128_load(x + i*32 + 4*j);
-        for (int j = 0; j < 8; j++) asrcv[j] = wasm_f32x4_abs(srcv[j]);
-
-        for (int j = 0; j < 4; j++) amaxv[2*j] = wasm_f32x4_max(asrcv[2*j], asrcv[2*j+1]);
-        for (int j = 0; j < 2; j++) amaxv[4*j] = wasm_f32x4_max(amaxv[4*j], amaxv[4*j+2]);
-        for (int j = 0; j < 1; j++) amaxv[8*j] = wasm_f32x4_max(amaxv[8*j], amaxv[8*j+4]);
-
-        const float amax = MAX(MAX(wasm_f32x4_extract_lane(amaxv[0], 0),
-                                   wasm_f32x4_extract_lane(amaxv[0], 1)),
-                               MAX(wasm_f32x4_extract_lane(amaxv[0], 2),
-                                   wasm_f32x4_extract_lane(amaxv[0], 3)));
-
-        const float d = amax / ((1 << 7) - 1);
-        const float id = d ? 1.0f/d : 0.0f;
-
-        y[i].d = GGML_FP32_TO_FP16(d);
-
-        for (int j = 0; j < 8; j++) {
-            const v128_t v  = wasm_f32x4_mul(srcv[j], wasm_f32x4_splat(id));
-            const v128_t vi = wasm_i32x4_trunc_sat_f32x4(v);
-
-            y[i].qs[4*j + 0] = wasm_i32x4_extract_lane(vi, 0);
-            y[i].qs[4*j + 1] = wasm_i32x4_extract_lane(vi, 1);
-            y[i].qs[4*j + 2] = wasm_i32x4_extract_lane(vi, 2);
-            y[i].qs[4*j + 3] = wasm_i32x4_extract_lane(vi, 3);
-        }
-    }
-#elif defined(__AVX2__) || defined(__AVX__)
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
         // Load elements into 4 AVX vectors
         __m256 v0 = _mm256_loadu_ps( x );
         __m256 v1 = _mm256_loadu_ps( x + 8 );
@@ -978,7 +919,6 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         __m256i i2 = _mm256_cvtps_epi32( v2 );
         __m256i i3 = _mm256_cvtps_epi32( v3 );
 
-#if defined(__AVX2__)
         // Convert int32 to int16
         i0 = _mm256_packs_epi32( i0, i1 );	// 0, 1, 2, 3,  8, 9, 10, 11,  4, 5, 6, 7, 12, 13, 14, 15
         i2 = _mm256_packs_epi32( i2, i3 );	// 16, 17, 18, 19,  24, 25, 26, 27,  20, 21, 22, 23, 28, 29, 30, 31
@@ -992,160 +932,15 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         i0 = _mm256_permutevar8x32_epi32( i0, perm );
 
         _mm256_storeu_si256((__m256i *)y[i].qs, i0);
+    }
+
 #else
-        // Since we don't have in AVX some necessary functions,
-        // we split the registers in half and call AVX2 analogs from SSE
-        __m128i ni0 = _mm256_castsi256_si128( i0 );
-        __m128i ni1 = _mm256_extractf128_si256( i0, 1);
-        __m128i ni2 = _mm256_castsi256_si128( i1 );
-        __m128i ni3 = _mm256_extractf128_si256( i1, 1);
-        __m128i ni4 = _mm256_castsi256_si128( i2 );
-        __m128i ni5 = _mm256_extractf128_si256( i2, 1);
-        __m128i ni6 = _mm256_castsi256_si128( i3 );
-        __m128i ni7 = _mm256_extractf128_si256( i3, 1);
 
-        // Convert int32 to int16
-        ni0 = _mm_packs_epi32( ni0, ni1 );
-        ni2 = _mm_packs_epi32( ni2, ni3 );
-        ni4 = _mm_packs_epi32( ni4, ni5 );
-        ni6 = _mm_packs_epi32( ni6, ni7 );
-        // Convert int16 to int8
-        ni0 = _mm_packs_epi16( ni0, ni2 );
-        ni4 = _mm_packs_epi16( ni4, ni6 );
-
-        _mm_storeu_si128((__m128i *)(y[i].qs +  0), ni0);
-        _mm_storeu_si128((__m128i *)(y[i].qs + 16), ni4);
-#endif
-    }
-#elif defined(__riscv_v_intrinsic)
-
-    size_t vl = __riscv_vsetvl_e32m4(QK8_0);
-
-    for (int i = 0; i < nb; i++) {
-        // load elements
-        vfloat32m4_t v_x   = __riscv_vle32_v_f32m4(x+i*QK8_0, vl);
-
-        vfloat32m4_t vfabs = __riscv_vfabs_v_f32m4(v_x, vl);
-        vfloat32m1_t tmp   = __riscv_vfmv_v_f_f32m1(0.0f, vl);
-        vfloat32m1_t vmax  = __riscv_vfredmax_vs_f32m4_f32m1(vfabs, tmp, vl);
-        float amax = __riscv_vfmv_f_s_f32m1_f32(vmax);
-
-        const float d = amax / ((1 << 7) - 1);
-        const float id = d ? 1.0f/d : 0.0f;
-
-        y[i].d = GGML_FP32_TO_FP16(d);
-
-        vfloat32m4_t x0 = __riscv_vfmul_vf_f32m4(v_x, id, vl);
-
-        // convert to integer
-        vint16m2_t   vi = __riscv_vfncvt_x_f_w_i16m2(x0, vl);
-        vint8m1_t    vs = __riscv_vncvt_x_x_w_i8m1(vi, vl);
-
-        // store result
-        __riscv_vse8_v_i8m1(y[i].qs , vs, vl);
-    }
-
-#elif defined(__POWER9_VECTOR__)
-    for (int i = 0; i < nb; i++) {
-        vector float srcv [8];
-        vector float asrcv[8];
-        vector float amaxv[8];
-        vector signed int vi[8];
-
-        for (int j = 0; j < 8; j++) srcv[j]  = vec_xl(0, x + i*32 + 4*j);
-        for (int j = 0; j < 8; j++) asrcv[j] = vec_abs(srcv[j]);
-
-        for (int j = 0; j < 4; j++) amaxv[2*j] = vec_max(asrcv[2*j], asrcv[2*j+1]);
-        for (int j = 0; j < 2; j++) amaxv[4*j] = vec_max(amaxv[4*j], amaxv[4*j+2]);
-        for (int j = 0; j < 1; j++) amaxv[8*j] = vec_max(amaxv[8*j], amaxv[8*j+4]);
-
-        const float amax = MAX(MAX(vec_extract(amaxv[0], 0),
-                                   vec_extract(amaxv[0], 1)),
-                               MAX(vec_extract(amaxv[0], 2),
-                                   vec_extract(amaxv[0], 3)));
-
-        const float d = amax / ((1 << 7) - 1);
-        const float id = d ? 1.0f/d : 0.0f;
-        const vector float vid = vec_splats(id);
-
-        y[i].d = GGML_FP32_TO_FP16(d);
-
-        for (int j = 0; j < 8; j++) {
-            const vector float v  = vec_round(vec_mul(srcv[j], vid));
-            vi[j] = vec_cts(v, 0);
-        }
-        vec_xst(vec_pack(vec_pack(vi[0], vi[1]), vec_pack(vi[2], vi[3])),  0, &y[i].qs[0]);
-        vec_xst(vec_pack(vec_pack(vi[4], vi[5]), vec_pack(vi[6], vi[7])), 16, &y[i].qs[0]);
-    }
-
-#elif defined(__loongarch_asx)
-    for (int i = 0; i < nb; i++) {
-        ft_union fi;
-        __m256 v0 = (__m256)__lasx_xvld( x , 0);
-        __m256 v1 = (__m256)__lasx_xvld( x , 32);
-        __m256 v2 = (__m256)__lasx_xvld( x , 64);
-        __m256 v3 = (__m256)__lasx_xvld( x , 96);
-        x += 32;
-
-        // Compute max(abs(e)) for the block
-        const __m256 sign_bit = __lasx_xvreplfr2vr_s( -0.0f );
-        __m256 max_abs = (__m256)__lasx_xvandn_v( (__m256i)sign_bit, (__m256i)v0 );
-        max_abs = __lasx_xvfmax_s( max_abs, (__m256)__lasx_xvandn_v( (__m256i)sign_bit, (__m256i)v1 ) );
-        max_abs = __lasx_xvfmax_s( max_abs, (__m256)__lasx_xvandn_v( (__m256i)sign_bit, (__m256i)v2 ) );
-        max_abs = __lasx_xvfmax_s( max_abs, (__m256)__lasx_xvandn_v( (__m256i)sign_bit, (__m256i)v3 ) );
-
-        __m128 max4 = __lsx_vfmax_s( lasx_extractf128( max_abs, 1 ), lasx_extractf128( max_abs , 0) );
-        max4 = __lsx_vfmax_s( max4, (__m128)__lsx_vpickod_d((__m128i) max4, (__m128i)max4 ) );
-        __m128 tmp = max4;
-        max4 = __lsx_vfmax_s( max4, (__m128)__lsx_vinsgr2vr_w(tmp, __lsx_vpickve2gr_w( max4, 1 ), 0 ));
-        fi.i = __lsx_vpickve2gr_w( (__m128i)max4, 0 );
-        const float max_scalar = fi.f;
-
-        // Quantize these floats
-        const float d = max_scalar / 127.f;
-        y[i].d = GGML_FP32_TO_FP16(d);
-        const float id = ( max_scalar != 0.0f ) ? 127.f / max_scalar : 0.0f;
-        const __m256 mul = (__m256)__lasx_xvreplfr2vr_s( id );
-
-        // Apply the multiplier
-        v0 = __lasx_xvfmul_s( v0, mul );
-        v1 = __lasx_xvfmul_s( v1, mul );
-        v2 = __lasx_xvfmul_s( v2, mul );
-        v3 = __lasx_xvfmul_s( v3, mul );
-
-        // Round to nearest integer
-        __m256i i0 = __lasx_xvftintrne_w_s( v0 );
-        __m256i i1 = __lasx_xvftintrne_w_s( v1 );
-        __m256i i2 = __lasx_xvftintrne_w_s( v2 );
-        __m256i i3 = __lasx_xvftintrne_w_s( v3 );
-
-        __m128i ni0 = lasx_extracti128( i0, 0 );
-        __m128i ni1 = lasx_extracti128( i0, 1);
-        __m128i ni2 = lasx_extracti128( i1, 0);
-        __m128i ni3 = lasx_extracti128( i1, 1);
-        __m128i ni4 = lasx_extracti128( i2, 0);
-        __m128i ni5 = lasx_extracti128( i2, 1);
-        __m128i ni6 = lasx_extracti128( i3, 0);
-        __m128i ni7 = lasx_extracti128( i3, 1);
-
-        // Convert int32 to int16
-        ni0 = lsx_packs_w( ni0, ni1 );
-        ni2 = lsx_packs_w( ni2, ni3 );
-        ni4 = lsx_packs_w( ni4, ni5 );
-        ni6 = lsx_packs_w( ni6, ni7 );
-        // Convert int16 to int8
-        ni0 = lsx_packs_h( ni0, ni2 );
-        ni4 = lsx_packs_h( ni4, ni6 );
-
-        __lsx_vst(ni0, (__m128i *)(y[i].qs +  0), 0);
-        __lsx_vst(ni4, (__m128i *)(y[i].qs + 16), 0);
-
-    }
-#else
     GGML_UNUSED(nb);
     // scalar
     quantize_row_q8_0_reference(x, y, k);
-#endif
+
+#endif  // defined(__AVX2__) || defined(__AVX512F__)
 }
 
 // reference implementation for deterministic creation of model files
@@ -1607,12 +1402,11 @@ void dequantize_row_q5_1(const block_q5_1 * restrict x, float * restrict y, int6
 }
 
 void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int64_t k) {
-    const uint32_t qk = QK8_0;
-    const uint32_t ql = k;
+    const uint64_t qk = QK8_0;
 
-    assert(ql % qk == 0);
+    assert(k % qk == 0);
 
-    const uint64_t nb = ql / qk;
+    const uint64_t nb = k / qk;
 
 #if defined(__AVX2__)
 
@@ -1924,8 +1718,11 @@ static inline void get_scale_min_k4(int j, const uint8_t * restrict q, uint8_t *
 //========================- 2-bit (de)-quantization
 
 void quantize_row_q2_K_reference(const float * restrict x, block_q2_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
     uint8_t L[QK_K];
     uint8_t Laux[16];
@@ -1935,7 +1732,7 @@ void quantize_row_q2_K_reference(const float * restrict x, block_q2_K * restrict
 
     const float q4scale = 15.f;
 
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
         float max_scale = 0; // as we are deducting the min, scales are always positive
         float max_min = 0;
         for (int j = 0; j < QK_K/16; ++j) {
@@ -1993,15 +1790,18 @@ void quantize_row_q2_K_reference(const float * restrict x, block_q2_K * restrict
     }
 }
 
-void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, uint32_t k) {
-    assert(k % QK_K == 0);
-    const int64_t nb = k / QK_K;
+void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, int64_t k) {
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
 #if QK_K == 256
 
 #ifdef __AVX2__
 
-    for (int64_t i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
         const float d = GGML_FP16_TO_FP32(x[i].d);
         const float min = GGML_FP16_TO_FP32(x[i].dmin);
 
@@ -2586,8 +2386,11 @@ size_t quantize_q3_K(const float * restrict src, void * restrict dst, int64_t nr
 // ====================== 4-bit (de)-quantization
 
 void quantize_row_q4_K_reference(const float * restrict x, block_q4_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
     uint8_t L[QK_K];
     uint8_t Laux[32];
@@ -2595,7 +2398,7 @@ void quantize_row_q4_K_reference(const float * restrict x, block_q4_K * restrict
     float mins[QK_K/32];
     float scales[QK_K/32];
 
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
         float max_scale = 0; // as we are deducting the min, scales are always positive
         float max_min = 0;
         for (int j = 0; j < QK_K/32; ++j) {
@@ -2658,10 +2461,13 @@ void quantize_row_q4_K_reference(const float * restrict x, block_q4_K * restrict
 }
 
 void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int64_t nb = k / QK_K;
+    const uint64_t qk = QK_K;
 
-    for (int64_t i = 0; i < nb; i++) {
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
+    for (uint64_t i = 0; i < nb; i++) {
 
         const float d = GGML_FP16_TO_FP32(x[i].d);
         const float min = GGML_FP16_TO_FP32(x[i].dmin);
@@ -3849,12 +3655,15 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 //===================================== Q8_K ==============================================
 
 void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int32_t nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
 #if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
-    for (int64_t i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
 
         uint32_t max = 0;
         uint32_t amax = 0;
@@ -4058,14 +3867,62 @@ next_block:
 }
 
 void dequantize_row_q8_K(const block_q8_K * restrict x, float * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int64_t nb = k / QK_K;
+    const uint64_t qk = QK_K;
 
-    for (int i = 0; i < nb; i++) {
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        const __m512 d = _mm512_set1_ps(x->d);
+        __m128i qs[4];
+        __m512 qp[4];
+
+        for (uint64_t l = 0; l < qk / 64; l += 1) {
+            for (uint64_t j = 0; j < 4; j++) {
+                qs[j] = _mm_loadu_si128((__m128i *)&x->qs[j * 16 + l * 64]);
+                qp[j] = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qs[j]));
+                qp[j] = _mm512_mul_ps(qp[j], d);
+                _mm512_storeu_ps(y + j * 16 + l * 64, qp[j]);
+            }
+        }
+
+        x += 1;
+        y += qk;
+    }
+
+#elif defined(__AVX2__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        const __m256 d = _mm256_set1_ps(x->d);
+        __m128i qs[4];
+        __m256 qp[4];
+
+        for (uint64_t l = 0; l < qk / 32; l += 1) {
+            for (uint64_t j = 0; j < 4; j++) {
+                qs[j] = _mm_loadu_si64((__m128i *)&x->qs[j * 8 + l * 32]);
+                qp[j] = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qs[j]));
+                qp[j] = _mm256_mul_ps(qp[j], d);
+                _mm256_storeu_ps(y + j * 8 + l * 32, qp[j]);
+            }
+        }
+
+        x += 1;
+        y += qk;
+    }
+
+#else
+
+    for (uint64_t i = 0; i < nb; i++) {
         for (int j = 0; j < QK_K; ++j) {
             *y++ = x[i].d * x[i].qs[j];
         }
     }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+
 }
 
 //===================================== Dot ptoducts =================================
@@ -13933,7 +13790,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float * restrict x, vo
         for (int i = 0; i < QK_K; ++i) sumx2 += xbl[i]*xbl[i];
         float sigma2 = 2*sumx2/QK_K;
 
-        for (int ib = 0; ib < QK_K/block_size; ++ib) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ++ib) {
             const float * xb = xbl + block_size*ib;
             if (quant_weights) {
                 const float * qw = quant_weights + QK_K*ibl + block_size*ib;
@@ -14055,7 +13912,7 @@ static void quantize_row_iq3_s_impl(int block_size, const float * restrict x, vo
         float d = max_scale/31;
         y[ibl].d = GGML_FP32_TO_FP16(d * 1.033f);
         float id = 1/d;
-        for (int ib = 0; ib < QK_K/block_size; ib += 2) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ib += 2) {
             int l1 = nearest_int(0.5f*(id*scales[ib+0]-1));
             l1 = MAX(0, MIN(15, l1));
             int l2 = nearest_int(0.5f*(id*scales[ib+1]-1));
@@ -14275,7 +14132,7 @@ static void quantize_row_iq1_s_impl(const float * restrict x, void * restrict vy
         for (int i = 0; i < QK_K; ++i) sumx2 += xbl[i]*xbl[i];
         float sigma2 = 2*sumx2/QK_K;
 
-        for (int ib = 0; ib < QK_K/block_size; ++ib) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ++ib) {
             const float * xb = xbl + block_size*ib;
             const float * qw = quant_weights + QK_K*ibl + block_size*ib;
             for (int i = 0; i < block_size; ++i) weight[i] = qw[i] * sqrtf(sigma2 + xb[i]*xb[i]);
@@ -14377,7 +14234,7 @@ static void quantize_row_iq1_s_impl(const float * restrict x, void * restrict vy
         float d = max_scale/15;
         y[ibl].d = GGML_FP32_TO_FP16(d*1.125f); // 1.125f is another fudge factor. Don't ask me why it is needed.
         float id = 1/d;
-        for (int ib = 0; ib < QK_K/block_size; ++ib) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ++ib) {
             int l = nearest_int(0.5f*(id*scales[ib]-1));
             l = MAX(0, MIN(7, l));
             if (shifts[ib] == -1) l |= 8;
@@ -14455,7 +14312,7 @@ static void quantize_row_iq1_m_impl(const float * restrict x, void * restrict vy
         for (int i = 0; i < QK_K; ++i) sumx2 += xbl[i]*xbl[i];
         float sigma2 = 2*sumx2/QK_K;
 
-        for (int ib = 0; ib < QK_K/block_size; ++ib) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ++ib) {
             const float * xb = xbl + block_size*ib;
             if (quant_weights) {
                 const float * qw = quant_weights + QK_K*ibl + block_size*ib;
@@ -14621,7 +14478,7 @@ static void quantize_row_iq1_m_impl(const float * restrict x, void * restrict vy
         float d = max_scale/15;
         float id = 1/d;
         float sumqx_f = 0, sumq2_f = 0;
-        for (int ib = 0; ib < QK_K/block_size; ++ib) {
+        for (uint64_t ib = 0; ib < QK_K/block_size; ++ib) {
             int l = nearest_int(0.5f*(id*scales[ib+0]-1));
             l = MAX(0, MIN(7, l));
             sc[ib/4] |= (l << 3*(ib%4));

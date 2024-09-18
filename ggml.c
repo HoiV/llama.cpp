@@ -2900,29 +2900,89 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
 
 }
 
-float ggml_vec_normsq_f32(const int64_t n, const float mean, float * y, const float * x) {
+void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y, const float * x) {
     float sumf = 0.0f;
-#ifdef GGML_SIMD
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
     int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
 
     if (xn) {
-        GGML_F32_VEC vx = GGML_F32_VEC_SET1(mean);
-        GGML_F32_VEC sum[GGML_F32_ARR];
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+        __m512 vx = _mm512_set1_ps(mean);
+        __m512 sum[GGML_F32_ARR];
+        __m512 ax[GGML_F32_ARR];
 
-        for (int64_t j = 0; j < GGML_F32_ARR; ++j) {
-            sum[j] = GGML_F32_VEC_ZERO;
-        }
+        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        sum[0] = _mm512_setzero_ps(); 
+        sum[1] = _mm512_setzero_ps(); 
+        sum[2] = _mm512_setzero_ps(); 
+        sum[3] = _mm512_setzero_ps();
 
         if (np) {
             do {
                 for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ax[j] = GGML_F32_VEC_SUB(ax[j], vx);
-                    GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ax[j]);
-                    sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ax[j]);
+                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                    ax[j] = _mm512_sub_ps(ax[j], vx);
+                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
+                    sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]);
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                ax[0] = _mm512_loadu_ps(x + i);
+                ax[0] = _mm512_sub_ps(ax[0], vx);
+                _mm512_storeu_ps(y + i, ax[0]);
+                sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]);
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sum0
+        GGML_F32_VEC_REDUCE512(sumf, sum); 
+    }
+
+    // leftovers
+    if (n & (GGML_F32_EPR16 - 1)) {
+        float bx;
+
+        do {
+            bx = x[i] - mean;
+            y[i] = bx;
+            sumf += bx * bx;
+            i += 1;
+        } while (i < n);
+    }
+
+#elif defined(__AVX2__)
+
+    int64_t i = 0;
+    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+
+    if (xn) {
+        __m256 vx = _mm256_set1_ps(mean);
+        __m256 sum[GGML_F32_ARR];
+        __m256 ax[GGML_F32_ARR];
+
+        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+
+        sum[0] = _mm256_setzero_ps(); 
+        sum[1] = _mm256_setzero_ps(); 
+        sum[2] = _mm256_setzero_ps(); 
+        sum[3] = _mm256_setzero_ps();
+
+        if (np) {
+            do {
+                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                    ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
+                    ax[j] = _mm256_sub_ps(ax[j], vx);
+                    _mm256_storeu_ps(y + i + j * GGML_F32_EPR, ax[j]);
+                    sum[j] = _mm256_fmadd_ps(ax[j], ax[j], sum[j]);
                 }
     
                 i += GGML_F32_STEP;
@@ -2931,16 +2991,16 @@ float ggml_vec_normsq_f32(const int64_t n, const float mean, float * y, const fl
 
         if (xn > np) {
             do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ax[0] = GGML_F32_VEC_SUB(ax[0], vx);
-                GGML_F32_VEC_STORE(y + i, ax[0]);
-                sum[0] = GGML_F32_VEC_FMA(sum[0], ax[0], ax[0]);
+                ax[0] = _mm256_loadu_ps(x + i);
+                ax[0] = _mm256_sub_ps(ax[0], vx);
+                _mm256_storeu_ps(y + i, ax[0]);
+                sum[0] = _mm256_fmadd_ps(ax[0], ax[0], sum[0]);
                 i += GGML_F32_EPR;
             } while (i < xn);
         }
 
         // reduce sum0..sum3 to sum0
-        GGML_F32_VEC_REDUCE(sumf, sum);
+        GGML_F32_VEC_REDUCE(sumf, sum); 
     }
 
     // leftovers
@@ -2954,7 +3014,9 @@ float ggml_vec_normsq_f32(const int64_t n, const float mean, float * y, const fl
             i += 1;
         } while (i < n);
     }
+
 #else
+
     // scaler
     for (int64_t i = 0; i < n; ++i) {
         float bx;
@@ -2964,9 +3026,9 @@ float ggml_vec_normsq_f32(const int64_t n, const float mean, float * y, const fl
         sumf += bx * bx;
     }
 
-#endif // GGML_SIMD
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
 
-    return sumf;
+    *s =sumf;
 }
 
 void ggml_vec_sum_f32(const int64_t n, float * s, const float * x) {
@@ -13892,7 +13954,10 @@ static void ggml_compute_forward_norm_f32(
                 const float mean = sum * recip;
 
                 float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
-                float variance = ggml_vec_normsq_f32(ne00, mean, y, x) * recip;
+
+                float sum2;
+                ggml_vec_normsq_f32(ne00, &sum2, mean, y, x);
+                float variance = sum2 * recip;
 
                 const float scale = 1.0f / sqrtf(variance + eps);
                 ggml_vec_scale_f32(ne00, y, scale);
@@ -20973,13 +21038,13 @@ int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
     case GGML_OP_FLASH_ATTN_BACK:
     case GGML_OP_CROSS_ENTROPY_LOSS:
     case GGML_OP_CROSS_ENTROPY_LOSS_BACK:
-    case GGML_OP_SOFT_MAX: // XBOX_INVESTIGATE (n_tasks = MIN(n_threads, ggml_nrows(node->src[0]));)
-    case GGML_OP_TIMESTEP_EMBEDDING: // XBOX_INVESTIGATE - missing (n_threads)
-    case GGML_OP_ARANGE: // XBOX_INVESTIGATE - missing (n_threads)
-    case GGML_OP_SUB: // XBOX_INVESTIGATE (n_tasks = 1)
-    case GGML_OP_FLASH_ATTN_EXT: // XBOX_INVESTIGATE - new (n_threads)
-    case GGML_OP_SSM_CONV: // XBOX_INVESTIGATE - new (n_threads)
-    case GGML_OP_SSM_SCAN: // XBOX_INVESTIGATE - new (n_threads)
+    case GGML_OP_SOFT_MAX:
+    case GGML_OP_TIMESTEP_EMBEDDING:
+    case GGML_OP_ARANGE:
+    case GGML_OP_SUB:
+    case GGML_OP_FLASH_ATTN_EXT:
+    case GGML_OP_SSM_CONV:
+    case GGML_OP_SSM_SCAN:
         {
             return n_threads;
         }
