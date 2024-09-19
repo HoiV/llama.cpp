@@ -409,12 +409,106 @@ bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b) {
 //
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
+
 static int64_t timer_freq = 0, timer_start = 0;
+
+//#define __USE_TIME_RECIP__
+
+#if defined(__USE_TIME_RECIP__)
+
+uint64_t ms_fraction;
+uint8_t ms_shift;
+
+uint64_t us_fraction;
+uint8_t us_shift;
+
+uint64_t
+ggml_compute_fraction (
+    uint64_t Numerator,
+    uint64_t Divisor,
+    uint8_t * Shift
+    )
+
+/*++
+
+Routine Description:
+
+    This function computes an unsigned 64-bit scaled fraction from the
+    specified unsigned numerator and unsigned divisor values. The result
+    can be used to performance division via multiplication.
+
+Arguments:
+
+    Numerator - Supplies the 64-bit unsigned fraction numerator.
+
+    Divisor - Supplies the 64-bit unsigned fraction divisor.
+
+    Shift - Supplies a pointer to a variable that receives the computed
+        shift count.
+
+Return Value:
+
+    The unsigned 64-bit scaled fraction is returned as the function value.
+
+--*/
+
+{
+
+    int64_t fraction;
+    uint8_t numberBits;
+    uint64_t remainder;
+
+    //
+    // Compute the 64-bit fractional value.
+    //
+
+    numberBits = 0;
+    remainder = Numerator;
+    fraction = 0;
+    while (fraction >= 0) {
+        numberBits += 1;
+        fraction <<= 1;
+        remainder <<= 1;
+        if (remainder >= Divisor) {
+            remainder -= Divisor;
+            fraction |= 1;
+        }
+    }
+
+    if (remainder != 0) {
+        if (fraction == 0xffffffffffffffffI64) {
+            fraction = 0x8000000000000000I64;
+            numberBits -= 1;
+
+        } else {
+            fraction += 1;
+        }
+    }
+
+    //
+    // Compute the shift count value and return the reciprocal fraction.
+    //
+
+    *Shift = numberBits - 64;
+    return fraction;
+}
+
+#endif // defined(__USE_TIME_RECIP__)
+
 void ggml_time_init(void) {
     if (!timer_freq) {
         LARGE_INTEGER t;
         QueryPerformanceFrequency(&t);
         timer_freq = t.QuadPart;
+
+#if defined(__USE_TIME_RECIP__)
+
+        ms_fraction = ggml_compute_fraction(1000, timer_freq, &ms_shift); 
+        us_fraction = ggml_compute_fraction(1000000, timer_freq, &us_shift);
+        printf("ms fraction multiplier is 0x%016I64x with right shift of %d\n", ms_fraction, ms_shift);
+        printf("us fraction multiplier is 0x%016I64x with right shift of %d\n", us_fraction, us_shift);
+
+#endif // (__USE_TIME_RECIP__)
 
         // The multiplication by 1000 or 1000000 below can cause an overflow if timer_freq
         // and the uptime is high enough.
@@ -423,16 +517,39 @@ void ggml_time_init(void) {
         timer_start = t.QuadPart;
     }
 }
+
 int64_t ggml_time_ms(void) {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
+
+#if defined(__USE_TIME_RECIP__)
+
+    return UnsignedMultiplyHigh(t.QuadPart - timer_start, ms_fraction) >> ms_shift;
+
+#else
+
     return ((t.QuadPart-timer_start) * 1000) / timer_freq;
+
+#endif // defined(__USE_TIME_RECIP__)
+
 }
+
 int64_t ggml_time_us(void) {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
+
+#if defined(__USE_TIME_RECIP__)
+
+    return UnsignedMultiplyHigh(t.QuadPart - timer_start, us_fraction) >> us_shift;
+
+#else
+
     return ((t.QuadPart-timer_start) * 1000000) / timer_freq;
+
+#endif // defined(__USE_TIME_RECIP__)
+
 }
+
 int64_t ggml_cycles(void) {
     return ggml_time_us();
 }
@@ -440,7 +557,9 @@ int64_t ggml_cycles(void) {
 int64_t ggml_cycles_per_ms(void) {
     return timer_freq / 1000;
 }
-#else
+
+#else // defined(_MSC_VER) || defined(__MINGW32__)
+
 void ggml_time_init(void) {}
 int64_t ggml_time_ms(void) {
     struct timespec ts;
@@ -461,7 +580,8 @@ int64_t ggml_cycles(void) {
 int64_t ggml_cycles_per_ms(void) {
     return CLOCKS_PER_SEC/1000;
 }
-#endif
+
+#endif defined(_MSC_VER) || defined(__MINGW32__)
 
 #ifdef GGML_PERF
 #define ggml_perf_time_ms()       ggml_time_ms()
@@ -21562,7 +21682,11 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     int n_threads = cplan->n_threads;
 
-//    n_threads = MIN(n_threads, omp_get_max_threads());
+#ifdef GGML_USE_OPENMP
+    if (ggml_use_omp) {
+        n_threads = MIN(n_threads, omp_get_max_threads());
+    }
+#endif
 
     struct ggml_compute_state_shared state_shared = {
         .n_active = n_threads,

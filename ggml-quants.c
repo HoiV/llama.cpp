@@ -1408,7 +1408,28 @@ void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int6
 
     const uint64_t nb = k / qk;
 
-#if defined(__AVX2__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        __m512 d = _mm512_set1_ps(GGML_FP16_TO_FP32(x->d));
+        __m128i qs;
+        __m512 qp;
+
+         qs = _mm_loadu_si128((__m128i *)&x->qs[0]);
+         qp = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qs));
+         qp = _mm512_mul_ps(qp, d);
+         _mm512_storeu_ps(y, qp);
+
+         qs = _mm_loadu_si128((__m128i *)&x->qs[16]);
+         qp = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(qs));
+         qp = _mm512_mul_ps(qp, d);
+         _mm512_storeu_ps(y + 16, qp);
+
+        x += 1;
+        y += qk;
+    }
+
+#elif defined(__AVX2__)
 
     for (uint64_t i = 0; i < nb; i++) {
         const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x->d));
@@ -1416,14 +1437,14 @@ void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int6
         __m256 qp[4];
 
         for (uint64_t j = 0; j < (qk / 8); j++) {
-            qs[j] = _mm_loadu_si64(&x->qs[j * 8]);
+            qs[j] = _mm_loadu_si64((__m128i *)&x->qs[j * 8]);
             qp[j] = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(qs[j]));
             qp[j] = _mm256_mul_ps(qp[j], d);
             _mm256_storeu_ps(y + j * 8, qp[j]);
         }
 
         x += 1;
-        y += 32;
+        y += qk;
     }
 
 #else
@@ -1436,7 +1457,7 @@ void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int6
         }
     }
 
-#endif // __AVX2__
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
 }
 
@@ -6389,7 +6410,9 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const void * r
         sumf += dall * isum - dmin * summs;
     }
     *s = sumf;
-#endif
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+
 }
 
 void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
