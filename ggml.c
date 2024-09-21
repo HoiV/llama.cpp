@@ -838,7 +838,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .to_float                 = (ggml_to_float_t) dequantize_row_q2_K,
         .from_float               = quantize_row_q2_K,
         .from_float_reference     = (ggml_from_float_t) quantize_row_q2_K_reference,
-        .vec_dot                  = ggml_vec_dot_q2_K_q8_K,
+        .vec_dot                  = (ggml_vec_dot_t) ggml_vec_dot_q2_K_q8_K,
         .vec_dot_type             = GGML_TYPE_Q8_K,
         .nrows                    = 1,
     },
@@ -14529,6 +14529,8 @@ static void ggml_compute_forward_mul_mat_one_chunk(
     }
 }
 
+#define GGML_IQK_LOG 1
+
 void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
@@ -14621,7 +14623,8 @@ void ggml_compute_forward_mul_mat(
                "             type: (%s) (%s) (%s)\n",
                            src0->name, src1->name, dst->name, ne01, ne11, ne00,
                            ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type));
-        printf("   -- counter=[%d]:<%d> us\n", counter, (int)(t2 - t1));
+        printf("   -- counter=[%d][%d]:[%s]*[%s]=>[%s] - <%d> us\n", counter, ith, 
+               src0->name, src1->name, dst->name, (int)(t2 - t1));
 #endif
         return;
     }
@@ -14639,6 +14642,7 @@ void ggml_compute_forward_mul_mat(
                     printf("[02]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
                         ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
                         ne01, ne11, ne00);
+                    printf("      [%s]*[%s]=>[%s]\n", src0->name, src1->name, dst->name);
 #endif
                 }
             }
@@ -14665,7 +14669,7 @@ IQK_MulMat_Not_Available1:;
            ne00,
            ne01,
            ne02,
-      4     ne03,
+           ne03,
            nb00,
            nb01,
            nb02,
@@ -14822,7 +14826,7 @@ IQK_MulMat_Not_Available1:;
         }
         int64_t t2 = ggml_time_us();
 #if GGML_IQK_LOG
-        printf("   -- [%s]-<%d> us\n", dst->name, (int)(t2 - t1));
+        printf("   -- [%s]*[%s]=>[%s]-<%d> us\n", src0->name, src1->name, dst->name, (int)(t2 - t1));
 #endif
         return;
     }
