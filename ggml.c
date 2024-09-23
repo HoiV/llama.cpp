@@ -14558,7 +14558,7 @@ void ggml_compute_forward_mul_mat(
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
 
-#ifdef GGML_MULMAT_LOG
+#if GGML_MULMAT_LOG
     printf("\n"
            "    --- %s\n"
            "    ne00 %zd, ne01 %zd, ne02 %zd, ne03 %zd\n"
