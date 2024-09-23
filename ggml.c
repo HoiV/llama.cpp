@@ -14785,7 +14785,7 @@ IQK_MulMat_Not_Available1:;
     atomic_int64 dot_time32 = 0;
 #endif // GGML_VECTOR_DOT_PERF 
 
-#ifdef GGML_MULMAT_LOG
+#if GGML_MULMAT_LOG
     int64_t t1 = ggml_time_us();    
 #endif
     const enum ggml_type src1_type = src1->type;
@@ -14941,7 +14941,7 @@ IQK_MulMat_Not_Available2:;
         }
     }
 
-#ifdef GGML_MULMAT_LOG
+#if GGML_MULMAT_LOG
         int64_t t2 = ggml_time_us();
         printf("[03]: dc_mul_mat: [%s](%s) * [%s](%s) => [%s](%s)\n"
                "   -- ne00(%I64d)-ne01(%I64d)-ne11(%I64d)-ne12(%I64d)-ne13(%I64d) : <%d>us\n",
