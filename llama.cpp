@@ -16509,13 +16509,24 @@ void llama_graph_dump_dot(const struct ggml_cgraph * gb, const struct ggml_cgrap
         }
 
         nodes_visited.push_back(node);
-        // stop once this node is hit so the graph is more manageable for dot
-        if (strstr(node->name, "attn_norm-2")) { printf("Found the break\n"); break; }
+        // stop once this node is hit (after one pass through all 32 layers)
+        if (strstr(node->name, "norm-1")) { printf("%s: Found the break\n", __func__); break; }
 
     }
 
     for (int i = 0; i < gb->n_leafs; i++) {
         struct ggml_tensor * node = gb->leafs[i];
+
+        if ((strstr(node->name, "blk.0.attn_qkv.weight") == NULL) &&
+            (strstr(node->name, "blk.0.attn_output.weight") == NULL) &&
+            (strstr(node->name, "blk.0.attn_norm.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_norm.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_up.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_down.weight") == NULL)) { 
+            // limit to just the number of leaf nodes that mattered
+            continue; 
+        }
+        nodes_visited.push_back(node);
 
         snprintf(color, sizeof(color), "pink");
 

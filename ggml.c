@@ -14529,7 +14529,7 @@ static void ggml_compute_forward_mul_mat_one_chunk(
     }
 }
 
-#define GGML_IQK_LOG 1
+#define GGML_MULMAT_LOG 0
 
 void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
@@ -14557,6 +14557,30 @@ void ggml_compute_forward_mul_mat(
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
+
+#ifdef GGML_MULMAT_LOG
+    printf("\n"
+           "    --- %s\n"
+           "    ne00 %zd, ne01 %zd, ne02 %zd, ne03 %zd\n"
+           "    nb00 %zd, nb01 %zd, nb02 %zd, nb03 %zd\n" 
+           "    ne10 %zd, ne11 %zd, ne12 %zd, ne13 %zd\n"
+           "    nb10 %zd, nb11 %zd, nb12 %zd, nb13 %zd\n"
+           "    ne0 %zd, ne1 %zd, ne2 %zd, ne3 %zd\n"
+           "    nb0 %zd, nb1 %zd, nb2 %zd, nb3 %zd\n"
+           "    rowsz %zd, ith %d, nth %d, nr0 %zd, nr1 %zd\n\n", 
+           __func__,
+           ne00, ne01, ne02, ne03,
+           nb00, nb01, nb02, nb03,
+           ne10, ne11, ne12, ne13,
+           nb10, nb11, nb12, nb13,
+           ne0,  ne1,  ne2,  ne3,
+           nb0,  nb1,  nb2,  nb3,
+           ggml_row_size(vec_dot_type, ne10),
+           ith,
+           nth,
+           ne01,
+           ne1*ne12*ne13);
+#endif
 
 #if 0 // XBOX_INVESTIGATE
     //Child-SP          RetAddr               Call Site
@@ -14616,19 +14640,21 @@ void ggml_compute_forward_mul_mat(
                     }
                 }
             }
-        }
-        int64_t t2 = ggml_time_us();
-#if GGML_IQK_LOG
-        printf("[01]: iqk_mul_mat: (%s)*(%s)->(%s):%I64d-%I64d-%I64d\n"
-               "             type: (%s) (%s) (%s)\n",
-                           src0->name, src1->name, dst->name, ne01, ne11, ne00,
-                           ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type));
-        printf("   -- counter=[%d][%d]:[%s]*[%s]=>[%s] - <%d> us\n", counter, ith, 
-               src0->name, src1->name, dst->name, (int)(t2 - t1));
+#if GGML_MULMAT_LOG
+            int64_t t2 = ggml_time_us();
+            printf("[01]: iqk_mul_mat: [%s](%s) * [%s](%s) => [%s](%s)\n"
+                   "   -- ne00(%I64d)-ne01(%I64d)-ne11(%I64d)-ne12(%I64d)-ne13(%I64d) : counter-nth-ith=[%d]-[%d]-[%d]: <%d>us\n",
+               src0->name, ggml_type_name(src0->type), 
+               src1->name, ggml_type_name(src1->type), 
+               dst->name, ggml_type_name(dst->type),
+               ne00, ne01, ne11, ne12, ne13,
+               counter, nth, ith, (int)(t2 - t1));
 #endif
+        }
         return;
     }
     if (dst->type == GGML_TYPE_F32) {
+        int64_t t1 = ggml_time_us();
         for (int64_t i13 = 0; i13 < ne13; i13++) {
             for (int64_t i12 = 0; i12 < ne12; i12++) {
                 if (!iqk_mul_mat(ne01, ne11, ne00,
@@ -14638,15 +14664,19 @@ void ggml_compute_forward_mul_mat(
                             ith, nth)) {
                     goto IQK_MulMat_Not_Available1;
                 } else {
-#if GGML_IQK_LOG
-                    printf("[02]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
-                        ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
-                        ne01, ne11, ne00);
-                    printf("      [%s]*[%s]=>[%s]\n", src0->name, src1->name, dst->name);
-#endif
                 }
             }
         }
+#if GGML_MULMAT_LOG
+        int64_t t2 = ggml_time_us();
+        printf("[02]: iqk_mul_mat: [%s](%s) * [%s](%s) => [%s](%s)\n"
+               "   -- ne00(%I64d)-ne01(%I64d)-ne11(%I64d)-ne12(%I64d)-ne13(%I64d) : %d>us\n",
+           src0->name, ggml_type_name(src0->type), 
+           src1->name, ggml_type_name(src1->type), 
+           dst->name, ggml_type_name(dst->type),
+           ne00, ne01, ne11, ne12, ne13,
+           (int)(t2 - t1));
+#endif
         return;
     }
 IQK_MulMat_Not_Available1:;
@@ -14755,6 +14785,9 @@ IQK_MulMat_Not_Available1:;
     atomic_int64 dot_time32 = 0;
 #endif // GGML_VECTOR_DOT_PERF 
 
+#ifdef GGML_MULMAT_LOG
+    int64_t t1 = ggml_time_us();    
+#endif
     const enum ggml_type src1_type = src1->type;
     const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
 
@@ -14815,18 +14848,18 @@ IQK_MulMat_Not_Available1:;
                             (float *)((char *)dst->data + i12*nb2 + i13*nb3), nb1/ggml_type_size(dst->type),
                             ith, nth)) {
                     goto IQK_MulMat_Not_Available2;
-                } else {
-#if GGML_IQK_LOG
-                    printf("[03]: iqk_mul_mat: (%s)-(%s)-(%s):%I64d-%I64d-%I64d\n",
-                       ggml_type_name(src0->type), ggml_type_name(src1->type), ggml_type_name(dst->type),
-                       ne01, ne11, ne00);
-#endif
                 }
             }
         }
+#if GGML_MULMAT_LOG
         int64_t t2 = ggml_time_us();
-#if GGML_IQK_LOG
-        printf("   -- [%s]*[%s]=>[%s]-<%d> us\n", src0->name, src1->name, dst->name, (int)(t2 - t1));
+        printf("[03]: iqk_mul_mat: [%s](%s) * [%s](%s) => [%s](%s)\n"
+               "   -- ne00(%I64d)-ne01(%I64d)-ne11(%I64d)-ne12(%I64d)-ne13(%I64d) : <%d>us\n",
+           src0->name, ggml_type_name(src0->type), 
+           src1->name, ggml_type_name(src1->type), 
+           dst->name, ggml_type_name(dst->type),
+           ne00, ne01, ne11, ne12, ne13,
+           (int)(t2 - t1));
 #endif
         return;
     }
@@ -14907,6 +14940,17 @@ IQK_MulMat_Not_Available2:;
             }
         }
     }
+
+#ifdef GGML_MULMAT_LOG
+        int64_t t2 = ggml_time_us();
+        printf("[03]: dc_mul_mat: [%s](%s) * [%s](%s) => [%s](%s)\n"
+               "   -- ne00(%I64d)-ne01(%I64d)-ne11(%I64d)-ne12(%I64d)-ne13(%I64d) : <%d>us\n",
+           src0->name, ggml_type_name(src0->type), 
+           src1->name, ggml_type_name(src1->type), 
+           dst->name, ggml_type_name(dst->type),
+           ne00, ne01, ne11, ne12, ne13,
+           (int)(t2 - t1));
+#endif
 
 #ifdef GGML_VECTOR_DOT_PERF 
     if (vec_dot_type == GGML_TYPE_F32) {
