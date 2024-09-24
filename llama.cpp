@@ -12235,33 +12235,34 @@ static void llama_set_inputs(llama_context & lctx, const llama_batch & batch) {
         ggml_backend_tensor_set(lctx.inp_pos, batch.pos, 0, n_tokens*ggml_element_size(lctx.inp_pos));
     }
 
-    // if (hparams.causal_attn || cparams.pooling_type == LLAMA_POOLING_TYPE_NONE) {
-    //     GGML_ASSERT(lctx.inp_out_ids && "every model that can must skip unused outputs");
-    //     const int64_t n_tokens = batch.n_tokens;
+#if 1 // bitnet has this commented out
+    if (hparams.causal_attn || cparams.pooling_type == LLAMA_POOLING_TYPE_NONE) {
+        GGML_ASSERT(lctx.inp_out_ids && "every model that can must skip unused outputs");
+        const int64_t n_tokens = batch.n_tokens;
 
-    //     GGML_ASSERT(ggml_backend_buffer_is_host(lctx.inp_out_ids->buffer));
-    //     int32_t * data = (int32_t *) lctx.inp_out_ids->data;
-
-    //     if (lctx.n_outputs == n_tokens) {
-    //         for (int i = 0; i < n_tokens; ++i) {
-    //             data[i] = i;
-    //         }
-    //     } else if (batch.logits) {
-    //         int32_t n_outputs = 0;
-    //         for (int i = 0; i < n_tokens; ++i) {
-    //             if (batch.logits[i]) {
-    //                 data[n_outputs++] = i;
-    //             }
-    //         }
-    //         // the graph needs to have been passed the correct number of outputs
-    //         GGML_ASSERT(lctx.n_outputs == n_outputs);
-    //     } else if (lctx.n_outputs == 1) {
-    //         // only keep last output
-    //         data[0] = n_tokens - 1;
-    //     } else {
-    //         GGML_ASSERT(lctx.n_outputs == 0);
-    //     }
-    // }
+        GGML_ASSERT(ggml_backend_buffer_is_host(lctx.inp_out_ids->buffer));
+        int32_t * data = (int32_t *) lctx.inp_out_ids->data;
+        if (lctx.n_outputs == n_tokens) {
+            for (int i = 0; i < n_tokens; ++i) {
+                data[i] = i;
+            }
+        } else if (batch.logits) {
+            int32_t n_outputs = 0;
+            for (int i = 0; i < n_tokens; ++i) {
+                if (batch.logits[i]) {
+                    data[n_outputs++] = i;
+                }
+            }
+            // the graph needs to have been passed the correct number of outputs
+            GGML_ASSERT(lctx.n_outputs == n_outputs);
+        } else if (lctx.n_outputs == 1) {
+            // only keep last output
+            data[0] = n_tokens - 1;
+        } else {
+            GGML_ASSERT(lctx.n_outputs == 0);
+        }
+    }
+#endif
 
     GGML_ASSERT(
         // (!a || b) is a logical implication (a -> b)
@@ -13689,6 +13690,7 @@ struct llm_tokenizer_bpe {
                         }
                     }
                 } else {
+#if 0 //bitnet
                     // change for bitnet
                     auto vocab_size = vocab.id_to_token.size();
                     if (vocab_size == 100287) {
@@ -13696,6 +13698,7 @@ struct llm_tokenizer_bpe {
                     } else {
                         output.push_back((*token).second);
                     }
+#endif
                 }
             }
         }
@@ -18902,6 +18905,7 @@ int32_t llama_token_to_piece(const struct llama_model * model, llama_token token
                 break;
             }
             case LLAMA_VOCAB_TYPE_BPE: {
+#if 0 // bitnet
                 // fix for bitnet
                 if (model->vocab.id_to_token.size() == 100287){
                     if (token >=4) {
@@ -18916,6 +18920,7 @@ int32_t llama_token_to_piece(const struct llama_model * model, llama_token token
                     }
                     break;
                 }
+#endif
                 // NOTE: we accept all unsupported token types,
                 // suppressing them like CONTROL tokens.
                 if (llama_is_normal_token(model->vocab, token)) {
