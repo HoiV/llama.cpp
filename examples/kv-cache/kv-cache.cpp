@@ -169,6 +169,10 @@ int main(int argc, char** argv) {
 
 #ifdef GGML_USE_OPENMP
         params.n_threads = MIN(n_threads, omp_get_max_threads());
+        ggml_select_omp();
+        printf("%s: OpenMP selected\n", __func__);
+#else
+        params.n_threads = n_threads;
 #endif
 
         printf("%s: Number of hw threads asked: %d - actual number: %d\n", __func__, n_threads, params.n_threads);
