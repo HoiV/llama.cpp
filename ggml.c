@@ -412,9 +412,12 @@ bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b) {
 
 static int64_t timer_freq = 0, timer_start = 0;
 
-//#define __USE_TIME_RECIP__
+#define __USE_TIME_RECIP__
 
 #if defined(__USE_TIME_RECIP__)
+
+uint64_t dv1000_fraction;
+uint8_t dv1000_shift;
 
 uint64_t ms_fraction;
 uint8_t ms_shift;
@@ -503,10 +506,12 @@ void ggml_time_init(void) {
 
 #if defined(__USE_TIME_RECIP__)
 
+        dv1000_fraction = ggml_compute_fraction(1, 1000, &dv1000_shift);
         ms_fraction = ggml_compute_fraction(1000, timer_freq, &ms_shift); 
         us_fraction = ggml_compute_fraction(1000000, timer_freq, &us_shift);
-        printf("ms fraction multiplier is 0x%016I64x with right shift of %d\n", ms_fraction, ms_shift);
-        printf("us fraction multiplier is 0x%016I64x with right shift of %d\n", us_fraction, us_shift);
+//        printf("dv1000 fraction multiplier is 0x%016I64x right shift %d\n", dv1000_fraction, dv1000_shift);  
+//        printf("ms fraction multiplier is 0x%016I64x right shift %d\n", ms_fraction, ms_shift);
+//        printf("us fraction multiplier is 0x%016I64x right shift %d\n", us_fraction, us_shift);
 
 #endif // (__USE_TIME_RECIP__)
 
@@ -551,11 +556,23 @@ int64_t ggml_time_us(void) {
 }
 
 int64_t ggml_cycles(void) {
-    return ggml_time_us();
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return (t.QuadPart - timer_start);
 }
 
 int64_t ggml_cycles_per_ms(void) {
+
+#if defined(__USE_TIME_RECIP__)
+
+    return UnsignedMultiplyHigh(timer_freq, dv1000_fraction) >> dv1000_shift;
+
+#else
+
     return timer_freq / 1000;
+
+#endif // defined(__USE_TIME_RECIP__)
+
 }
 
 #else // defined(_MSC_VER) || defined(__MINGW32__)
