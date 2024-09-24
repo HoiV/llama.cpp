@@ -192,6 +192,7 @@ struct cmd_params {
     std::vector<bool> embeddings;
     ggml_numa_strategy numa;
     int reps;
+    bool openmp;
     bool verbose;
     output_formats output_format;
     output_formats output_format_stderr;
@@ -218,6 +219,7 @@ static const cmd_params cmd_params_defaults = {
     /* embeddings           */ {false},
     /* numa                 */ GGML_NUMA_STRATEGY_DISABLED,
     /* reps                 */ 5,
+    /* openmp               */ false,
     /* verbose              */ false,
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
@@ -250,6 +252,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -r, --repetitions <n>               (default: %d)\n", cmd_params_defaults.reps);
     printf("  -o, --output <csv|json|md|sql>      (default: %s)\n", output_format_str(cmd_params_defaults.output_format));
     printf("  -oe, --output-err <csv|json|md|sql> (default: %s)\n", output_format_str(cmd_params_defaults.output_format_stderr));
+    printf("  -omp, --openmp                      (default: %s)\n", cmd_params_defaults.openmp ? "1" : "0");
     printf("  -v, --verbose                       (default: %s)\n", cmd_params_defaults.verbose ? "1" : "0");
     printf("\n");
     printf("Multiple values can be given for each parameter by separating them with ',' or by specifying the parameter multiple times.\n");
@@ -294,6 +297,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.output_format_stderr = cmd_params_defaults.output_format_stderr;
     params.reps = cmd_params_defaults.reps;
     params.numa = cmd_params_defaults.numa;
+    params.openmp = cmd_params_defaults.openmp;
 
     for (int i = 1; i < argc; i++) {
         arg = argv[i];
@@ -511,6 +515,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             invalid_param = !output_format_from_str(argv[i], params.output_format_stderr);
         } else if (arg == "-v" || arg == "--verbose") {
             params.verbose = true;
+        } else if (arg == "-omp" || arg == "--openmp") {
+            params.openmp = true;
         } else {
             invalid_param = true;
             break;
@@ -1338,6 +1344,11 @@ int main(int argc, char ** argv) {
     }
     llama_backend_init();
     llama_numa_init(params.numa);
+
+    // select openmp if specified
+    if (params.openmp) {
+        ggml_select_omp();
+    }
 
     // initialize printer
     std::unique_ptr<printer> p = create_printer(params.output_format);
