@@ -850,7 +850,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = (ggml_to_float_t) dequantize_row_q2_K,
         .from_float               = quantize_row_q2_K,
-        .from_float_reference     = (ggml_from_float_t) quantize_row_q2_K_reference,
+        .from_float_reference     = (ggml_from_float_t) quantize_row_q2_K,
         .vec_dot                  = (ggml_vec_dot_t) ggml_vec_dot_q2_K_q8_K,
         .vec_dot_type             = GGML_TYPE_Q8_K,
         .nrows                    = 1,
@@ -874,7 +874,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = (ggml_to_float_t) dequantize_row_q4_K,
         .from_float               = quantize_row_q4_K,
-        .from_float_reference     = (ggml_from_float_t) quantize_row_q4_K_reference,
+        .from_float_reference     = (ggml_from_float_t) quantize_row_q4_K,
         .vec_dot                  = ggml_vec_dot_q4_K_q8_K,
         .vec_dot_type             = GGML_TYPE_Q8_K,
         .nrows                    = 1,
@@ -10291,10 +10291,37 @@ void ggml_compute_forward_dup_same_cont(
     const int ie1 = MIN(ie0 + dr, ne);
 
     if (ie0 < ie1) {
-        memcpy(
-            ((char *)  dst->data + ie0*nb0),
-            ((char *) src0->data + ie0*nb00),
-            (ie1 - ie0) * ggml_type_size(src0->type));
+        uint64_t nc = ie1 - ie0;
+        switch (dst->type) {
+        case GGML_TYPE_F16:
+        case GGML_TYPE_BF16:
+            break;
+
+#if 0
+            printf("ggml_compute_forward_dup_same_cont - type f16\n");
+            if (nc & 1) {
+                break;
+            }
+    
+            nc >>= 1;
+
+#endif // #if 0
+    
+        case GGML_TYPE_F32:
+            ggml_vec_cpy_f32(nc,
+                             (float *)((char *)dst->data + ie0*nb0),
+                             (float *)((char *)src0->data + ie0*nb00));
+    
+            return;
+    
+        default:
+//          printf("ggml_compute_forward_dup_same_cont - type other\n");    
+            break;
+        }
+    
+        memcpy(((char *)dst->data + ie0*nb0),
+               ((char *)src0->data + ie0*nb00),
+               nc * ggml_type_size(src0->type));
     }
 }
 
