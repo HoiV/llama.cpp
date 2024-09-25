@@ -82,6 +82,17 @@ init or finalize requirement and this removes branch and test code from a critic
 the actually tensor code. This change also enables both init and finalize code to run in
 parallel which was previously not available (a special case was in place for mul_mat).
 
+===================================================================================
+
+Never edit master. Keep it in the state of the original upstream fork (github.com/ggerganov/llama.cpp.git).
+
+1.	“Sync fork” to merge the master branch of the original upstream fork (github.com/ggerganov/llama.cpp.git) into our master branch 
+        of the downstream GitHub fork (github.com/HoiV/llama.cpp.git).
+2.	“git fetch” to merge the master branch of the downstream GitHub fork (github.com/HoiV/llama.cpp.git) to the master branch of the local clone.
+3.	While on the topic branch, “git merge origin/master” to merge the master branch of the local clone to the specific topic branch.
+4.	#3 will have conflicts that need to resolve.
+
+
 ******************* CHANGE notice for latest change in llama.cpp *******************
 To get static libs: e:\Xbox-B612\src\llama.cpp>cmake .. -DBUILD_SHARED_LIBS=OFF -DGGML_STATIC=ON
 The default is to generate ggml.dll and llama.dll
