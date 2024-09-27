@@ -548,6 +548,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     if (params.embeddings.empty())   { params.embeddings = cmd_params_defaults.embeddings; }
     if (params.n_threads.empty())    { params.n_threads = cmd_params_defaults.n_threads; }
 
+    ggml_set_process_affinity(params.n_threads.at(0));
+
     return params;
 }
 

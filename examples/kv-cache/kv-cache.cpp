@@ -143,7 +143,7 @@ bool processCustomPromptsFromFile(gpt_params& params) {
 
 int64_t t0;
 int main(int argc, char** argv) {
-    gpt_params params;
+    gpt_params params = {0};
 
     ggml_time_init();
     t0 = ggml_time_us();
@@ -158,12 +158,15 @@ int main(int argc, char** argv) {
         params.model = argv[1];
     }
 
+    params.n_threads = 4;
     if (argc >= 3) {
-        int n_threads = std::stoi(argv[2]);
+        int32_t n_threads = std::stoi(argv[2]);
         if (n_threads <= 0) {
             n_threads = std::thread::hardware_concurrency();
             if (n_threads > 0) {
                 n_threads = (n_threads <= 4) ? n_threads : (n_threads / 2);
+            } else {
+                n_threads = 4;
             }
         }
 
@@ -174,6 +177,8 @@ int main(int argc, char** argv) {
 #else
         params.n_threads = n_threads;
 #endif
+
+        ggml_set_process_affinity(params.n_threads);
 
         printf("%s: Number of hw threads asked: %d - actual number: %d\n", __func__, n_threads, params.n_threads);
     }

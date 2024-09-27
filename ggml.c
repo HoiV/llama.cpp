@@ -663,6 +663,97 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 #endif
 }
 
+#ifdef _WIN32
+
+typedef struct {
+    uint64_t mask;
+    uint16_t group;
+    uint16_t reserved[3];
+} group_affinity_t;
+
+void
+ggml_set_process_affinity (
+    uint32_t n_threads
+    )
+{
+
+
+    //
+    // Get number of logical processors per physical core and the maximum number of logical
+    // processsors.
+    //
+
+    struct {
+        uint32_t eax;
+        uint32_t ebx;
+        uint32_t ecx;
+        uint32_t edx;
+    } cpu_info;
+
+    printf("n_threads specified %d\n", n_threads);
+    __cpuid((int *)&cpu_info, 0x8000001e);
+    const uint32_t logical_per_physical_core = ((cpu_info.ebx & 0x300) >> 8) + 1;
+    printf("number of logical processors per physical core %d\n", logical_per_physical_core);
+
+    if (logical_per_physical_core == 1) {
+        printf("bypassing set process affinity - not SMT system\n");
+        return;
+    }
+
+    __cpuid((int *)&cpu_info, 0x00000001);
+    const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
+    printf("maximum number of logical processors %d\n", maximum_logical);
+
+    //
+    // Check the specified number of threads against the maximum logical processor count.
+    //
+
+    const uint32_t maximum_smt_threads = maximum_logical / 2;
+    if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
+        printf("bypassing set process affinity - number threads odd or gt maximum logical / 2\n");
+        return;
+    }
+
+    //
+    // Get the current process group count.
+    //
+
+    uint16_t group_array[4];
+    uint16_t group_count = 4;
+
+    if (GetProcessGroupAffinity(GetCurrentProcess(), &group_count, group_array)) {
+        printf("GetProcessGroupAffinity succeeded with %d groups\n", group_count);
+        if (group_count != 1) {
+            printf("bypassing set affinity process because group count is greater than one\n");
+            return;
+        }
+
+    } else {
+        printf("GetProcessGroupAffinity failed\n");
+        return;
+    }
+
+    //
+    // Set process affinity.
+    //
+
+    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
+    if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
+        printf("process group affinity set to 0x%08llx\n", affinity_mask);
+
+    } else {
+        printf("failed to set process affinity mask\n");
+    }
+
+    return;
+}
+
+#else
+
+#define ggml_set_process_affinity(n)
+
+#endif // _WIN32
+
 //
 // cache line
 //

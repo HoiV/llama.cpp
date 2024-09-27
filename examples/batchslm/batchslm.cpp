@@ -254,6 +254,8 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
+    ggml_set_process_affinity(params.n_threads);
+
     // number of simultaneous "clients" to simulate
     const int32_t n_clients = params.n_parallel;
 

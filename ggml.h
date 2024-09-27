@@ -291,12 +291,22 @@
 #endif // GGML_TENSOR_OP_PERF
 
 #ifdef  __cplusplus
-extern "C"
+extern "C" {
 #endif // __cplusplus
+
 void
 print_tensor_op_perf_data (
     void
     );
+
+void
+ggml_set_process_affinity (
+    uint32_t n_thread
+    );
+
+#ifdef  __cplusplus
+}
+#endif // __cplusplus
 
 //
 // Perf cycles data collection.
