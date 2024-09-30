@@ -10386,37 +10386,27 @@ void ggml_compute_forward_dup_same_cont(
     const int ie1 = MIN(ie0 + dr, ne);
 
     if (ie0 < ie1) {
+        //
+        // All copies can be turned into f32 copies if the total size in bytes is
+        // a multiple of sizeof(float).
+        //
+        // N.B. Copy f32 is a benign move and copies data with no conversions.
+        //
+
         uint64_t nc = ie1 - ie0;
-        switch (dst->type) {
-        case GGML_TYPE_F16:
-        case GGML_TYPE_BF16:
-            break;
-
-#if 0
-            printf("ggml_compute_forward_dup_same_cont - type f16\n");
-            if (nc & 1) {
-                break;
-            }
-    
-            nc >>= 1;
-
-#endif // #if 0
-    
-        case GGML_TYPE_F32:
+        uint64_t nb = nc * ggml_type_size(src0->type);
+        if (!(nb % sizeof(float))) {
+            nc = nb / sizeof(float);
             ggml_vec_cpy_f32(nc,
                              (float *)((char *)dst->data + ie0*nb0),
                              (float *)((char *)src0->data + ie0*nb00));
-    
-            return;
-    
-        default:
-//          printf("ggml_compute_forward_dup_same_cont - type other\n");    
-            break;
+
+        } else {
+            // printf("ggml_compute_forward_dup_same_cont - copy bytes\n");
+            memcpy(((char *)dst->data + ie0*nb0),
+                   ((char *)src0->data + ie0*nb00),
+                   nb);
         }
-    
-        memcpy(((char *)dst->data + ie0*nb0),
-               ((char *)src0->data + ie0*nb00),
-               nc * ggml_type_size(src0->type));
     }
 }
 
@@ -11510,7 +11500,7 @@ void ggml_compute_forward_dup_bytes(
     }
 }
 
-void ggml_compute_forward_dup(
+inline void ggml_compute_forward_dup(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
 
@@ -15760,7 +15750,7 @@ void ggml_compute_forward_set(
 
 // ggml_compute_forward_cpy
 
-inline void ggml_compute_forward_cpy(
+void ggml_compute_forward_cpy(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
     ggml_compute_forward_dup(params, dst);
@@ -15768,7 +15758,7 @@ inline void ggml_compute_forward_cpy(
 
 // ggml_compute_forward_cont
 
-inline void ggml_compute_forward_cont(
+void ggml_compute_forward_cont(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
     ggml_compute_forward_dup(params, dst);
