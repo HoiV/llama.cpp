@@ -192,6 +192,7 @@ struct cmd_params {
     std::vector<bool> embeddings;
     ggml_numa_strategy numa;
     int reps;
+    bool no_process_affinity;
     bool openmp;
     bool verbose;
     output_formats output_format;
@@ -219,6 +220,7 @@ static const cmd_params cmd_params_defaults = {
     /* embeddings           */ {false},
     /* numa                 */ GGML_NUMA_STRATEGY_DISABLED,
     /* reps                 */ 5,
+    /* no_process_affinity  */ false,
     /* openmp               */ false,
     /* verbose              */ false,
     /* output_format        */ MARKDOWN,
@@ -252,6 +254,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -r, --repetitions <n>               (default: %d)\n", cmd_params_defaults.reps);
     printf("  -o, --output <csv|json|md|sql>      (default: %s)\n", output_format_str(cmd_params_defaults.output_format));
     printf("  -oe, --output-err <csv|json|md|sql> (default: %s)\n", output_format_str(cmd_params_defaults.output_format_stderr));
+    printf("  -no-affin, --no-process_affinity    (default: %s)\n", cmd_params_defaults.no_process_affinity ? "1" : "0");
     printf("  -omp, --openmp                      (default: %s)\n", cmd_params_defaults.openmp ? "1" : "0");
     printf("  -v, --verbose                       (default: %s)\n", cmd_params_defaults.verbose ? "1" : "0");
     printf("\n");
@@ -297,6 +300,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.output_format_stderr = cmd_params_defaults.output_format_stderr;
     params.reps = cmd_params_defaults.reps;
     params.numa = cmd_params_defaults.numa;
+    params.no_process_affinity = cmd_params_defaults.no_process_affinity;
     params.openmp = cmd_params_defaults.openmp;
 
     for (int i = 1; i < argc; i++) {
@@ -515,6 +519,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             invalid_param = !output_format_from_str(argv[i], params.output_format_stderr);
         } else if (arg == "-v" || arg == "--verbose") {
             params.verbose = true;
+        } else if (arg == "-no-affin" || arg == "--no-process-affinity") {
+            params.no_process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
         } else {
@@ -548,7 +554,9 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     if (params.embeddings.empty())   { params.embeddings = cmd_params_defaults.embeddings; }
     if (params.n_threads.empty())    { params.n_threads = cmd_params_defaults.n_threads; }
 
-    ggml_set_process_affinity(params.n_threads.at(0));
+    if (!params.no_process_affinity) {
+        ggml_set_process_affinity(params.n_threads.at(0));
+    }
 
     return params;
 }
