@@ -665,6 +665,9 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 
 #ifdef _WIN32
 
+uint64_t l1_cache_size = 32ull * 1024ull;
+uint64_t l2_cache_size = 1024ull * 1024ull;
+
 typedef struct {
     uint64_t mask;
     uint16_t group;
@@ -689,6 +692,22 @@ ggml_set_process_affinity (
         uint32_t ecx;
         uint32_t edx;
     } cpu_info;
+
+    //
+    // Get L1 cache size.
+    //
+
+    __cpuid((int *)&cpu_info, 0x80000005);
+    l1_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
+    printf("l1 cache size in kbytes %zd\n", l1_cache_size);
+
+    //
+    // Get l2 cache size
+    //
+
+    __cpuid((int *)&cpu_info, 0x80000006);
+    l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
+    printf("l2 cache size in kbytes %zd\n", l2_cache_size); 
 
     printf("n_threads specified %d\n", n_threads);
     __cpuid((int *)&cpu_info, 0x8000001e);
@@ -718,6 +737,7 @@ ggml_set_process_affinity (
     // Get the current process group count.
     //
 
+#if 0
     uint16_t group_array[4];
     uint16_t group_count = 4;
 
@@ -732,12 +752,13 @@ ggml_set_process_affinity (
         printf("GetProcessGroupAffinity failed\n");
         return;
     }
+#endif // if 0
 
     //
     // Set process affinity.
     //
 
-    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
+    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
         printf("process group affinity set to 0x%08llx\n", affinity_mask);
 
@@ -14657,14 +14678,14 @@ void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
-    const enum ggml_type type = src0->type;
+    const enum ggml_type src0_type = src0->type;
 
     const int ith = params->ith;
     const int nth = params->nth;
 
 #ifdef GGML_TENSOR_OP_PERF
     if (!ith) {
-        vec_dot_type_counts[type_traits[type].vec_dot_type] += 1;
+        vec_dot_type_counts[type_traits[src0_type].vec_dot_type] += 1;
     }
 #endif // GGML_TENSOR_OP_PERF
 
@@ -14672,10 +14693,10 @@ void ggml_compute_forward_mul_mat(
 
     const bool src1_cont = ggml_is_contiguous(src1);
 
-    ggml_vec_dot_t          vec_dot               = type_traits[type].vec_dot;
-    enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
+    ggml_vec_dot_t          vec_dot               = type_traits[src0_type].vec_dot;
+    enum ggml_type    const vec_dot_type          = type_traits[src0_type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
-    int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
+    int64_t           const vec_dot_num_rows      = type_traits[src0_type].nrows;
 
 #if 0 // XBOX_INVESTIGATE
     //Child-SP          RetAddr               Call Site
@@ -14868,21 +14889,39 @@ void ggml_compute_forward_mul_mat(
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
 
-    // Compute the blocking factor based on the number of elements in a row. The
-    // goal of the blocking factor is to localize cache residency by limiting the
-    // number of combined rows (src0 and src1) scanned at a time to around 1mb.
+    // Compute the blocking factors based on the sizeof the l1/l2 caches and the size of
+    // the two sources. The goal of the blocking factor is to localize cache residency
+    // by limiting the number of combined rows (src0 and src1) scanned at a time to fit
+    // in the l1 + l2 cache that is available per procesor.
 
-//    int64_t blck_factor = (1ull << 17) / ne00;
+    const int64_t half_cache = (l1_cache_size + l2_cache_size) / 2;
+    int64_t blck0_factor = half_cache / ggml_row_size(src0_type, ne0);
+    int64_t blck1_factor = half_cache / row_size;
+#if 0
+    printf("blck0_factor %d row size %d, blck1_factor %d row size %d\n",
+           (uint32_t)blck0_factor,
+           (uint32_t)ggml_row_size(src0_type, ne0),
+           (uint32_t)blck1_factor,
+           (uint32_t)row_size);
+#endif // #if 0
     int64_t blck_factor = (1ull << 20) / (row_size + ggml_row_size(src1_type, ne10));
-
     blck_factor = blck_factor ? blck_factor : 1ull;
 
 //    printf("ne00 %lld, block_factor %lld\n", ne00, blck_factor);
 
+    blck0_factor = max(1, blck0_factor);
+    blck1_factor = max(1, blck1_factor);
+
     void * dst_data = dst->data;
+#if 1
     for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_factor) {
         for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_factor) {
             const int64_t limit1 = min(iir1 + blck_factor, ir111);
+#else
+    for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck0_factor) {
+        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck1_factor) {
+            const int64_t limit1 = min(iir1 + blck0_factor, ir111);
+#endif
             for (int64_t ir1 = iir1; ir1 < limit1; ++ir1) {
                 const int64_t i13 = (ir1/(ne12*ne1));
                 const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
@@ -14906,7 +14945,11 @@ void ggml_compute_forward_mul_mat(
 
                 float * dst_col = (float *) ((char *) dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
 
+#if 1
                 const int64_t limit0 = min(iir0 + blck_factor, ir011);
+#else
+                const int64_t limit0 = min(iir0 + blck1_factor, ir011);
+#endif
                 for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
 #ifndef GGML_VECTOR_DOT_PERF
                     vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
