@@ -194,3 +194,65 @@ D:\llama.cpp\llama.cpf_clang\build>dir bin\RelWithDebInfo
 09/03/2024  12:09 PM        10,575,872 llama.pdb
                4 File(s)     22,378,496 bytes
                2 Dir(s)  1,397,066,555,392 bytes free
+
+================================================================================
+
+OpenBLAS
+
+C:\llama.cpp\llama.cpf\build.clang.openblas>cmake ..            -DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS -DBLAS_LIBRARIES=c:\llama.cpp\openBLAS_rel\lib -DBLAS_INCLUDE_DIRS=c:\llama.cpp\openBLAS_rel\include
+C:\llama.cpp\llama.cpf\build.clang.openblas>cmake .. -T CLangCL -DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS -DBLAS_LIBRARIES=c:\llama.cpp\openBLAS_rel\lib -DBLAS_INCLUDE_DIRS=c:\llama.cpp\openBLAS_rel\include
+
+C:\llama.cpp\llama.cpf\build.clang.openblas>copy c:\llama.cpp\openBLAS_rel\include\cblas.h ..\examples\kv-cache
+C:\llama.cpp\llama.cpf\build.clang.openblas>copy c:\llama.cpp\openBLAS_rel\bin\libopenblas.dll bin\RelWithDebInfo
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   ../examples/kv-cache/CMakeLists.txt
+
+set(TARGET kv)
+add_executable(${TARGET} kv-cache.cpp slminfer.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+target_include_directories(kv PUBLIC .)
+target_include_directories(kv PUBLIC ../..)
+target_include_directories(kv PUBLIC ../../common)
+>>> target_link_libraries(${TARGET} PRIVATE llama ${BLAS_LIBRARIES}/libopenblas.lib ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_11)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+
+        modified:   ../examples/kv-cache/kv-cache.h
+
+#ifdef GGML_USE_OPENMP
+#include <omp.h>
+#endif
+
+>>> #ifdef GGML_USE_BLAS
+>>> #include <cblas.h>
+>>> #endif
+
+#include <cmath>
+#include <cstdio>
+
+        modified:   ../examples/llama-bench/CMakeLists.txt
+
+set(TARGET llama-bench)
+add_executable(${TARGET} llama-bench.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+>>> target_link_libraries(${TARGET} PRIVATE common llama  ${BLAS_LIBRARIES}/libopenblas.lib ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_11)
+
+        modified:   ../examples/llama-bench/llama-bench.cpp
+
+    // select openmp if specified
+    if (params.openmp) {
+>>>        // ggml_select_omp();
+    }
+
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        ../examples/kv-cache/cblas.h
+        ../examples/kv-cache/openblas_config.h
+
+================================================================================
+

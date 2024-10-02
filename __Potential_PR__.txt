@@ -1,0 +1,34 @@
+GGML potential PRs
+
+llama: Add support for Gemma2ForCausalLM (#8156): https://github.com/ggerganov/llama.cpp/pull/8156
+gemma2: add sliding window mask: https://github.com/ggerganov/llama.cpp/pull/8227
+
+OpenELM support #7359: https://github.com/ggerganov/llama.cpp/pull/7359
+
+llama : support RWKV v6 models #8980
+
+[CANN] Add Ascend NPU backend (#6035): https://github.com/ggerganov/llama.cpp/pull/6035
+
+======================
+
+llama: use sliding window for phi3 #8627: https://github.com/ggerganov/llama.cpp/pull/8627
+
+fix: llama3.1 rope_freqs not respecting custom head_dim #9141
+
+llama : default n_swa for phi-3 #8931
+
+llama : add llama_lora_adapter_clear #8653: https://github.com/ggerganov/llama.cpp/pull/8653
+Refactor lora adapter support (#8332): https://github.com/ggerganov/llama.cpp/pull/8332
+Stop the generation when <|eom_id|> token is encountered (needed for llama 3.1 tool call support) #8858
+ggml : reduce hash table reset cost #8698: https://github.com/ggerganov/llama.cpp/pull/8698
+llama : sanitize invalid tokens #9357
+llama : set attrs of mislabelled EOT/EOM tokens #9348
+llama : sanitize tokens in the upper bound #9359
+llama : llama_perf + option to disable timings during decode #9355
+
+=====================
+
+Detokenizer fixes #8039: https://github.com/ggerganov/llama.cpp/pull/8039/
+
+llama : refactor session file management #8699: https://github.com/ggerganov/llama.cpp/pull/8699
+
