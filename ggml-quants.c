@@ -2275,16 +2275,292 @@ void quantize_row_q3_K_reference(const float * restrict x, block_q3_K * restrict
 }
 
 void dequantize_row_q3_K(const block_q3_K * restrict x, float * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
     const uint32_t kmask1 = 0x03030303;
     const uint32_t kmask2 = 0x0f0f0f0f;
 
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        float dl;
+        __m512 dlv;
+        __m128i q1i;
+        __m128i q2i;
+        __m128i q3i;
+        __m512 qv;
+        __m512 y1;
+        uint64_t hm_bits;
+        uint32_t hm_shift;
+
+        const float d_all = GGML_FP16_TO_FP32(x[i].d);
+
+        const uint64_t * q = (const uint64_t *)x[i].qs;
+        const uint64_t * hm = (const uint64_t *)x[i].hmask;
+
+        //
+        // Expand the scale values into a 16-byte array.
+        //
+
+        union {
+            uint32_t aux[4];
+            int8_t scales[16];
+        } as;
+
+        memcpy(as.aux, x[i].scales, 12);
+        uint32_t tmp = as.aux[2];
+        as.aux[2] = ((as.aux[0] >> 4) & kmask2) | (((tmp >> 4) & kmask1) << 4);
+        as.aux[3] = ((as.aux[1] >> 4) & kmask2) | (((tmp >> 6) & kmask1) << 4);
+        as.aux[0] = (as.aux[0] & kmask2) | (((tmp >> 0) & kmask1) << 4);
+        as.aux[1] = (as.aux[1] & kmask2) | (((tmp >> 2) & kmask1) << 4);
+
+        //
+        // Process all the q3_k quant blocks.
+        //
+
+        hm_shift = 0;
+
+        for (int64_t n = 0; n < QK_K / 128; n++) {
+            for (int j = 0; j < 4; ++j) {
+
+                dl = d_all * (as.scales[n * 8 + j * 2] - 32);
+                dlv = _mm512_broadcastss_ps(_mm_load_ss(&dl));
+
+                //
+                // Isolate the low 2-bits for 16 quant values.
+                //
+
+                q1i = _mm_cvtsi64_si128((q[0] >> (j * 2)) & 0x0303030303030303);
+                q1i = _mm_insert_epi64(q1i,
+                                       (q[1] >> (j * 2)) & 0x0303030303030303,
+                                       1);
+
+                //
+                // Isolate the hm bits for 16 quant values, flip hm one bits, and multiply
+                // by -4 (0xfc).
+                //
+
+                hm_bits = ~(hm[0] >> hm_shift) & 0x0101010101010101;
+                hm_bits *= 0xfc;
+                q2i = _mm_cvtsi64_si128(hm_bits);
+
+                hm_bits = ~(hm[1] >> hm_shift) & 0x0101010101010101;
+                hm_bits *= 0xfc;
+                q2i = _mm_insert_epi64(q2i, hm_bits, 1);
+
+                //
+                // Add low 2-bits to the hm values (either 0 or -4) for 16 quants.
+                //
+
+                q3i = _mm_add_epi8(q1i, q2i);
+
+                //
+                // Convert the 16 quant bytes to float and multiply by scales * d_all.
+                //
+
+                qv = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(q3i)); 
+                y1 = _mm512_mul_ps(dlv, qv);
+
+                //
+                // Store result.
+                //
+
+                _mm512_storeu_ps(y, y1);
+
+                dl = d_all * (as.scales[n * 8 + j * 2 + 1] - 32);
+                dlv = _mm512_broadcastss_ps(_mm_load_ss(&dl));
+
+                //
+                // Isolate the low 2-bits for 16 quant values.
+                //
+
+                q1i = _mm_cvtsi64_si128((q[2] >> (j * 2)) & 0x0303030303030303);
+                q1i = _mm_insert_epi64(q1i,
+                                       (q[3] >> (j * 2)) & 0x0303030303030303,
+                                       1);
+
+                //
+                // Isolate the hm bits for 16 quant values, flip hm one bits, and multiply
+                // by -4 (0xfc).
+                //
+
+                hm_bits = ~(hm[2] >> hm_shift) & 0x0101010101010101;
+                hm_bits *= 0xfc;
+                q2i = _mm_cvtsi64_si128(hm_bits);
+
+                hm_bits = ~(hm[3] >> hm_shift) & 0x0101010101010101;
+                hm_bits *= 0xfc;
+                q2i = _mm_insert_epi64(q2i, hm_bits, 1);
+
+                //
+                // Add low 2-bits to the hm values (either 0 or -4) for 16 quants.
+                //
+
+                q3i = _mm_add_epi8(q1i, q2i);
+
+                //
+                // Convert the 16 quant bytes to float and multiply by scales * d_all.
+                //
+
+                qv = _mm512_cvtepi32_ps(_mm512_cvtepi8_epi32(q3i)); 
+                y1 = _mm512_mul_ps(dlv, qv);
+
+                //
+                // Store result.
+                //
+
+                _mm512_storeu_ps(y + 16, y1);
+
+                hm_shift += 1;
+                y += 32;
+            }
+
+            q += 4;
+        }
+    }
+
+#elif defined(__AVX2__)
+
+    for (uint64_t i = 0; i < nb; i++) {
+        float dl;
+        __m256 dlv;
+        __m128i q1i;
+        __m128i q2i;
+        __m128i q3i;
+        __m256 qv;
+        __m256 y1;
+        uint64_t hm_bits;
+        uint32_t hm_shift;
+
+        const float d_all = GGML_FP16_TO_FP32(x[i].d);
+
+        const uint64_t * q = (const uint64_t *)x[i].qs;
+        const uint64_t * hm = (const uint64_t *)x[i].hmask;
+
+        //
+        // Expand the scale values into a 16-byte array.
+        //
+
+        union {
+            uint32_t aux[4];
+            int8_t scales[16];
+        } as;
+
+        memcpy(as.aux, x[i].scales, 12);
+        uint32_t tmp = as.aux[2];
+        as.aux[2] = ((as.aux[0] >> 4) & kmask2) | (((tmp >> 4) & kmask1) << 4);
+        as.aux[3] = ((as.aux[1] >> 4) & kmask2) | (((tmp >> 6) & kmask1) << 4);
+        as.aux[0] = (as.aux[0] & kmask2) | (((tmp >> 0) & kmask1) << 4);
+        as.aux[1] = (as.aux[1] & kmask2) | (((tmp >> 2) & kmask1) << 4);
+
+        //
+        // Process all the q3_k quant blocks.
+        //
+
+        hm_shift = 0;
+
+        for (int64_t n = 0; n < QK_K / 128; n++) {
+            for (int j = 0; j < 4; ++j) {
+
+                dl = d_all * (as.scales[n * 8 + j * 2] - 32);
+                dlv = _mm256_broadcast_ss(&dl);
+
+                for (int l = 0; l < 2; l++) {
+
+                    //
+                    // Isolate the low 2-bits for 8 quant values.
+                    //
+
+                    q1i = _mm_cvtsi64_si128((q[l] >> (j * 2)) & 0x0303030303030303);
+
+                    //
+                    // Isolate the hm bits for 8 quant values, flip hm one bits, and multiply
+                    // by -4 (0xfc).
+                    //
+
+                    hm_bits = ~(hm[l] >> hm_shift) & 0x0101010101010101;
+                    hm_bits *= 0xfc;
+                    q2i = _mm_cvtsi64_si128(hm_bits);
+
+                    //
+                    // Add low 2-bits to the hm values (either 0 or -4) for 8 quants.
+                    //
+
+                    q3i = _mm_add_epi8(q1i, q2i);
+
+                    //
+                    // Convert the 8 quant bytes to float and multiply by scales * d_all.
+                    //
+
+                    qv = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q3i)); 
+                    y1 = _mm256_mul_ps(dlv, qv);
+
+                    //
+                    // Store result.
+                    //
+
+                    _mm256_storeu_ps(y + (l * 8), y1);
+                }
+
+                dl = d_all * (as.scales[n * 8 + j * 2 + 1] - 32);
+                dlv = _mm256_broadcast_ss(&dl);
+
+                for (int l = 0; l < 2; l++) {
+
+                    //
+                    // Isolate the low 2-bits for 8 quant values.
+                    //
+
+                    q1i = _mm_cvtsi64_si128((q[l + 2] >> (j * 2)) & 0x0303030303030303);
+
+                    //
+                    // Isolate the hm bits for 8 quant values, flip hm one bits, and multiply
+                    // by -4 (0xfc).
+                    //
+
+                    hm_bits = ~(hm[l + 2] >> hm_shift) & 0x0101010101010101;
+                    hm_bits *= 0xfc;
+                    q2i = _mm_cvtsi64_si128(hm_bits);
+
+                    //
+                    // Add low 2-bits to the hm values (either 0 or -4) for 8 quants.
+                    //
+
+                    q3i = _mm_add_epi8(q1i, q2i);
+
+                    //
+                    // Convert the 8 quant bytes to float and multiply by scales * d_all.
+                    //
+
+                    qv = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q3i)); 
+                    y1 = _mm256_mul_ps(dlv, qv);
+
+                    //
+                    // Store result.
+                    //
+
+                    _mm256_storeu_ps(y + (l * 8) + 16, y1);
+                }
+
+                hm_shift += 1;
+                y += 32;
+            }
+
+            q += 4;
+        }
+    }
+
+#else
+
     uint32_t aux[4];
+
     const int8_t * scales = (const int8_t*)aux;
 
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
 
         const float d_all = GGML_FP16_TO_FP32(x[i].d);
 
@@ -2299,29 +2575,30 @@ void dequantize_row_q3_K(const block_q3_K * restrict x, float * restrict y, int6
         aux[0] = (aux[0] & kmask2) | (((tmp >> 0) & kmask1) << 4);
         aux[1] = (aux[1] & kmask2) | (((tmp >> 2) & kmask1) << 4);
 
-        int is = 0;
         float dl;
-        for (int n = 0; n < QK_K; n += 128) {
-            int shift = 0;
+        for (int64_t n = 0; n < QK_K / 128; n++) {
             for (int j = 0; j < 4; ++j) {
 
-                dl = d_all * (scales[is++] - 32);
+                dl = d_all * (scales[n * 8 + j * 2] - 32);
                 for (int l = 0; l < 16; ++l) {
-                    *y++ = dl * ((int8_t)((q[l+ 0] >> shift) & 3) - ((hm[l+ 0] & m) ? 0 : 4));
+                    y[l] = dl * ((int8_t)((q[l+ 0] >> (j * 2)) & 3) - ((hm[l+ 0] & m) ? 0 : 4));
                 }
 
-                dl = d_all * (scales[is++] - 32);
+                dl = d_all * (scales[n * 8 + j * 2 + 1] - 32);
                 for (int l = 0; l < 16; ++l) {
-                    *y++ = dl * ((int8_t)((q[l+16] >> shift) & 3) - ((hm[l+16] & m) ? 0 : 4));
+                    y[l + 16] = dl * ((int8_t)((q[l+16] >> (j * 2)) & 3) - ((hm[l+16] & m) ? 0 : 4));
                 }
 
-                shift += 2;
                 m <<= 1;
+                y += 32;
             }
+
             q += 32;
         }
-
     }
+
+#endif // #if 0
+
 }
 
 void quantize_row_q3_K(const float * restrict x, void * restrict vy, int64_t k) {
