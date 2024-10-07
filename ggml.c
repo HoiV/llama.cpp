@@ -5,6 +5,9 @@
 #include "ggml-quants.h"
 #include "ggml.h"
 
+#if defined(GGML_USE_RYZENAI)
+#include "ggml-ryzenai.h"
+#endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h> // using malloc.h with MSC/MINGW
@@ -5927,6 +5930,10 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
 
             GGML_PRINT_DEBUG("%s: g_state initialized in %f ms\n", __func__, (t_end - t_start)/1000.0f);
         }
+
+#if defined(GGML_USE_RYZENAI)
+        ggml_ryzenai_init();
+#endif
 
         ggml_setup_op_has_task_pass();
 
@@ -14742,6 +14749,17 @@ void ggml_compute_forward_mul_mat(
 
     // nb01 >= nb00 - src0 is not transposed
     //   compute by src0 rows
+
+#if defined(GGML_USE_RYZENAI)
+
+    if (ggml_ryzenai_can_mul_mat(src0, src1, dst)) {
+        if (params->ith == 0) {
+            ggml_ryzenai_mul_mat(src0, src1, dst, params->wdata, params->wsize);
+        }
+        return;
+    }
+
+#endif
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
