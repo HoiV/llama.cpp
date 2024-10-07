@@ -879,8 +879,6 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
 #if GGML_USE_IQK_MULMAT
     const uint64_t nb4 = 4*(nb/4);
-#else
-    const uint64_t nb4 = -1;
 #endif
 
 #if defined(__AVX2__) || defined(__AVX512F__)
@@ -913,11 +911,16 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
         // Quantize these floats
         const float d = maxScalar / 127.f;
+#if GGML_USE_IQK_MULMAT
         if (pack && i < nb4) {
             y4[i4].d[ir] = GGML_FP32_TO_FP16(d);
         } else {
             y[i].d = GGML_FP32_TO_FP16(d);
         }
+#else
+        y[i].d = GGML_FP32_TO_FP16(d);
+#endif
+
         const float id = ( maxScalar != 0.0f ) ? 127.f / maxScalar : 0.0f;
         const __m256 mul = _mm256_set1_ps( id );
 
@@ -951,11 +954,16 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         const __m256i perm = _mm256_setr_epi32( 0, 4, 1, 5, 2, 6, 3, 7 );
         i0 = _mm256_permutevar8x32_epi32( i0, perm );
 
+#if GGML_USE_IQK_MULMAT
         if (i < nb4) {
             _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, i0);
         } else {
             _mm256_storeu_si256((__m256i *)y[i].qs, i0);
         }
+#else
+        _mm256_storeu_si256((__m256i *)y[i].qs, i0);
+#endif
+
     }
 
 #else
@@ -1011,11 +1019,10 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
 
 #if GGML_USE_IQK_MULMAT
     const int nb4 = 4*(nb/4);
-#else
-    const int nb4 = -1;
-#endif
-#if defined(__ARM_NEON)
     block_q8_1_x4 * restrict y4 = vy;
+#endif
+
+#if defined(__ARM_NEON)
     for (int i = 0; i < nb; i++) {
         int i4 = i/4, ir = i%4;
         float32x4_t srcv [8];
@@ -1111,14 +1118,18 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
                      wasm_i32x4_extract_lane(accv, 3)));
     }
 #elif defined(__AVX2__) || defined(__AVX__)
-    block_q8_1_x4 * restrict y4 = vy;
+#if GGML_USE_IQK_MULMAT
 #ifdef __AVX2__
     const bool pack = true;
 #else
     const bool pack = false;
 #endif
+#endif // GGML_USE_IQK_MULMAT
+
     for (int i = 0; i < nb; i++) {
+#if GGML_USE_IQK_MULMAT
         int i4 = i/4, ir = i%4;
+#endif
         // Load elements into 4 AVX vectors
         __m256 v0 = _mm256_loadu_ps( x );
         __m256 v1 = _mm256_loadu_ps( x + 8 );
@@ -1140,11 +1151,15 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
 
         // Quantize these floats
         const float d = max_scalar / 127.f;
+#if GGML_USE_IQK_MULMAT
         if (pack && i < nb4) {
             y4[i4].d[ir] = GGML_FP32_TO_FP16(d);
         } else {
             y[i].d = GGML_FP32_TO_FP16(d);
         }
+#else
+            y[i].d = GGML_FP32_TO_FP16(d);
+#endif        
         const float id = ( max_scalar != 0.0f ) ? 127.f / max_scalar : 0.0f;
         const __m256 mul = _mm256_set1_ps( id );
 
@@ -1168,11 +1183,16 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
 
 #if defined(__AVX2__)
         // Compute the sum of the quants and set y[i].s
+
+#if GGML_USE_IQK_MULMAT
         if (i < nb4) {
             y4[i4].d[ir+4] = GGML_FP32_TO_FP16(d * hsum_i32_8(_mm256_add_epi32(_mm256_add_epi32(i0, i1), _mm256_add_epi32(i2, i3))));
         } else {
             y[i].s = GGML_FP32_TO_FP16(d * hsum_i32_8(_mm256_add_epi32(_mm256_add_epi32(i0, i1), _mm256_add_epi32(i2, i3))));
         }
+#else
+            y[i].s = GGML_FP32_TO_FP16(d * hsum_i32_8(_mm256_add_epi32(_mm256_add_epi32(i0, i1), _mm256_add_epi32(i2, i3))));
+#endif
 
         // Convert int32 to int16
         i0 = _mm256_packs_epi32( i0, i1 );	// 0, 1, 2, 3,  8, 9, 10, 11,  4, 5, 6, 7, 12, 13, 14, 15
@@ -1186,12 +1206,18 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
         const __m256i perm = _mm256_setr_epi32( 0, 4, 1, 5, 2, 6, 3, 7 );
         i0 = _mm256_permutevar8x32_epi32( i0, perm );
 
+#if GGML_USE_IQK_MULMAT
         if (i < nb4) {
             _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, i0);
         } else {
             _mm256_storeu_si256((__m256i *)y[i].qs, i0);
         }
 #else
+            _mm256_storeu_si256((__m256i *)y[i].qs, i0);
+#endif // GGML_USE_IQK_MULMAT
+
+#else // AVX2
+
         // Since we don't have in AVX some necessary functions,
         // we split the registers in half and call AVX2 analogs from SSE
         __m128i ni0 = _mm256_castsi256_si128( i0 );
@@ -1219,7 +1245,9 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
 
         _mm_storeu_si128((__m128i *)(y[i].qs +  0), ni0);
         _mm_storeu_si128((__m128i *)(y[i].qs + 16), ni4);
-#endif
+        
+#endif // AVX2
+
     }
 #elif defined(__riscv_v_intrinsic)
 
