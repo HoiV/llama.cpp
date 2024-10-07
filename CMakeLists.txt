@@ -117,6 +117,7 @@ option(LLAMA_CUDA_FA_ALL_QUANTS              "llama: compile all quants for Flas
 option(LLAMA_CURL                            "llama: use libcurl to download model from an URL" OFF)
 option(LLAMA_HIPBLAS                         "llama: use hipBLAS"                               OFF)
 option(LLAMA_HIP_UMA                         "llama: use HIP unified memory architecture"       OFF)
+option(LLAMA_RYZENAI                         "llama: use RYZENAI"                               OFF)
 option(LLAMA_VULKAN                          "llama: use Vulkan"                                OFF)
 option(LLAMA_VULKAN_CHECK_RESULTS            "llama: run Vulkan op checks"                      OFF)
 option(LLAMA_VULKAN_DEBUG                    "llama: enable Vulkan debug output"                OFF)
@@ -155,7 +156,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-info.cmake)
 # Compile flags
 #
 
-if (LLAMA_SYCL)
+if (LLAMA_SYCL OR LLAMA_RYZENAI)
     set(CMAKE_CXX_STANDARD 17)
 else()
     set(CMAKE_CXX_STANDARD 11)
@@ -514,6 +515,22 @@ if (LLAMA_RPC)
 
     set(GGML_HEADERS_RPC ggml-rpc.h)
     set(GGML_SOURCES_RPC ggml-rpc.cpp)
+endif()
+
+if (LLAMA_RYZENAI)
+    find_package(RyzenAI)
+    if (RyzenAI_FOUND)
+        message(STATUS "RyzenAI found")
+
+        set(GGML_HEADERS_RYZENAI ggml-ryzenai.h)
+        set(GGML_SOURCES_RYZENAI ggml-ryzenai.cpp)
+
+        add_compile_definitions(GGML_USE_RYZENAI)
+
+        set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} ryzenai::qlinear_2)
+    else()
+        message(WARNING "RyzenAI not found")
+    endif()
 endif()
 
 if (LLAMA_VULKAN)
@@ -1293,6 +1310,7 @@ add_library(ggml OBJECT
             ggml-quants.h
             ${GGML_SOURCES_IQK}
             ${GGML_SOURCES_CUDA}      ${GGML_HEADERS_CUDA}
+            ${GGML_SOURCES_RYZENAI}   ${GGML_HEADERS_RYZENAI}
             ${GGML_SOURCES_METAL}     ${GGML_HEADERS_METAL}
             ${GGML_SOURCES_RPC}       ${GGML_HEADERS_RPC}
             ${GGML_SOURCES_EXTRA}     ${GGML_HEADERS_EXTRA}
