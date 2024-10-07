@@ -14778,6 +14778,17 @@ void ggml_compute_forward_mul_mat(
     const int64_t r2 = ne12/ne02;
     const int64_t r3 = ne13/ne03;
 
+#if defined(GGML_USE_RYZENAI)
+
+    if (ggml_ryzenai_can_mul_mat(src0, src1, dst)) {
+        if (ith == 0) {
+            ggml_ryzenai_mul_mat(src0, src1, dst, params->wdata, params->wsize);
+        }
+        return;
+    }
+
+#endif
+
 #if GGML_USE_IQK_MULMAT
     if ((dst->type == GGML_TYPE_F32) && ((ne12*ne13)%nth == 0)) {
         int counter = 0;
@@ -14838,17 +14849,6 @@ IQK_MulMat_Not_Available1:;
 
     // nb01 >= nb00 - src0 is not transposed
     //   compute by src0 rows
-
-#if defined(GGML_USE_RYZENAI)
-
-    if (ggml_ryzenai_can_mul_mat(src0, src1, dst)) {
-        if (params->ith == 0) {
-            ggml_ryzenai_mul_mat(src0, src1, dst, params->wdata, params->wsize);
-        }
-        return;
-    }
-
-#endif
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
