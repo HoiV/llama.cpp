@@ -255,16 +255,10 @@
 #define GGML_PAD(x, n) (((x) + (n) - 1) & ~((n) - 1))
 
 //
-// Enable asserts.
-//
-// N.B. NDEBUG is used by the C/C++ runtime.
+// GGML errors are always fatal.
 //
 
-// #define ENABLE_ASSERTS 1
-
-#ifdef ENABLE_ASSERTS
-#undef NDEBUG
-#define GGML_ASSERT(x) \
+#define GGML_ERROR(x) \
     do { \
         if (!(x)) { \
             fflush(stdout); \
@@ -274,11 +268,26 @@
         } \
     } while (0)
 
-#define GGML_UNREACHABLE() GGML_ASSERT(!"statement should not be reached")
+//
+// Unreachable code execution is always a fatal error.
+//
+
+#define GGML_UNREACHABLE() GGML_ERROR(!"statement should not be reached")
+
+//
+// If enabled asserts are always fatal.
+//
+// N.B. NDEBUG is used by the C/C++ runtime asserts.
+//
+
+// #define ENABLE_ASSERTS 1
+
+#ifdef ENABLE_ASSERTS
+#undef NDEBUG
+#define GGML_ASSERT(x) GGML_ERROR(x)
 #else
 #define NDEBUG 1 
 #define GGML_ASSERT(x)
-#define GGML_UNREACHABLE() __assume(0)
 #endif // ENABLE_ASSERTS
 
 //
@@ -722,6 +731,7 @@ extern "C" {
 
 
     struct ggml_compute_params {
+
         // ith = thread index, nth = number of threads
         int ith, nth;
 
@@ -1312,13 +1322,11 @@ extern "C" {
             struct ggml_tensor  * a,
             struct ggml_tensor  * b);
 
-#if 0 // not referenced
     // a -> b, in-place, return view(b)
     GGML_API struct ggml_tensor * ggml_cpy_inplace( 
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             struct ggml_tensor  * b);
-#endif
 
     GGML_API struct ggml_tensor * ggml_cast(
             struct ggml_context * ctx,
