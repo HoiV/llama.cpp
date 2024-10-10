@@ -941,6 +941,7 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
     quantize_row_q8_0_reference(x, y, k);
 
 #endif  // defined(__AVX2__) || defined(__AVX512F__)
+
 }
 
 // reference implementation for deterministic creation of model files
@@ -5972,6 +5973,44 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
 
+    #if !defined(__clang__)
+    __m256i zero256 = _mm256_setzero_si256();
+
+    // Main loop
+    for (int i = 0; i < nb; ++i) {
+
+        //
+        // Compute combined scale for the entire 32 block_q8_K quant values in one
+        // fell swoop.
+        //
+
+        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
+
+        __m256i qx = _mm256_loadu_si256((const __m256i *)x[i].qs);
+        __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
+
+        // Get absolute values of qx
+
+        const __m256i ax = _mm256_sign_epi8(qx, qx);
+
+        // Get the signed values of qy
+
+        const __m256i sy = _mm256_sign_epi8(qy, qx);
+
+        // mul (ax * sy) + 0 directly to epi32
+        //
+        // N.B. __AVXVNNI__ is always defined.
+
+        const __m256i summed_pairs = _mm256_dpbusd_epi32(zero256, ax, sy);
+        const __m256 q = _mm256_cvtepi32_ps(summed_pairs);
+
+        // Multiply q with scale and accumulate
+
+        acc = _mm256_fmadd_ps(d, q, acc);
+    }
+
+#else
+
     // Main loop
     for (int i = 0; i < nb; ++i) {
 
@@ -5989,6 +6028,8 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         // Multiply q with scale and accumulate
         acc = _mm256_fmadd_ps(d, q, acc);
     }
+
+#endif // __clang__
 
     *s = hsum_float_8(acc);
 
@@ -6283,8 +6324,6 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
 
     __m256 acc = _mm256_setzero_ps();
 
-    uint32_t aux[3];
-
     for (uint64_t i = 0; i < nb; ++i) {
 
         const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
@@ -6297,7 +6336,7 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
         // Set up scales
         //
 
-        memcpy(aux, x[i].scales, 12);
+        uint32_t * aux = (uint32_t *)x[i].scales;
         __m128i scales128 = _mm_set_epi32(
                 ((aux[1] >> 4) & kmask2) | (((aux[2] >> 6) & kmask1) << 4),
                 ((aux[0] >> 4) & kmask2) | (((aux[2] >> 4) & kmask1) << 4),
@@ -6498,7 +6537,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
 
     uint32_t utmp[4];
 
-#if defined (__AVX2__)
+#if defined(__AVX2__)
 
     static const uint32_t kmask4 = 0xc0c0c0c0;
 
@@ -6619,6 +6658,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
     *s = sumf;
 
 #endif // defined(__AVX2__)
+
 }
 
 void ggml_vec_dot_q5_K_q8_K(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy,  size_t by, int nrc) {

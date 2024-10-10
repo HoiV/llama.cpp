@@ -2162,45 +2162,38 @@ inline static void ggml_vec_set_f16(const int n, ggml_fp16_t * x, const int32_t 
 
 inline static void ggml_vec_set_bf16(const int n, ggml_bf16_t * x, const ggml_bf16_t v) { for (int i = 0; i < n; ++i) x[i] = v; }
 
-void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float * y)
+void ggml_vec_add_f32(const uint64_t n, float * z, const float * x, const float * y)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
+    uint64_t i = 0;
 
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    GGML_F32_VEC512 ax[GGML_F32_ARR];
+    GGML_F32_VEC512 ay[GGML_F32_ARR];
 
-    if (xn) {
-        GGML_F32_VEC512 ax[GGML_F32_ARR];
-        GGML_F32_VEC512 ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
-                    ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
-                    ay[j] = GGML_F32_VEC_ADD512(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD512(x + i);
-                ay[0] = GGML_F32_VEC_LOAD512(y + i);
-                ay[0] = GGML_F32_VEC_ADD512(ax[0], ay[0]);
-                GGML_F32_VEC_STORE512(z + i, ay[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
+            ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
+            ay[j] = GGML_F32_VEC_ADD512(ax[j], ay[j]);
+            GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = GGML_F32_VEC_LOAD512(x + i);
+        ay[0] = GGML_F32_VEC_LOAD512(y + i);
+        ay[0] = GGML_F32_VEC_ADD512(ax[0], ay[0]);
+        GGML_F32_VEC_STORE512(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             z[i]  = x[i] + y[i];
@@ -2210,40 +2203,33 @@ void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float *
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
+    uint64_t i = 0;
 
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    GGML_F32_VEC ax[GGML_F32_ARR];
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        GGML_F32_VEC ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_ADD(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ay[0] = GGML_F32_VEC_ADD(ax[0], ay[0]);
-                GGML_F32_VEC_STORE(z + i, ay[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_ADD(ax[j], ay[j]);
+            GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ay[0] = GGML_F32_VEC_ADD(ax[0], ay[0]);
+        GGML_F32_VEC_STORE(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             z[i]  = x[i] + y[i];
@@ -2253,7 +2239,7 @@ void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float *
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         z[i]  = x[i] + y[i];
     }
 
@@ -2261,44 +2247,36 @@ void ggml_vec_add_f32(const int64_t n, float * z, const float * x, const float *
 
 }
 
-void ggml_vec_add1_f32(const int64_t n, float * z, const float * x, const float v)
+void ggml_vec_add1_f32(const uint64_t n, float * z, const float * x, const float v)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
+    uint64_t i = 0;
 
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    __m512 ax[GGML_F32_ARR];
+    __m512 vy = _mm512_set1_ps(v);
 
-    if (xn) {
-        __m512 ax[GGML_F32_ARR];
-        __m512 vy = _mm512_set1_ps(v);
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
-
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ax[j] = _mm512_add_ps(ax[j], vy);
-                    _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ax[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                    ax[0] = _mm512_loadu_ps(x + i);
-                    ax[0] = _mm512_add_ps(ax[0], vy);
-                    _mm512_storeu_ps(z + i, ax[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ax[j] = _mm512_add_ps(ax[j], vy);
+            _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ax[0] = _mm512_add_ps(ax[0], vy);
+        _mm512_storeu_ps(z + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             z[i]  = x[i] + v;
@@ -2308,38 +2286,31 @@ void ggml_vec_add1_f32(const int64_t n, float * z, const float * x, const float 
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
+    uint64_t i = 0;
 
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
+    GGML_F32_VEC ax[GGML_F32_ARR];
 
-    if (xn) {
-        GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ax[j] = GGML_F32_VEC_ADD(ax[j], vx);
-                    GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ax[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ax[0] = GGML_F32_VEC_ADD(ax[0], vx);
-                GGML_F32_VEC_STORE(z + i, ax[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ax[j] = GGML_F32_VEC_ADD(ax[j], vx);
+            GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ax[0] = GGML_F32_VEC_ADD(ax[0], vx);
+        GGML_F32_VEC_STORE(z + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             z[i]  = x[i] + v;
@@ -2349,7 +2320,7 @@ void ggml_vec_add1_f32(const int64_t n, float * z, const float * x, const float 
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         z[i]  = x[i] + v;
     }
 
@@ -2357,45 +2328,39 @@ void ggml_vec_add1_f32(const int64_t n, float * z, const float * x, const float 
 
 }
 
-void ggml_vec_acc_f32(const int64_t n, float * y, const float * x)
+void ggml_vec_acc_f32(const uint64_t n, float * y, const float * x)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        __m512 ax[GGML_F32_ARR];
-        __m512 ay[GGML_F32_ARR];
+    __m512 ax[GGML_F32_ARR];
+    __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_add_ps(ax[j], ay[j]);
-                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                ay[0] = _mm512_loadu_ps(y + i);
-                ay[0] = _mm512_add_ps(ax[0], ay[0]);
-                _mm512_storeu_ps(y + i, ay[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_add_ps(ax[j], ay[j]);
+            _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ay[0] = _mm512_loadu_ps(y + i);
+        ay[0] = _mm512_add_ps(ax[0], ay[0]);
+        _mm512_storeu_ps(y + i, ay[0]);
+    }
+
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             y[i] += x[i];
@@ -2405,40 +2370,33 @@ void ggml_vec_acc_f32(const int64_t n, float * y, const float * x)
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        GGML_F32_VEC ay[GGML_F32_ARR];
+    GGML_F32_VEC ax[GGML_F32_ARR];
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_ADD(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ay[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ay[0] = GGML_F32_VEC_ADD(ax[0], ay[0]);
-                GGML_F32_VEC_STORE(y + i, ay[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_ADD(ax[j], ay[j]);
+            GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ay[0] = GGML_F32_VEC_ADD(ax[0], ay[0]);
+        GGML_F32_VEC_STORE(y + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             y[i] += x[i];
@@ -2448,7 +2406,7 @@ void ggml_vec_acc_f32(const int64_t n, float * y, const float * x)
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         y[i] += x[i];
     }
 
@@ -2456,43 +2414,36 @@ void ggml_vec_acc_f32(const int64_t n, float * y, const float * x)
 
 }
 
-void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
+void ggml_vec_acc1_f32(const uint64_t n, float * y, const float v)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        __m512 vx = _mm512_set1_ps(v); 
-        __m512 ay[GGML_F32_ARR];
+    __m512 vx = _mm512_set1_ps(v); 
+    __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_add_ps(ay[j], vx);
-                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ay[0] = _mm512_loadu_ps(y + i);
-                ay[0] = _mm512_add_ps(ay[0], vx);
-                _mm512_storeu_ps(y + i, ay[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_add_ps(ay[j], vx);
+            _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ay[0] = _mm512_loadu_ps(y + i);
+        ay[0] = _mm512_add_ps(ay[0], vx);
+        _mm512_storeu_ps(y + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             y[i] += v;
@@ -2502,37 +2453,31 @@ void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
-        GGML_F32_VEC ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    GGML_F32_VEC vx = GGML_F32_VEC_SET1(v);
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_ADD(ay[j], vx);
-                    GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ay[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (xn > np) {
-            do {
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ay[0] = GGML_F32_VEC_ADD(ay[0], vx);
-                GGML_F32_VEC_STORE(y + i, ay[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_ADD(ay[j], vx);
+            GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ay[0] = GGML_F32_VEC_ADD(ay[0], vx);
+        GGML_F32_VEC_STORE(y + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             y[i] += v;
@@ -2542,7 +2487,7 @@ void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         y[i] += v;
     }
 
@@ -2550,46 +2495,38 @@ void ggml_vec_acc1_f32(const int64_t n, float * y, const float v)
 
 }
 
-void ggml_vec_sub_f32(const int64_t n, float * z, const float * x, const float * y)
+void ggml_vec_sub_f32(const uint64_t n, float * z, const float * x, const float * y)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        __m512 ax[GGML_F32_ARR];
-        __m512 ay[GGML_F32_ARR];
+    __m512 ax[GGML_F32_ARR];
+    __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_sub_ps(ax[j], ay[j]);
-                    _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                ay[0] = _mm512_loadu_ps(y + i);
-                ay[0] = _mm512_sub_ps(ax[0], ay[0]);
-                _mm512_storeu_ps(z + i, ay[0]);
-
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_sub_ps(ax[j], ay[j]);
+            _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ay[0] = _mm512_loadu_ps(y + i);
+        ay[0] = _mm512_sub_ps(ax[0], ay[0]);
+        _mm512_storeu_ps(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             z[i]  = x[i] - y[i];
@@ -2599,41 +2536,33 @@ void ggml_vec_sub_f32(const int64_t n, float * z, const float * x, const float *
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        GGML_F32_VEC ay[GGML_F32_ARR];
+    GGML_F32_VEC ax[GGML_F32_ARR];
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_SUB(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ay[0] = GGML_F32_VEC_SUB(ax[0], ay[0]);
-                GGML_F32_VEC_STORE(z + i, ay[0]);
-
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_SUB(ax[j], ay[j]);
+            GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ay[0] = GGML_F32_VEC_SUB(ax[0], ay[0]);
+        GGML_F32_VEC_STORE(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             z[i]  = x[i] - y[i];
@@ -2643,7 +2572,7 @@ void ggml_vec_sub_f32(const int64_t n, float * z, const float * x, const float *
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         z[i]  = x[i] - y[i];
     }
 
@@ -2692,7 +2621,7 @@ void ggml_vec_set_f32(const uint64_t n, float * x, const float v)
     const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
     for (; i < np; i += GGML_F32_STEP) {
-        for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
             GGML_F32_VEC_STORE(x + i + j * GGML_F32_EPR, vx);
         }
     }
@@ -2714,7 +2643,7 @@ void ggml_vec_set_f32(const uint64_t n, float * x, const float v)
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         x[i]  = v;
     }
 
@@ -2722,39 +2651,33 @@ void ggml_vec_set_f32(const uint64_t n, float * x, const float v)
 
 }
 
-void ggml_vec_cpy_f32(const int64_t n, float * y, const float * x)
+void ggml_vec_cpy_f32(const uint64_t n, float * y, const float * x)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        __m512 ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    __m512 ax[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                _mm512_storeu_ps(y + i, ax[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        _mm512_storeu_ps(y + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             y[i] = x[i];
@@ -2764,34 +2687,28 @@ void ggml_vec_cpy_f32(const int64_t n, float * y, const float * x)
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    GGML_F32_VEC ax[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ax[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                GGML_F32_VEC_STORE(y + i, ax[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        GGML_F32_VEC_STORE(y + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             y[i] = x[i];
@@ -2801,7 +2718,7 @@ void ggml_vec_cpy_f32(const int64_t n, float * y, const float * x)
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         y[i]  = x[i];
     }
 
@@ -2809,44 +2726,37 @@ void ggml_vec_cpy_f32(const int64_t n, float * y, const float * x)
 
 }
 
-void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
+void ggml_vec_neg_f32(const uint64_t n, float * y, const float * x)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int32_t xor_pat = 0x80000000;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
+    const uint32_t xor_pat = 0x80000000;
 
-    if (xn) {
-        __m512 vx = _mm512_set1_ps(*(float *)&xor_pat);
-        __m512 ax[GGML_F32_ARR];
+    __m512 vx = _mm512_set1_ps(*(float *)&xor_pat);
+    __m512 ax[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ax[j] = _mm512_xor_ps(vx, ax[j]);
-                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
-                }
-
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                ax[0] = _mm512_xor_ps(vx, ax[0]);
-                _mm512_storeu_ps(y + i, ax[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ax[j] = _mm512_xor_ps(vx, ax[j]);
+            _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ax[0] = _mm512_xor_ps(vx, ax[0]);
+        _mm512_storeu_ps(y + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             y[i] = -x[i];
@@ -2856,38 +2766,32 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int32_t xor_pat = 0x80000000;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
+    const uint32_t xor_pat = 0x80000000;
 
-    if (xn) {
-        GGML_F32_VEC vx = GGML_F32_VEC_SET1(*(float *)&xor_pat);
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    GGML_F32_VEC vx = GGML_F32_VEC_SET1(*(float *)&xor_pat);
+    GGML_F32_VEC ax[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ax[j] = GGML_F32_VEC_XOR(vx, ax[j]);
-                    GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ax[j]);
-                }
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ax[0] = GGML_F32_VEC_XOR(vx, ax[0]);
-                GGML_F32_VEC_STORE(y + i, ax[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ax[j] = GGML_F32_VEC_XOR(vx, ax[j]);
+            GGML_F32_VEC_STORE(y + i + j * GGML_F32_EPR, ax[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ax[0] = GGML_F32_VEC_XOR(vx, ax[0]);
+        GGML_F32_VEC_STORE(y + i, ax[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             y[i] = -x[i];
@@ -2897,7 +2801,7 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         y[i] = -x[i];
     }
 
@@ -2905,44 +2809,37 @@ void ggml_vec_neg_f32(const int64_t n, float * y, const float * x)
 
 }
 
-void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float * y) {
-
-    int64_t i = 0;
+void ggml_vec_mul_f32(const uint32_t n, float * z, const float * x, const float * y) {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC512 ax[GGML_F32_ARR];
-        GGML_F32_VEC512 ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    GGML_F32_VEC512 ax[GGML_F32_ARR];
+    GGML_F32_VEC512 ay[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
-                    ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
-                    ay[j] = GGML_F32_VEC_MUL512(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD512(x + i);
-                ay[0] = GGML_F32_VEC_LOAD512(y + i);
-                ay[0] = GGML_F32_VEC_MUL512(ax[0], ay[0]);
-                GGML_F32_VEC_STORE512(z + i, ay[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD512(x + i + j * GGML_F32_EPR16);
+            ay[j] = GGML_F32_VEC_LOAD512(y + i + j * GGML_F32_EPR16);
+            ay[j] = GGML_F32_VEC_MUL512(ax[j], ay[j]);
+            GGML_F32_VEC_STORE512(z + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = GGML_F32_VEC_LOAD512(x + i);
+        ay[0] = GGML_F32_VEC_LOAD512(y + i);
+        ay[0] = GGML_F32_VEC_MUL512(ax[0], ay[0]);
+        GGML_F32_VEC_STORE512(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             z[i]  = x[i] * y[i];
@@ -2952,38 +2849,33 @@ void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float *
 
 #elif defined(__AVX2__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        GGML_F32_VEC ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    GGML_F32_VEC ax[GGML_F32_ARR];
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ax[j] = GGML_F32_VEC_MUL(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ax[j]); 
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ax[0] = GGML_F32_VEC_MUL(ax[0], ay[0]);
-                GGML_F32_VEC_STORE(z + i, ax[0]); 
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ax[j] = GGML_F32_VEC_MUL(ax[j], ay[j]);
+            GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ax[j]); 
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ax[0] = GGML_F32_VEC_MUL(ax[0], ay[0]);
+        GGML_F32_VEC_STORE(z + i, ax[0]); 
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
 
         do {
@@ -2995,7 +2887,8 @@ void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float *
 #else
 
     // scalar
-    for (int64_t i = 0; i < n; ++i) {
+
+    for (uint64_t i = 0; i < n; ++i) {
         z[i]  = x[i] * y[i];
     }
 
@@ -3003,46 +2896,38 @@ void ggml_vec_mul_f32(const int32_t n, float * z, const float * x, const float *
 
 }
 
-void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float * y)
+void ggml_vec_div_f32(const uint64_t n, float * z, const float * x, const float * y)
 {
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        __m512 ax[GGML_F32_ARR];
-        __m512 ay[GGML_F32_ARR];
+    __m512 ax[GGML_F32_ARR];
+    __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
-                    ay[j] = _mm512_div_ps(ax[j], ay[j]);
-                    _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ay[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
-        }
-
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                ay[0] = _mm512_loadu_ps(y + i);
-                ay[0] = _mm512_div_ps(ax[0], ay[0]);
-                _mm512_storeu_ps(z + i, ay[0]);
-
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_div_ps(ax[j], ay[j]);
+            _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ay[0] = _mm512_loadu_ps(y + i);
+        ay[0] = _mm512_div_ps(ax[0], ay[0]);
+        _mm512_storeu_ps(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             z[i]  = x[i] / y[i];
@@ -3052,40 +2937,33 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
 
-    if (xn) {
-        GGML_F32_VEC ax[GGML_F32_ARR];
-        GGML_F32_VEC ay[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+    GGML_F32_VEC ax[GGML_F32_ARR];
+    GGML_F32_VEC ay[GGML_F32_ARR];
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
-                    ay[j] = GGML_F32_VEC_DIV(ax[j], ay[j]);
-                    GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
-        }
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                ay[0] = GGML_F32_VEC_LOAD(y + i);
-                ay[0] = GGML_F32_VEC_DIV(ax[0], ay[0]);
-                GGML_F32_VEC_STORE(z + i, ay[0]);
-
-                i += GGML_F32_EPR;
-            } while (i < xn);
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_LOAD(y + i + j * GGML_F32_EPR);
+            ay[j] = GGML_F32_VEC_DIV(ax[j], ay[j]);
+            GGML_F32_VEC_STORE(z + i + j * GGML_F32_EPR, ay[j]);
         }
     }
 
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = GGML_F32_VEC_LOAD(x + i);
+        ay[0] = GGML_F32_VEC_LOAD(y + i);
+        ay[0] = GGML_F32_VEC_DIV(ax[0], ay[0]);
+        GGML_F32_VEC_STORE(z + i, ay[0]);
+    }
+
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             z[i]  = x[i] / y[i];
@@ -3095,7 +2973,7 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         z[i]  = x[i] / y[i];
     }
 
@@ -3103,54 +2981,49 @@ void ggml_vec_div_f32(const int64_t n, float * z, const float * x, const float *
 
 }
 
-void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y, const float * x) {
+void ggml_vec_normsq_f32(const uint64_t n, float * s, const float mean, float * y, const float * x) {
     float sumf = 0.0f;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
 
     if (xn) {
         __m512 vx = _mm512_set1_ps(mean);
         __m512 sum[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
         sum[0] = _mm512_setzero_ps(); 
         sum[1] = _mm512_setzero_ps(); 
         sum[2] = _mm512_setzero_ps(); 
         sum[3] = _mm512_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    ax[j] = _mm512_sub_ps(ax[j], vx);
-                    _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
-                    sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP16) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                ax[j] = _mm512_sub_ps(ax[j], vx);
+                _mm512_storeu_ps(y + i + j * GGML_F32_EPR16, ax[j]);
+                sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]);
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                ax[0] = _mm512_sub_ps(ax[0], vx);
-                _mm512_storeu_ps(y + i, ax[0]);
-                sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR16) {
+            ax[0] = _mm512_loadu_ps(x + i);
+            ax[0] = _mm512_sub_ps(ax[0], vx);
+            _mm512_storeu_ps(y + i, ax[0]);
+            sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]);
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE512(sumf, sum); 
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         float bx;
 
@@ -3164,49 +3037,44 @@ void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1)); 
 
     if (xn) {
         __m256 vx = _mm256_set1_ps(mean);
         __m256 sum[GGML_F32_ARR];
         __m256 ax[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+        const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
         sum[0] = _mm256_setzero_ps(); 
         sum[1] = _mm256_setzero_ps(); 
         sum[2] = _mm256_setzero_ps(); 
         sum[3] = _mm256_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
-                    ax[j] = _mm256_sub_ps(ax[j], vx);
-                    _mm256_storeu_ps(y + i + j * GGML_F32_EPR, ax[j]);
-                    sum[j] = _mm256_fmadd_ps(ax[j], ax[j], sum[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
+                ax[j] = _mm256_sub_ps(ax[j], vx);
+                _mm256_storeu_ps(y + i + j * GGML_F32_EPR, ax[j]);
+                sum[j] = _mm256_fmadd_ps(ax[j], ax[j], sum[j]);
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm256_loadu_ps(x + i);
-                ax[0] = _mm256_sub_ps(ax[0], vx);
-                _mm256_storeu_ps(y + i, ax[0]);
-                sum[0] = _mm256_fmadd_ps(ax[0], ax[0], sum[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR) {
+            ax[0] = _mm256_loadu_ps(x + i);
+            ax[0] = _mm256_sub_ps(ax[0], vx);
+            _mm256_storeu_ps(y + i, ax[0]);
+            sum[0] = _mm256_fmadd_ps(ax[0], ax[0], sum[0]);
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE(sumf, sum); 
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         float bx;
 
@@ -3221,7 +3089,8 @@ void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y
 #else
 
     // scaler
-    for (int64_t i = 0; i < n; ++i) {
+
+    for (uint64_t i = 0; i < n; ++i) {
         float bx;
 
         bx = x[i] - mean;
@@ -3234,49 +3103,44 @@ void ggml_vec_normsq_f32(const int64_t n, float * s, const float mean, float * y
     *s =sumf;
 }
 
-void ggml_vec_sum_f32(const int64_t n, float * s, const float * x) {
+void ggml_vec_sum_f32(const uint64_t n, float * s, const float * x) {
     float sumf = 0.0f;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
         __m512 sum[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
         sum[0] = _mm512_setzero_ps();
         sum[1] = _mm512_setzero_ps();
         sum[2] = _mm512_setzero_ps();
         sum[3] = _mm512_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    sum[j] = _mm512_add_ps(ax[j], sum[j]); 
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP16) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                sum[j] = _mm512_add_ps(ax[j], sum[j]); 
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                sum[0] = _mm512_add_ps(ax[0], sum[0]); 
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR16) {
+            ax[0] = _mm512_loadu_ps(x + i);
+            sum[0] = _mm512_add_ps(ax[0], sum[0]); 
         }
     
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             sumf += x[i];
@@ -3286,43 +3150,39 @@ void ggml_vec_sum_f32(const int64_t n, float * s, const float * x) {
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
 
     if (xn) {
         GGML_F32_VEC sum[GGML_F32_ARR];
         GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+
+        const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
         sum[0] = _mm256_setzero_ps();
         sum[1] = _mm256_setzero_ps();
         sum[2] = _mm256_setzero_ps();
         sum[3] = _mm256_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    sum[j] = GGML_F32_VEC_ADD(ax[j], sum[j]); 
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+                sum[j] = GGML_F32_VEC_ADD(ax[j], sum[j]); 
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                sum[0] = GGML_F32_VEC_ADD(ax[0], sum[0]); 
-                i += GGML_F32_EPR;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR) {
+            ax[0] = GGML_F32_VEC_LOAD(x + i);
+            sum[0] = GGML_F32_VEC_ADD(ax[0], sum[0]); 
         }
     
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             sumf += x[i];
@@ -3333,104 +3193,96 @@ void ggml_vec_sum_f32(const int64_t n, float * s, const float * x) {
 #else
 
     // scalar
-    for (int64_t i = 0; i < n; ++i) {
+
+    for (uint64_t i = 0; i < n; ++i) {
         sumf += x[i];
     }
 
-#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
 
     *s = sumf;
 }
 
-void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
+void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
     float sumf = 0.0f;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
         __m512 sum[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
 
         sum[0] = _mm512_setzero_ps();
         sum[1] = _mm512_setzero_ps();
         sum[2] = _mm512_setzero_ps();
         sum[3] = _mm512_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]); 
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP16) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                sum[j] = _mm512_fmadd_ps(ax[j], ax[j], sum[j]); 
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]); 
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR16) {
+            ax[0] = _mm512_loadu_ps(x + i);
+            sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]); 
         }
     
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
-            sumf += x[i];
+            sumf += x[i] * x[i];
             i += 1;
         } while (i < n);
     }
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
 
     if (xn) {
         GGML_F32_VEC sum[GGML_F32_ARR];
         GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+
+        const uint64_t np = (n & ~(GGML_F32_STEP - 1));
 
         sum[0] = _mm256_setzero_ps();
         sum[1] = _mm256_setzero_ps();
         sum[2] = _mm256_setzero_ps();
         sum[3] = _mm256_setzero_ps();
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ax[j]); 
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+                sum[j] = GGML_F32_VEC_FMA(sum[j], ax[j], ax[j]); 
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                sum[0] = GGML_F32_VEC_FMA(sum[0], ax[0], ax[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR) {
+            ax[0] = GGML_F32_VEC_LOAD(x + i);
+            sum[0] = GGML_F32_VEC_FMA(sum[0], ax[0], ax[0]);
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
 
     // leftovers
+
     if (n & (GGML_F32_STEP - 1)) {
         do {
             sumf += x[i] * x[i];
@@ -3441,7 +3293,8 @@ void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
 #else
 
     // scalar
-    for (int64_t i = 0; i < n; ++i) {
+
+    for (uint64_t i = 0; i < n; ++i) {
         sumf += x[i] * x[i];
     }
 
@@ -4725,50 +4578,45 @@ inline static void ggml_vec_sum_bf16_ggf(const int n, float * s, const ggml_bf16
     *s = sum;
 }
 
-void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
+void ggml_vec_max_f32(const uint64_t n, float * s, const float * x) {
 
     float max = -INFINITY;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
 
     if (xn) {
         __m512 maxvx[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
 
-        const int64_t np = (n &~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (n &~(GGML_F32_STEP16 - 1));
 
         maxvx[0] = _mm512_set1_ps(max);
         maxvx[1] = _mm512_set1_ps(max);
         maxvx[2] = _mm512_set1_ps(max);
         maxvx[3] = _mm512_set1_ps(max);
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-                    maxvx[j] = _mm512_max_ps(maxvx[j], ax[j]);
-                }
-    
-                i += GGML_F32_STEP16;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP16) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+                maxvx[j] = _mm512_max_ps(maxvx[j], ax[j]);
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = _mm512_loadu_ps(x + i);
-                maxvx[0] = _mm512_max_ps(maxvx[0], ax[0]);
-                i += GGML_F32_EPR16;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR16) {
+            ax[0] = _mm512_loadu_ps(x + i);
+            maxvx[0] = _mm512_max_ps(maxvx[0], ax[0]);
         }
 
         // reduce
+
         GGML_F32_VEC_REDUCE512_MAX(max, maxvx);
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR16 - 1)) {
         do {
             max = MAX(max, x[i]);
@@ -4778,43 +4626,39 @@ void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
 
 #elif defined(__AVX2__)
 
-    int64_t i = 0;
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    uint64_t i = 0;
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1)); 
 
     if (xn) {
         GGML_F32_VEC maxvx[GGML_F32_ARR];
         GGML_F32_VEC ax[GGML_F32_ARR];
-        const int64_t np = (n &~(GGML_F32_STEP - 1));
+
+        const uint64_t np = (n &~(GGML_F32_STEP - 1));
 
         maxvx[0] = _mm256_set1_ps(max);
         maxvx[1] = _mm256_set1_ps(max);
         maxvx[2] = _mm256_set1_ps(max);
         maxvx[3] = _mm256_set1_ps(max);
 
-        if (np) {
-            do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
-                    ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
-                    maxvx[j] = GGML_F32_VEC_MAX(maxvx[j], ax[j]);
-                }
-    
-                i += GGML_F32_STEP;
-            } while (i < np);
+        for (; i < np; i += GGML_F32_STEP) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = GGML_F32_VEC_LOAD(x + i + j * GGML_F32_EPR);
+                maxvx[j] = GGML_F32_VEC_MAX(maxvx[j], ax[j]);
+            }
         }
 
-        if (xn > np) {
-            do {
-                ax[0] = GGML_F32_VEC_LOAD(x + i);
-                maxvx[0] = GGML_F32_VEC_MAX(maxvx[0], ax[0]);
-                i += GGML_F32_EPR;
-            } while (i < xn);
+        for (; i < xn; i += GGML_F32_EPR) {
+            ax[0] = GGML_F32_VEC_LOAD(x + i);
+            maxvx[0] = GGML_F32_VEC_MAX(maxvx[0], ax[0]);
         }
 
         // reduce
+
         GGML_F32_VEC_REDUCE_MAX(max, maxvx);
     }
 
     // leftovers
+
     if (n & (GGML_F32_EPR - 1)) {
         do {
             max = MAX(max, x[i]);
@@ -4824,7 +4668,7 @@ void ggml_vec_max_f32(const int64_t n, float * s, const float * x) {
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (uint64_t i = 0; i < n; ++i) {
         max = MAX(max, x[i]);
     }
 
