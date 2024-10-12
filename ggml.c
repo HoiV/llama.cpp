@@ -4915,6 +4915,18 @@ atomic_int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
 atomic_int64 unary_op_time[GGML_UNARY_OP_COUNT] = {0};
 int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
 
+#define ROW_SIZE_BUCKETS 16385
+
+typedef struct {
+    int32_t total_count;
+    int32_t counts[ROW_SIZE_BUCKETS]; 
+} guant_type_info;
+
+guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
+
+#define MAX_BLOCK_FACTOR 128
+int32_t vec_blk_factor_counts[MAX_BLOCK_FACTOR] = {0};
+
 void
 print_tensor_op_perf_data (
     void
@@ -4982,6 +4994,7 @@ print_tensor_op_perf_data (
 
     printf("\n%8d  %5.2f\n\n", total_count, total_percent);
 
+    printf("unary op frequency\n\n");
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%    Time(ms) Unary Op\n\n");
 
@@ -5010,6 +5023,57 @@ print_tensor_op_perf_data (
            total_count,
            (double)(total_time) / (1000. * 1000.),
            total_percent);
+
+    //
+    // Scan through all the quant types looking for types that have a non-zero
+    // total count.
+    //
+
+    for (int64_t i = 0; i < ARRAYSIZE(quant_type_row_size); i += 1) {
+        if (quant_type_row_size[i].total_count) {
+            printf("vector row size count histogram for quant type %s\n\n",
+                   ggml_type_name(i));
+
+            printf("  Size   Count    %%\n\n");
+
+            total_count = quant_type_row_size[i].total_count;
+            total_percent = 0;
+            for (int64_t j = 0; j < ARRAYSIZE(quant_type_row_size[i].counts); j += 1) {
+                if (quant_type_row_size[i].counts[j]) {
+                    percent = (double)quant_type_row_size[i].counts[j] * 100.f / (double)total_count;
+                    total_percent += percent;
+                    printf("%6zd  %6d  %5.2f\n",
+                           j + 1,
+                           quant_type_row_size[i].counts[j],
+                           percent);
+                }
+            }
+
+            printf("\n      %8d %5.2f\n\n", total_count, total_percent);
+        }
+    }
+
+    printf("mul_mat loop block factor histogram\n\n");
+    printf("Factor   Count    %%\n\n");
+
+    total_count = 0;
+    total_percent = 0;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_blk_factor_counts); i += 1) {
+        total_count += vec_blk_factor_counts[i];
+    }
+
+    for (int64_t i = 0; i < ARRAYSIZE(vec_blk_factor_counts); i += 1) {
+        if (vec_blk_factor_counts[i]) {
+            percent = (double)vec_blk_factor_counts[i] * 100.f / (double)total_count;
+            total_percent += percent;
+            printf("%6zd  %6d %6.2f\n",
+                   i + 1,
+                   vec_blk_factor_counts[i],
+                   percent);
+        }
+    }
+
+    printf("\n      %8d %5.2f\n\n", total_count, total_percent);
 
     printf(" Graph Tensor Op Performance Data\n\n");
     printf("Graph size is the number of tensors in a graph\n");
@@ -14743,14 +14807,64 @@ IQK_MulMat_Not_Available1:;
 IQK_MulMat_Not_Available2:;
 #endif
 
+    //
+    // Compute the dot matrix multiply using tiling.
+    //
+    // The general algorithm is to perform the dot product on one row from the outer
+    // loop on all rows in the inner loop. Unfortunately this is not very cache
+    // friendly. The strategy used to make this more efficient is to break up the dot
+    // product into tiles. Basically a tile is sized to fit an inner loop tile in the
+    // l1 cache.
+    //
+
     // Compute the blocking factors based on the sizeof the l1/l2 caches and the size of
     // the two sources. The goal of the blocking factor is to localize cache residency
     // by limiting the number of combined rows (src0 and src1) scanned at a time to fit
     // in the l1 + l2 cache that is available per procesor.
 
+#if 0
     const int64_t half_cache = (l1_cache_size + l2_cache_size) / 2;
     int64_t blck0_factor = half_cache / ggml_row_size(src0_type, ne0);
     int64_t blck1_factor = half_cache / row_size;
+#endif // #if 0
+
+//#if 0
+
+    //
+    // Always compute the block factor based on the inner loop operand (src1). This is
+    // the data that is continually referenced for one block iteration of the outer loop.
+    //
+    // N.B. It makes no difference which operand (src0 or src1) has the most rows. The
+    //      inner loop is the data that gets continually referenced as the outer loop
+    //      sequences through an outer loop block.
+    //
+
+    const int64_t cache_size = l1_cache_size;
+//    const int64_t cache_size = l1_cache_size + l2_cache_size;
+    int64_t blck0_factor;
+
+    size_t src0_row_size = ggml_row_size(src0_type, ne00); 
+//    blck0_factor = (cache_size - src0_row_size) / row_size; 
+    blck0_factor = cache_size / row_size; 
+    if (!blck0_factor || (blck0_factor == 1)) {
+        printf("blck factor 0/1 - cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+               cache_size,
+               src0_row_size,
+               row_size);
+    }
+
+    //
+    // The block factor should have a value of at least one.
+    //
+    // N.B. The computed block factor is zero if the size of the space available in the
+    //      cache is less that the inner loop row size.
+    //
+    
+
+    blck0_factor = max(1, blck0_factor);
+    int64_t blck1_factor = blck0_factor;
+//#endif // #if 0
+
 #if 0
     printf("blck0_factor %d row size %d, blck1_factor %d row size %d\n",
            (uint32_t)blck0_factor,
@@ -14758,24 +14872,33 @@ IQK_MulMat_Not_Available2:;
            (uint32_t)blck1_factor,
            (uint32_t)row_size);
 #endif // #if 0
-    int64_t blck_factor = (1ull << 20) / (row_size + ggml_row_size(src1_type, ne10));
-    blck_factor = blck_factor ? blck_factor : 1ull;
 
-//    printf("ne00 %lld, block_factor %lld\n", ne00, blck_factor);
+#ifdef GGML_TENSOR_OP_PERF
+    if (!ith) {
+        uint64_t bucket_index = row_size;
 
-    blck0_factor = max(1, blck0_factor);
-    blck1_factor = max(1, blck1_factor);
+        if (bucket_index > ARRAYSIZE(quant_type_row_size[src1_type].counts)) {
+            bucket_index = ARRAYSIZE(quant_type_row_size[src1_type].counts);
+        }
+
+
+        quant_type_row_size[src1_type].total_count += 1;
+        quant_type_row_size[src1_type].counts[bucket_index - 1] += 1;
+
+        uint64_t blk_index = blck0_factor;
+
+        if (blk_index > ARRAYSIZE(vec_blk_factor_counts)) {
+            blk_index = ARRAYSIZE(vec_blk_factor_counts);
+        }
+
+        vec_blk_factor_counts[blk_index - 1] += 1;
+    }
+#endif // GGML_TENSOR_OP_PERF
 
     void * dst_data = dst->data;
-#if 1
-    for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_factor) {
-        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_factor) {
-            const int64_t limit1 = min(iir1 + blck_factor, ir111);
-#else
     for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck0_factor) {
         for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck1_factor) {
             const int64_t limit1 = min(iir1 + blck0_factor, ir111);
-#endif
             for (int64_t ir1 = iir1; ir1 < limit1; ++ir1) {
                 const int64_t i13 = (ir1/(ne12*ne1));
                 const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
@@ -14799,11 +14922,7 @@ IQK_MulMat_Not_Available2:;
 
                 float * dst_col = (float *) ((char *) dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
 
-#if 1
-                const int64_t limit0 = min(iir0 + blck_factor, ir011);
-#else
                 const int64_t limit0 = min(iir0 + blck1_factor, ir011);
-#endif
                 for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
                     vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
                 }
