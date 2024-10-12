@@ -3989,74 +3989,105 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
 
 #if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
+    float amax;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    const __m512 sign_bit = _mm512_set1_ps(-0.0f);
+
     for (uint64_t i = 0; i < nb; i++) {
+        __m512 maxvx[4];
+        __m512 ax[4];
 
-        uint32_t max = 0;
-        uint32_t amax = 0;
+        maxvx[0] = _mm512_setzero_ps();
+        maxvx[1] = _mm512_setzero_ps();
+        maxvx[2] = _mm512_setzero_ps();
+        maxvx[3] = _mm512_setzero_ps();
 
-        for (int j = 0; j < QK_K; ++j) {
-
-            //
-            // Compare absolute value of ax (x[j]) with the absolute value of amax.
-            //
-            // N.B. The comparison is done using the int32_t interpretation of the
-            //      floating value.
-            //
-            // If the exponent of ax is greater than the exponent of amax, then ax
-            // is greater than amax.
-            //
-            // If the exponent of ax is less than the exponent of amax, then ax is
-            // less than amax.
-            //
-            // If the exponent of ax is equal to the exponent of amax, then if the
-            // mantissa of ax is greater than the mantissa of amax, then ax is
-            // greater than amax. Otherwise ax is less than or equal to amax.
-            //
-            // N.B. The values of x[j] are expected to be valid floating point values
-            //      and not nans or underflowed values.
-            //
-
-            uint32_t maxi = *((uint32_t *)&x[j]);
-            uint32_t amaxi = maxi & 0x7fffffff;
-
-            if (amaxi > amax) {
-                amax = amaxi;
-                max = maxi;
+        for (uint64_t j = 0; j < QK_K / 64; ++j) {
+            for (uint64_t l = 0; l < 4; l++) {
+                ax[l] = _mm512_loadu_ps(x + (j * 64) + (l * 16));
+                maxvx[l] = _mm512_max_ps(maxvx[l], _mm512_andnot_ps(sign_bit, ax[l]));
             }
         }
 
-        if (!amax) {
-            y->d = 0.0;
+        maxvx[0] = _mm512_max_ps(maxvx[0], maxvx[1]);
+        maxvx[1] = _mm512_max_ps(maxvx[2], maxvx[3]);
+        maxvx[0] = _mm512_max_ps(maxvx[0], maxvx[1]);
+        __m256 t0 = _mm256_max_ps(_mm512_castps512_ps256(maxvx[0]),
+                                  _mm512_extractf32x8_ps(maxvx[0], 1));
 
-            //
-            // Zero the quant values directly.
-            //
-            // N.B. This results in overall better code quality for this function.
-            //
 
-            __m512 zv = _mm512_setzero();
+        __m128 t1 = _mm_max_ps(_mm256_castps256_ps128(t0),
+                               _mm256_extractf128_ps(t0, 1));
 
-            *((__m512 *)&(y[i].qs)[0]) = zv;
-            *((__m512 *)&(y[i].qs)[64]) = zv;
-            *((__m512 *)&(y[i].qs)[128]) = zv;
-            *((__m512 *)&(y[i].qs)[192]) = zv;
+        t1 = _mm_max_ps(t1, _mm_movehl_ps(t1, t1));
+        t1 = _mm_max_ss(t1, _mm_movehdup_ps(t1));
+        amax = _mm_cvtss_f32(t1);
 
-//            memset(y[i].qs, 0, QK_K);
-            goto next_block;
+#else
+
+    const __m256 sign_bit = _mm256_set1_ps(-0.0f);
+
+    for (uint64_t i = 0; i < nb; i++) {
+        __m256 maxvx[4];
+        __m256 ax[4];
+
+        maxvx[0] = _mm256_setzero_ps();
+        maxvx[1] = _mm256_setzero_ps();
+        maxvx[2] = _mm256_setzero_ps();
+        maxvx[3] = _mm256_setzero_ps();
+
+        for (uint64_t j = 0; j < QK_K / 32; ++j) {
+            for (uint64_t l = 0; l < 4; l++) {
+                ax[l] = _mm256_loadu_ps(x + (j * 32) + (l * 8));
+                maxvx[l] = _mm256_max_ps(maxvx[l], _mm256_andnot_ps(sign_bit, ax[l]));
+            }
         }
 
-        //const float iscale = -128.f/ *((float *)&max);
-        // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
+        maxvx[0] = _mm256_max_ps(maxvx[0], maxvx[1]);
+        maxvx[1] = _mm256_max_ps(maxvx[2], maxvx[3]);
+        maxvx[0] = _mm256_max_ps(maxvx[0], maxvx[1]);
+        __m128 t0 = _mm_max_ps(_mm256_castps256_ps128(maxvx[0]),
+                               _mm256_extractf128_ps(maxvx[0], 1));
 
-        const float iscale = -127.f / *((float *)&max);
+        t0 = _mm_max_ps(t0, _mm_movehl_ps(t0, t0));
+        t0 = _mm_max_ss(t0, _mm_movehdup_ps(t0));
+        amax = _mm_cvtss_f32(t0);
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
         //
-        // This value is a magic value, that when added to an intermediate float quant value
-        // shifts the integer part of the intermediate quant value to the low bits of the
-        // mantissa. 
+        // Initialize loop values.
+        //
+        // N.B. These values will either cause the entire quant block to be zeroed, or
+        //      the actual quant values will be computed.
         //
 
-        const float shift = 12582912.f;
+        float iscale;
+        float shift; 
+
+        if (amax == 0.0f) {
+            iscale = 0.0f;
+            shift = 0.0f;
+
+        } else {
+
+            //const float iscale = -128.f/ *((float *)&max);
+            // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
+
+            iscale = 127.f / amax;
+
+            //
+            // This value is a magic value, that when added to an intermediate float
+            // quant value shifts the integer part of the intermediate quant value to
+            // the low bits of the mantissa. 
+            //
+
+            shift = 12582912.f;
+        }
+
+        y->d = amax / 127.f;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
@@ -4145,9 +4176,6 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
 
 #endif // __AVXVNNI__
 
-        y->d = 1.0f / iscale;
-
-next_block:
         x += QK_K;
         y += 1;
     }
@@ -4156,23 +4184,23 @@ next_block:
 
     for (int i = 0; i < nb; i++) {
 
-        float max = 0;
-        float amax = 0;
+        float amax = 0.0f;
         for (int j = 0; j < QK_K; ++j) {
             float ax = fabsf(x[j]);
             if (ax > amax) {
-                amax = ax; max = x[j];
+                amax = ax;
             }
         }
-        if (!amax) {
-            y[i].d = 0;
-            memset(y[i].qs, 0, QK_K);
-            x += QK_K;
-            continue;
+        if (amax == 0.0f) {
+            memset(&y[i], 0, sizeof(block_q8_K));
+            goto next_block;
         }
-        //const float iscale = -128.f/max;
+        //const float iscale = 128.f / amax;
         // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
-        const float iscale = -127.f/max;
+
+        const float iscale = 127.f / amax;
+        y[i].d = amax / 127.f;
+
         for (int j = 0; j < QK_K; ++j) {
             int v = nearest_int(iscale*x[j]);
             y[i].qs[j] = MIN(127, v);
@@ -4184,7 +4212,8 @@ next_block:
             }
             y[i].bsums[j] = sum;
         }
-        y[i].d = 1/iscale;
+
+next_block:
         x += QK_K;
     }
 
@@ -5973,7 +6002,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
 
-    #if !defined(__clang__)
+#if !defined(__clang__)
     __m256i zero256 = _mm256_setzero_si256();
 
     // Main loop
