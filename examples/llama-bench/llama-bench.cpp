@@ -200,7 +200,7 @@ struct cmd_params {
 };
 
 static const cmd_params cmd_params_defaults = {
-    /* model                */ {"models/7B/ggml-model-q4_0.gguf"},
+    /* model                */ {"models/Phi-3.bin"},
     /* n_prompt             */ {512},
     /* n_gen                */ {128},
     /* n_pg                 */ {},
