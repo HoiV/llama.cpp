@@ -64,6 +64,7 @@ option(LLAMA_GPROF                      "llama: enable gprof"                   
 
 # build
 option(LLAMA_FATAL_WARNINGS             "llama: enable -Werror flag"                            OFF)
+option(LLAMA_QUIET_MODE                 "llama: disable logs                                    OFF)
 
 # sanitizers
 option(LLAMA_SANITIZE_THREAD            "llama: enable thread sanitizer"                        OFF)
@@ -1125,6 +1126,10 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
         (NOT CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_GENERATOR_PLATFORM_LWR AND
          CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|i686|AMD64)$"))
     message(STATUS "x86 detected")
+    if (LLAMA_QUIET_MODE)
+        message(STATUS "Enable quiet mode")
+        add_compile_definitions(GGML_QUIET_MODE)
+    endif ()
     if (MSVC)
         # instruction set detection for MSVC only
         if (LLAMA_NATIVE)
