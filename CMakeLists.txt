@@ -64,7 +64,7 @@ option(LLAMA_GPROF                      "llama: enable gprof"                   
 
 # build
 option(LLAMA_FATAL_WARNINGS             "llama: enable -Werror flag"                            OFF)
-option(LLAMA_QUIET_MODE                 "llama: disable logs                                    OFF)
+option(LLAMA_QUIET_MODE                 "llama: disable logs"                                   OFF)
 
 # sanitizers
 option(LLAMA_SANITIZE_THREAD            "llama: enable thread sanitizer"                        OFF)
