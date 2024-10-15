@@ -14845,7 +14845,7 @@ IQK_MulMat_Not_Available2:;
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00); 
 //    blck0_factor = (cache_size - src0_row_size) / row_size; 
-    blck0_factor = cache_size / row_size; 
+    blck0_factor = (cache_size + (row_size / 2)) / row_size; 
     if (!blck0_factor || (blck0_factor == 1)) {
         //printf("blck factor 0/1 - cache_size %zd, src0 row size %zd, src1 row size %zd\n",
         //       cache_size,

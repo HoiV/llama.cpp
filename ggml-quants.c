@@ -4073,6 +4073,30 @@ void dequantize_row_iq4_xs(const block_iq4_xs * restrict x, float * restrict y, 
 
 //===================================== Q8_K ==============================================
 
+//#if 0
+inline float hmax_f32_8(__m256 x) {
+    __m128 max4 = _mm_max_ps(_mm256_castps256_ps128(x),
+                             _mm256_extractf128_ps(x, 1));
+
+    max4 = _mm_max_ps(max4, _mm_movehl_ps(max4, max4));
+    max4 = _mm_max_ss(max4, _mm_movehdup_ps(max4));
+    return _mm_cvtss_f32(max4);
+}
+
+inline float hmax_f32_16(__m512 x) {
+    __m256 max8 = _mm256_max_ps(_mm512_castps512_ps256(x),
+                                _mm512_extractf32x8_ps(x, 1));
+    return hmax_f32_8(max8);
+}
+//#endif // #if 0
+
+inline int hsum_i32_16(__m512i x) {
+    const __m256i t0 = _mm256_add_epi32(_mm512_castsi512_si256(x),
+                                        _mm512_extracti32x8_epi32(x, 1));
+
+    return hsum_i32_8(t0);
+}
+
 void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict y, int64_t k) {
     const uint64_t qk = QK_K;
 
@@ -4080,35 +4104,27 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
 
     const uint64_t nb = k / qk;
 
-#if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
-
     float amax;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
+    const __m512i perm = _mm512_setr_epi32(0, 4, 8, 12, 1, 5, 9, 13,
+                                           2, 6, 10, 14, 3, 7, 11, 15);
 
     for (uint64_t i = 0; i < nb; i++) {
-        __m512 maxvx[4];
-        __m512 ax[4];
-
-        maxvx[0] = _mm512_setzero_ps();
-        maxvx[1] = _mm512_setzero_ps();
-        maxvx[2] = _mm512_setzero_ps();
-        maxvx[3] = _mm512_setzero_ps();
+        __m512 ax;
+        __m512 maxvx = _mm512_setzero_ps();
 
         for (uint64_t j = 0; j < QK_K / 64; ++j) {
             for (uint64_t l = 0; l < 4; l++) {
-                ax[l] = _mm512_loadu_ps(x + (j * 64) + (l * 16));
-                maxvx[l] = _mm512_max_ps(maxvx[l], _mm512_andnot_ps(sign_bit, ax[l]));
+                ax = _mm512_loadu_ps(x + (j * 64) + (l * 16));
+                maxvx = _mm512_max_ps(maxvx, _mm512_andnot_ps(sign_bit, ax));
             }
         }
 
-        maxvx[0] = _mm512_max_ps(maxvx[0], maxvx[1]);
-        maxvx[1] = _mm512_max_ps(maxvx[2], maxvx[3]);
-        maxvx[0] = _mm512_max_ps(maxvx[0], maxvx[1]);
-        __m256 t0 = _mm256_max_ps(_mm512_castps512_ps256(maxvx[0]),
-                                  _mm512_extractf32x8_ps(maxvx[0], 1));
+        __m256 t0 = _mm256_max_ps(_mm512_castps512_ps256(maxvx),
+                                  _mm512_extractf32x8_ps(maxvx, 1));
 
 
         __m128 t1 = _mm_max_ps(_mm256_castps256_ps128(t0),
@@ -4118,159 +4134,110 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
         t1 = _mm_max_ss(t1, _mm_movehdup_ps(t1));
         amax = _mm_cvtss_f32(t1);
 
-#else
+        //
+        // Initialize loop values.
+        //
+        // N.B. These values will either cause the entire quant block to be zeroed,
+        //      or the actual quant values will be computed.
+        //
 
-    const __m256 sign_bit = _mm256_set1_ps(-0.0f);
+        const float iscale = (amax == 0.0f) ? 0.0f : 127.f / amax;
 
-    for (uint64_t i = 0; i < nb; i++) {
-        __m256 maxvx[4];
-        __m256 ax[4];
+        y[i].d = amax / 127.f;
 
-        maxvx[0] = _mm256_setzero_ps();
-        maxvx[1] = _mm256_setzero_ps();
-        maxvx[2] = _mm256_setzero_ps();
-        maxvx[3] = _mm256_setzero_ps();
+        const __m512 xscale = _mm512_set1_ps(iscale);
 
-        for (uint64_t j = 0; j < QK_K / 32; ++j) {
-            for (uint64_t l = 0; l < 4; l++) {
-                ax[l] = _mm256_loadu_ps(x + (j * 32) + (l * 8));
-                maxvx[l] = _mm256_max_ps(maxvx[l], _mm256_andnot_ps(sign_bit, ax[l]));
+        int8_t * q8 = y[i].qs;
+
+        for (int l = 0; l < QK_K / 64; l += 1) {
+            __m512 xv[4];
+            __m512i xvi[4];
+
+            for (uint64_t j = 0; j < 4; j += 1) {
+                xv[j] = _mm512_loadu_ps(x + (j * 16) + (l * 64));
+                xv[j] = _mm512_mul_ps(xscale, xv[j]);
+//                xv[j] = _mm512_round_ps(xv[j], _MM_ROUND_NEAREST);
+                xvi[j] = _mm512_cvtps_epi32(xv[j]);
             }
+
+            y[i].bsums[(l * 4) + 0] = hsum_i32_16(xvi[0]);
+            y[i].bsums[(l * 4) + 1] = hsum_i32_16(xvi[1]);
+
+            y[i].bsums[(l * 4) + 2] = hsum_i32_16(xvi[2]);
+            y[i].bsums[(l * 4) + 3] = hsum_i32_16(xvi[3]);
+
+            xvi[0] = _mm512_packs_epi32(xvi[0], xvi[1]);
+            xvi[2] = _mm512_packs_epi32(xvi[2], xvi[3]);
+            xvi[0] = _mm512_packs_epi16(xvi[0], xvi[2]);
+            xvi[0] = _mm512_permutevar_epi32(perm, xvi[0]);
+
+            _mm512_storeu_si512((__m512i *)(q8 + (l * 64)), xvi[0]);
         }
 
-        maxvx[0] = _mm256_max_ps(maxvx[0], maxvx[1]);
-        maxvx[1] = _mm256_max_ps(maxvx[2], maxvx[3]);
-        maxvx[0] = _mm256_max_ps(maxvx[0], maxvx[1]);
-        __m128 t0 = _mm_max_ps(_mm256_castps256_ps128(maxvx[0]),
-                               _mm256_extractf128_ps(maxvx[0], 1));
+        x += 256;
+    }
 
-        t0 = _mm_max_ps(t0, _mm_movehl_ps(t0, t0));
-        t0 = _mm_max_ss(t0, _mm_movehdup_ps(t0));
-        amax = _mm_cvtss_f32(t0);
+#elif defined(__AVX2__)
 
-#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+    const __m256 sign_bit = _mm256_set1_ps(-0.0f);
+    const __m256i perm = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+
+    for (uint64_t i = 0; i < nb; i += 1) {
+        __m256 ax;
+        __m256 maxvx = _mm256_setzero_ps();
+
+        for (uint64_t j = 0; j < QK_K / 32; j += 1) {
+            for (uint64_t l = 0; l < 4; l += 1) {
+                ax = _mm256_loadu_ps(x + (j * 32) + (l * 8));
+                maxvx = _mm256_max_ps(maxvx, _mm256_andnot_ps(sign_bit, ax));
+            }
+
+            __m128 t0 = _mm_max_ps(_mm256_castps256_ps128(maxvx),
+                                   _mm256_extractf128_ps(maxvx, 1));
+
+            t0 = _mm_max_ps(t0, _mm_movehl_ps(t0, t0));
+            t0 = _mm_max_ss(t0, _mm_movehdup_ps(t0));
+            amax = _mm_cvtss_f32(t0);
+        }
 
         //
         // Initialize loop values.
         //
-        // N.B. These values will either cause the entire quant block to be zeroed, or
-        //      the actual quant values will be computed.
+        // N.B. These values will either cause the entire quant block to be zeroed,
+        //      or the actual quant values will be computed.
         //
 
-        float iscale;
-        float shift; 
+        const float iscale = (amax == 0.0f) ? 0.0f : 127.f / amax;
 
-        if (amax == 0.0f) {
-            iscale = 0.0f;
-            shift = 0.0f;
+        y[i].d = amax / 127.f;
 
-        } else {
+        const __m256 xscale = _mm256_broadcast_ss(&iscale);
 
-            //const float iscale = -128.f/ *((float *)&max);
-            // We need this change for IQ2_XXS, else the AVX implementation becomes very awkward
+        int8_t * q8 = y[i].qs;
 
-            iscale = 127.f / amax;
+        for (int l = 0; l < QK_K / 32; l += 1) {
+            __m256 xv[4];
+            __m256i xvi[4];
 
-            //
-            // This value is a magic value, that when added to an intermediate float
-            // quant value shifts the integer part of the intermediate quant value to
-            // the low bits of the mantissa. 
-            //
-
-            shift = 12582912.f;
-        }
-
-        y->d = amax / 127.f;
-
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
-
-        const __m512 xshift = _mm512_set1_ps(shift);
-        const __m512 xscale = _mm512_set1_ps(iscale);
-
-        static const uint8_t shuffle[64] = {
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
-
-        const __m512i ctrl = _mm512_loadu_si512((__m512i *)&shuffle);
-
-        for (int64_t j = 0; j < QK_K / 16; ++j) {
-            __m512 vx = _mm512_loadu_ps(x + (j * 16));
-            vx = _mm512_fmadd_ps(vx, xscale, xshift);
-            __m512i qsbytes = _mm512_shuffle_epi8(_mm512_castps_si512(vx), ctrl);
-            __m256i q0bytes = _mm512_extracti32x8_epi32(qsbytes, 0);
-            __m256i q1bytes = _mm512_extracti32x8_epi32(qsbytes, 1);
-            *((uint32_t *)(&y->qs[(j * 16) + 0])) = _mm256_extract_epi32(q0bytes, 0);
-            *((uint32_t *)(&y->qs[(j * 16) + 4])) = _mm256_extract_epi32(q0bytes, 4);
-            *((uint32_t *)(&y->qs[(j * 16) + 8])) = _mm256_extract_epi32(q1bytes, 0);
-            *((uint32_t *)(&y->qs[(j * 16) + 12])) = _mm256_extract_epi32(q1bytes, 4);
-        }
-
-#else
-
-        __m256 xshift = _mm256_broadcast_ss(&shift);
-        __m256 xscale = _mm256_broadcast_ss(&iscale);
-
-        static const uint8_t shuffle[32] = {
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
-            0, 4, 8, 12, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80};
-
-        const __m256i ctrl = _mm256_loadu_si256((__m256i *)&shuffle);
-
-        __m256 xv[4];
-
-        for (int64_t j = 0; j < (QK_K / 32); ++j) {
-            for (k = 0; k < 4; ++k) {
-                __m256 ax = _mm256_loadu_ps(x + (j * 32) + (k * 8)); 
-                xv[k] = _mm256_fmadd_ps(ax, xscale, xshift);
-                __m256i qsbytes = _mm256_shuffle_epi8(_mm256_castps_si256(xv[k]), ctrl);
-                *((uint32_t *)(&y->qs[(j * 32) + (k * 8) + 0])) = _mm256_extract_epi32(qsbytes, 0);
-                *((uint32_t *)(&y->qs[(j * 32) + (k * 8) + 4])) = _mm256_extract_epi32(qsbytes, 4);
+            for (uint64_t j = 0; j < 4; j += 1) {
+                xv[j] = _mm256_loadu_ps(x + (j * 8) + (l * 32));
+                xv[j] = _mm256_mul_ps(xscale, xv[j]);
+//                xv[j] = _mm256_round_ps(xv[j], _MM_ROUND_NEAREST);
+                xvi[j] = _mm256_cvtps_epi32(xv[j]);
             }
+
+            y[i].bsums[(l * 2) + 0] = hsum_i32_8(_mm256_add_epi32(xvi[0], xvi[1]));
+            y[i].bsums[(l * 2) + 1] = hsum_i32_8(_mm256_add_epi32(xvi[2], xvi[3]));
+
+            xvi[0] = _mm256_packs_epi32(xvi[0], xvi[1]);
+            xvi[2] = _mm256_packs_epi32(xvi[2], xvi[3]);
+            xvi[0] = _mm256_packs_epi16(xvi[0], xvi[2]);
+            xvi[0] = _mm256_permutevar8x32_epi32(xvi[0], perm);
+
+            _mm256_storeu_si256((__m256i *)(q8 + (l * 32)), xvi[0]);
         }
 
-#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
-
-#if defined(__AVXVNNI__) && (defined(__AVX512F__) && defined(__GEN_AVX512__))
-
-        int16_t * bsums = y->bsums;
-        __m256i dwords;
-        const __m256i ones = _mm256_set1_epi8(0x1);
-        const __m256i zero = _mm256_setzero_si256();
-
-        for (int64_t j = 0; j < QK_K / 32; ++j) {
-            const __m256i sbytes = _mm256_loadu_si256((const __m256i *)(y->qs + j * 32));
-            dwords = _mm256_dpbusd_epi32(zero, ones, sbytes);
-            dwords = _mm256_add_epi32(dwords, _mm256_srli_si256(dwords, 8));
-            dwords = _mm256_add_epi32(dwords, _mm256_srli_si256(dwords, 4));
-            bsums[j * 2] = _mm256_extract_epi16(dwords, 0);
-            bsums[j * 2 + 1] = _mm256_extract_epi16(dwords, 8);
-        }
-
-#else
-
-        __m128i lbytes;
-        __m128i lwords;
-        __m128i hwords;
-        __m256i qwords;
-
-        for (int64_t j = 0; j < QK_K / 16; ++j) {
-            lbytes = _mm_loadu_si128((const __m128i *)(y->qs + j * 16));
-            qwords = _mm256_cvtepi8_epi16(lbytes);
-            lwords = _mm256_castsi256_si128(qwords);
-            hwords = _mm256_extracti128_si256(qwords, 1);
-            lwords = _mm_add_epi16(hwords, lwords);
-            lwords = _mm_add_epi16(lwords, _mm_srli_si128(lwords, 8));
-            lwords = _mm_add_epi16(lwords, _mm_srli_si128(lwords, 4));
-            lwords = _mm_add_epi16(lwords, _mm_srli_si128(lwords, 2));
-            y->bsums[j] = _mm_extract_epi16(lwords, 0);
-        }
-
-#endif // __AVXVNNI__
-
-        x += QK_K;
-        y += 1;
+        x += 256;
     }
 
 #else
@@ -4294,9 +4261,16 @@ void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict
         const float iscale = 127.f / amax;
         y[i].d = amax / 127.f;
 
+        const __m128 iscale_ss = _mm_load_ss(&iscale);
+//        const __m128 zero = _mm_setzero_ps();
         for (int j = 0; j < QK_K; ++j) {
-            int v = nearest_int(iscale*x[j]);
-            y[i].qs[j] = MIN(127, v);
+//        int v = nearest_int(iscale*x[j]);
+//        y[i].qs[j] = MIN(127, v);
+
+            const __m128 xj_ss = _mm_load_ss(&x[j]);
+            __m128 prod = _mm_mul_ss(iscale_ss, xj_ss);
+//            prod = _mm_round_ss(zero, prod, _MM_ROUND_NEAREST);
+            y[i].qs[j] = _mm_cvtss_i32(prod);
         }
         for (int j = 0; j < QK_K/16; ++j) {
             int sum = 0;
