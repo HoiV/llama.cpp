@@ -1968,7 +1968,7 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, int6
         }
     }
 
-#elif defined(__AVX2__)
+#elif defined(__AVX2__) && !defined(__clang__) // clang cannot handle _mm_cvti32_ss()
 
     const __m128 zero128 = _mm_setzero_ps();
 
@@ -2006,7 +2006,7 @@ void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, int6
                 scale = sc & 0xF;
                 ml = _mm_mul_ss(dmin_ss, _mm_cvti32_ss(zero128, sc >> 4));
                 mlv = _mm256_broadcastss_ps(ml);
-        
+
                 for (int64_t k = 0; k < 2; k++) {
                     q1i = _mm_cvtsi64_si128(((q[k + 2] >> (j * 2)) & 0x0303030303030303) * scale);
                     q1v = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q1i));
@@ -2519,7 +2519,7 @@ void dequantize_row_q3_K(const block_q3_K * restrict x, float * restrict y, int6
         }
     }
 
-#elif defined(__AVX2__)
+#elif defined(__AVX2__) && !defined(__clang__) // __clang__ cannot handle _mm_ror_epi32()
 
     const __m128 zero128 = _mm_setzero_ps();
     const __m128i m4 = _mm_set1_epi8(4); 
@@ -4083,12 +4083,17 @@ inline float hmax_f32_8(__m256 x) {
     return _mm_cvtss_f32(max4);
 }
 
+#if !defined(__clang__) // clang cannot handle _mm512_castps512_ps256()
 inline float hmax_f32_16(__m512 x) {
     __m256 max8 = _mm256_max_ps(_mm512_castps512_ps256(x),
                                 _mm512_extractf32x8_ps(x, 1));
     return hmax_f32_8(max8);
 }
+#endif
+
 //#endif // #if 0
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
 inline int hsum_i32_16(__m512i x) {
     const __m256i t0 = _mm256_add_epi32(_mm512_castsi512_si256(x),
@@ -4096,6 +4101,8 @@ inline int hsum_i32_16(__m512i x) {
 
     return hsum_i32_8(t0);
 }
+
+#endif
 
 void quantize_row_q8_K_reference(const float * restrict x, block_q8_K * restrict y, int64_t k) {
     const uint64_t qk = QK_K;
@@ -6115,12 +6122,10 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     const block_q8_0 * restrict x = vx;
     const block_q8_0 * restrict y = vy;
 
-#if defined(__AVX2__) || defined(__AVX512F__) && defined(__GEN_AVX512__)
+#if (defined(__AVX512F__) && defined(__GEN_AVX512__) && !defined(__clang__)) // clang cannot handle _mm256_dpbusd_epi32()
 
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
-
-#if !defined(__clang__)
     __m256i zero256 = _mm256_setzero_si256();
 
     // Main loop
@@ -6156,16 +6161,16 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         acc = _mm256_fmadd_ps(d, q, acc);
     }
 
-#else
+    *s = hsum_float_8(acc);
+
+#elif defined(__AVX2__) || defined(__AVX__)
+
+    // Initialize accumulator with zeros
+    __m256 acc = _mm256_setzero_ps();
 
     // Main loop
     for (int i = 0; i < nb; ++i) {
-
-        //
-        // Compute combined scale for the entire 32 block_q8_K quant values in one
-        // fell swoop.
-        //
-
+        // Compute combined scale for the block
         const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
         __m256i qx = _mm256_loadu_si256((const __m256i *)x[i].qs);
         __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
@@ -6173,10 +6178,12 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         const __m256 q = mul_sum_i8_pairs_float(qx, qy);
 
         // Multiply q with scale and accumulate
-        acc = _mm256_fmadd_ps(d, q, acc);
+#if defined(__AVX2__)
+        acc = _mm256_fmadd_ps( d, q, acc );
+#else
+        acc = _mm256_add_ps( _mm256_mul_ps( d, q ), acc );
+#endif
     }
-
-#endif // __clang__
 
     *s = hsum_float_8(acc);
 
@@ -6463,7 +6470,7 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
 
     const uint64_t nb = n / QK_K;
 
-#if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#if (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
     const __m256i m3 = _mm256_set1_epi8(3);
     const __m256i m4 = _mm256_set1_epi8(4);
@@ -6591,6 +6598,110 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
         //
 
         acc = _mm256_fmadd_ps(dlv, _mm256_cvtepi32_ps(sumi), acc);
+    }
+
+    *s = hsum_float_8(acc);
+
+#elif defined (__AVX2__)
+
+    const __m256i m3 = _mm256_set1_epi8(3);
+    const __m256i mone = _mm256_set1_epi8(1);
+    const __m128i m32 = _mm_set1_epi8(32);
+
+    __m256 acc = _mm256_setzero_ps();
+
+    uint32_t aux[3];
+
+    for (int i = 0; i < nb; ++i) {
+
+        const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
+
+        const uint8_t * restrict q3 = x[i].qs;
+        const int8_t  * restrict q8 = y[i].qs;
+
+        // Set up scales
+        memcpy(aux, x[i].scales, 12);
+        __m128i scales128 = _mm_set_epi32(
+                ((aux[1] >> 4) & kmask2) | (((aux[2] >> 6) & kmask1) << 4),
+                ((aux[0] >> 4) & kmask2) | (((aux[2] >> 4) & kmask1) << 4),
+                (aux[1] & kmask2) | (((aux[2] >> 2) & kmask1) << 4),
+                (aux[0] & kmask2) | (((aux[2] >> 0) & kmask1) << 4));
+        scales128 = _mm_sub_epi8(scales128, m32);
+        const __m256i all_scales = _mm256_cvtepi8_epi16(scales128);
+        const __m128i l_scales = _mm256_extracti128_si256(all_scales, 0);
+        const __m128i h_scales = _mm256_extracti128_si256(all_scales, 1);
+        const __m256i scales[2] = {MM256_SET_M128I(l_scales, l_scales), MM256_SET_M128I(h_scales, h_scales)};
+
+        // high bit
+        const __m256i hbits = _mm256_loadu_si256((const __m256i*)x[i].hmask);
+
+        // integer accumulator
+        __m256i sumi = _mm256_setzero_si256();
+
+        int bit = 0;
+        int is  = 0;
+
+        for (int j = 0; j < QK_K/128; ++j) {
+            // load low 2 bits
+            const __m256i q3bits = _mm256_loadu_si256((const __m256i*)q3); q3 += 32;
+
+            // prepare low and high bits
+            const __m256i q3l_0 = _mm256_and_si256(q3bits, m3);
+            const __m256i q3h_0 = _mm256_slli_epi16(_mm256_srli_epi16(_mm256_andnot_si256(hbits, _mm256_slli_epi16(mone, bit)), bit), 2);
+            ++bit;
+
+            const __m256i q3l_1 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 2), m3);
+            const __m256i q3h_1 = _mm256_slli_epi16(_mm256_srli_epi16(_mm256_andnot_si256(hbits, _mm256_slli_epi16(mone, bit)), bit), 2);
+            ++bit;
+
+            const __m256i q3l_2 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 4), m3);
+            const __m256i q3h_2 = _mm256_slli_epi16(_mm256_srli_epi16(_mm256_andnot_si256(hbits, _mm256_slli_epi16(mone, bit)), bit), 2);
+            ++bit;
+
+            const __m256i q3l_3 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 6), m3);
+            const __m256i q3h_3 = _mm256_slli_epi16(_mm256_srli_epi16(_mm256_andnot_si256(hbits, _mm256_slli_epi16(mone, bit)), bit), 2);
+            ++bit;
+
+            // load Q8 quants
+            const __m256i q8_0 = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            const __m256i q8_1 = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            const __m256i q8_2 = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            const __m256i q8_3 = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+
+            // Dot product: we multiply the 2 low bits and 1 high bit part separately, so we can use _mm256_maddubs_epi16,
+            // and then subtract. The high bit part has the 2 already subtracted (and so, it is zero if the high bit was not set,
+            // and 2 if the high bit was set)
+            __m256i q8s_0 = _mm256_maddubs_epi16(q3h_0, q8_0);
+            __m256i q8s_1 = _mm256_maddubs_epi16(q3h_1, q8_1);
+            __m256i q8s_2 = _mm256_maddubs_epi16(q3h_2, q8_2);
+            __m256i q8s_3 = _mm256_maddubs_epi16(q3h_3, q8_3);
+
+            __m256i p16_0 = _mm256_maddubs_epi16(q3l_0, q8_0);
+            __m256i p16_1 = _mm256_maddubs_epi16(q3l_1, q8_1);
+            __m256i p16_2 = _mm256_maddubs_epi16(q3l_2, q8_2);
+            __m256i p16_3 = _mm256_maddubs_epi16(q3l_3, q8_3);
+
+            p16_0 = _mm256_sub_epi16(p16_0, q8s_0);
+            p16_1 = _mm256_sub_epi16(p16_1, q8s_1);
+            p16_2 = _mm256_sub_epi16(p16_2, q8s_2);
+            p16_3 = _mm256_sub_epi16(p16_3, q8s_3);
+
+            // multiply with scales
+            p16_0 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(is + 0)), p16_0);
+            p16_1 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(is + 1)), p16_1);
+            p16_2 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(is + 2)), p16_2);
+            p16_3 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(is + 3)), p16_3);
+
+            // accumulate
+            p16_0 = _mm256_add_epi32(p16_0, p16_1);
+            p16_2 = _mm256_add_epi32(p16_2, p16_3);
+            sumi  = _mm256_add_epi32(sumi, _mm256_add_epi32(p16_0, p16_2));
+
+        }
+
+        // multiply with block scale and accumulate
+        acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi), acc);
+
     }
 
     *s = hsum_float_8(acc);

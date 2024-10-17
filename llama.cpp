@@ -115,7 +115,7 @@ LLAMA_ATTRIBUTE_FORMAT(2, 3)
 static void llama_log_internal        (ggml_log_level level, const char * format, ...);
 static void llama_log_callback_default(ggml_log_level level, const char * text, void * user_data);
 
-#if !defined(GGML_QUIET_MODE)
+#if defined(GGML_QUIET_MODE)
 #define LLAMA_LOG_INFO(...)
 #define LLAMA_LOG_WARN(...)
 #define LLAMA_LOG_ERROR(...)
