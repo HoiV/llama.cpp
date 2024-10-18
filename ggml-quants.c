@@ -6219,32 +6219,33 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    static __declspec(align(64)) const uint8_t shuf0[64] = {
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3
+    static __declspec(align(64)) const uint16_t perm0[32] = {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1,
+        8, 8, 8, 8, 8, 8, 8, 8,
+        9, 9, 9, 9, 9, 9, 9, 9
     };
 
-    static __declspec(align(64)) const uint8_t shuf1[64] = {
-        4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5,
-        6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7,
-        4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5,
-        6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7
+    static __declspec(align(64)) const uint16_t perm1[32] = {
+        2, 2, 2, 2, 2, 2, 2, 2,
+        3, 3, 3, 3, 3, 3, 3, 3,
+        10, 10, 10, 10, 10, 10, 10, 10,
+        11, 11, 11, 11, 11, 11, 11, 11
     };
 
-    static __declspec(align(64)) const uint8_t shuf2[64] = {
-        8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9,
-        10,11,10,11,10,11,10,11,10,11,10,11,10,11,10,11,
-        8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9,
-        10,11,10,11,10,11,10,11,10,11,10,11,10,11,10,11
+
+    static __declspec(align(64)) const uint16_t perm2[32] = {
+        4, 4, 4, 4, 4, 4, 4, 4,
+        5, 5, 5, 5, 5, 5, 5, 5,
+        12, 12, 12, 12, 12, 12, 12, 12,
+        13, 13, 13, 13, 13, 13, 13, 13
     };
 
-    static __declspec(align(64)) const uint8_t shuf3[64] = {
-        12,13,12,13,12,13,12,13,12,13,12,13,12,13,12,13,
-        14,15,14,15,14,15,14,15,14,15,14,15,14,15,14,15,
-        12,13,12,13,12,13,12,13,12,13,12,13,12,13,12,13,
-        14,15,14,15,14,15,14,15,14,15,14,15,14,15,14,15
+    static __declspec(align(64)) const uint16_t perm3[32] = {
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 7, 7, 7, 7, 7, 7, 7,
+        14, 14, 14, 14, 14, 14, 14, 14,
+        15, 15, 15, 15, 15, 15, 15, 15
     };
 
     const __m512i m3 = _mm512_set1_epi8(3);
@@ -6254,6 +6255,11 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
     __m512 zero512 = _mm512_setzero_ps();
     __m512i zero512i = _mm512_setzero_si512();
+
+    __m512i idx0 = _mm512_loadu_si512((__m512i *)&perm0);
+    __m512i idx1 = _mm512_loadu_si512((__m512i *)&perm1);
+    __m512i idx2 = _mm512_loadu_si512((__m512i *)&perm2);
+    __m512i idx3 = _mm512_loadu_si512((__m512i *)&perm3);
 
     for (uint64_t i = 0; i < nb; ++i) {
 
@@ -6265,6 +6271,9 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
         const __m128i mins_and_scales = _mm_loadu_si128((const __m128i*)x[i].scales);
         const __m128i scales8 = _mm_and_si128(mins_and_scales, m4);
+        const __m256i scales16 = _mm256_cvtepi8_epi16(scales8);
+        const __m512i scales_all = _mm512_inserti32x8(zero512i, scales16, 0);
+
         const __m128i mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
         const __m256i mins = _mm256_cvtepi8_epi16(mins8);
         const __m256i prod = _mm256_madd_epi16(mins, _mm256_loadu_si256((const __m256i*)y[i].bsums));
@@ -6273,15 +6282,6 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         const __m256 acc_mins = _mm256_mul_ps(bdmin_ss, _mm256_cvtepi32_ps(prod));
 
         acc = _mm512_add_ps(acc, _mm512_insertf32x8(zero512, acc_mins, 0));
-
-        const __m256i all_scales = _mm256_cvtepi8_epi16(scales8);
-
-        const __m128i l_scales = _mm256_extracti128_si256(all_scales, 0);
-        const __m128i h_scales = _mm256_extracti128_si256(all_scales, 1);
-        __m512i scales_low = _mm512_inserti64x2(_mm512_castps_si512(zero512), l_scales, 0);
-        scales_low = _mm512_inserti64x2(scales_low, l_scales, 1);
-        scales_low = _mm512_inserti64x2(scales_low, h_scales, 2);
-        scales_low = _mm512_inserti64x2(scales_low, h_scales, 3);
 
         const __m512i q2bits = _mm512_loadu_si512((const __m512i*)q2);
 
@@ -6315,15 +6315,10 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         __m512i p2 = _mm512_maddubs_epi16(q2_2, q8_2);
         __m512i p3 = _mm512_maddubs_epi16(q2_3, q8_3);
 
-        const __m512i ctrl0 = _mm512_load_si512((__m512i *)&shuf0);
-        const __m512i ctrl1 = _mm512_load_si512((__m512i *)&shuf1);
-        const __m512i ctrl2 = _mm512_load_si512((__m512i *)&shuf2);
-        const __m512i ctrl3 = _mm512_load_si512((__m512i *)&shuf3);
-
-        __m512i v_scale0 = _mm512_shuffle_epi8(scales_low, ctrl0);
-        __m512i v_scale1 = _mm512_shuffle_epi8(scales_low, ctrl1);
-        __m512i v_scale2 = _mm512_shuffle_epi8(scales_low, ctrl2);
-        __m512i v_scale3 = _mm512_shuffle_epi8(scales_low, ctrl3);
+        __m512i v_scale0 = _mm512_permutexvar_epi16(idx0, scales_all);
+        __m512i v_scale1 = _mm512_permutexvar_epi16(idx1, scales_all);
+        __m512i v_scale2 = _mm512_permutexvar_epi16(idx2, scales_all);
+        __m512i v_scale3 = _mm512_permutexvar_epi16(idx3, scales_all);
 
         p0 = _mm512_madd_epi16(v_scale0, p0);
         p1 = _mm512_madd_epi16(v_scale1, p1);
@@ -6342,6 +6337,92 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
     res = _mm256_add_ps(res, _mm512_castps512_ps256(acc));
 //    __debugbreak();
     *s = hsum_float_8(res);
+
+#if 0
+//#elif defined(__AVX2__) // _mm256_permutexvar_epi16() is not supported - condider _mm256_permutevar_ps() instead
+
+    static const uint16_t k_perm[8][16] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7,
+        8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9,
+        10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11,
+        12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13,
+        14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15
+    };
+
+    const __m256i m3 = _mm256_set1_epi8(3);
+    const __m128i m4 = _mm_set1_epi8(0xF);
+
+    __m256 acc = _mm256_setzero_ps();
+
+    for (uint64_t i = 0; i < nb; ++i) {
+
+        const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
+        const float dmin = -y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+
+        const uint8_t * restrict q2 = x[i].qs;
+        const int8_t  * restrict q8 = y[i].qs;
+
+        const __m128i mins_and_scales = _mm_loadu_si128((const __m128i*)x[i].scales);
+        const __m128i scales8 = _mm_and_si128(mins_and_scales, m4);
+        const __m256i scales_all = _mm256_cvtepi8_epi16(scales8);
+
+        const __m128i mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
+        const __m256i mins = _mm256_cvtepi8_epi16(mins8);
+        const __m256i prod = _mm256_madd_epi16(mins, _mm256_loadu_si256((const __m256i*)y[i].bsums));
+
+        acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&dmin), _mm256_cvtepi32_ps(prod), acc);
+
+        __m256i sumi = _mm256_setzero_si256();
+
+        for (int j = 0; j < QK_K/128; ++j) {
+
+            const __m256i q2bits = _mm256_loadu_si256((const __m256i*)(q2 + (j * 32)));
+
+            const __m256i q8_0 = _mm256_loadu_si256((const __m256i*)(q8 + (j * 128) + 0));
+            const __m256i q8_1 = _mm256_loadu_si256((const __m256i*)(q8 + (j * 128) + 32));
+            const __m256i q8_2 = _mm256_loadu_si256((const __m256i*)(q8 + (j * 128) + 64));
+            const __m256i q8_3 = _mm256_loadu_si256((const __m256i*)(q8 + (j * 128) + 96));
+
+            const __m256i q2_0 = _mm256_and_si256(q2bits, m3);
+            const __m256i q2_1 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 2), m3);
+            const __m256i q2_2 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 4), m3);
+            const __m256i q2_3 = _mm256_and_si256(_mm256_srli_epi16(q2bits, 6), m3);
+
+            __m256i p0 = _mm256_maddubs_epi16(q2_0, q8_0);
+            __m256i p1 = _mm256_maddubs_epi16(q2_1, q8_1);
+            __m256i p2 = _mm256_maddubs_epi16(q2_2, q8_2);
+            __m256i p3 = _mm256_maddubs_epi16(q2_3, q8_3);
+
+            __m256i idx0 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 0][0]));
+            __m256i idx1 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 1][0]));
+            __m256i idx2 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 2][0]));
+            __m256i idx3 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 3][0]));
+
+            __m256i v_scale0 = _mm256_permutexvar_epi16(idx0, scales_all);
+            __m256i v_scale1 = _mm256_permutexvar_epi16(idx1, scales_all);
+            __m256i v_scale2 = _mm256_permutexvar_epi16(idx2, scales_all);
+            __m256i v_scale3 = _mm256_permutexvar_epi16(idx3, scales_all);
+
+            p0 = _mm256_madd_epi16(v_scale0, p0);
+            p1 = _mm256_madd_epi16(v_scale1, p1);
+            p2 = _mm256_madd_epi16(v_scale2, p2);
+            p3 = _mm256_madd_epi16(v_scale3, p3);
+
+            p0 = _mm256_add_epi32(p0, p1);
+            p2 = _mm256_add_epi32(p2, p3);
+
+            sumi = _mm256_add_epi32(sumi, _mm256_add_epi32(p0, p2));
+        }
+
+        acc = _mm256_fmadd_ps(_mm256_broadcast_ss(&d), _mm256_cvtepi32_ps(sumi), acc);
+    }
+
+    *s = hsum_float_8(acc);
+
+#endif // if 0
 
 #elif defined(__AVX2__)
 
@@ -6472,6 +6553,17 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
 
 #if (defined(__AVX512F__) && defined(__GEN_AVX512__))
 
+    static const uint16_t k_perm[8][16] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7,
+        8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9,
+        10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11,
+        12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13,
+        14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15
+    };
+
     const __m256i m3 = _mm256_set1_epi8(3);
     const __m256i m4 = _mm256_set1_epi8(4);
     const __m128i m32 = _mm_set1_epi8(32);
@@ -6491,17 +6583,14 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
         //
 
         uint32_t * aux = (uint32_t *)x[i].scales;
-        __m128i scales128 = _mm_set_epi32(
+        __m128i scales8 = _mm_set_epi32(
                 ((aux[1] >> 4) & kmask2) | (((aux[2] >> 6) & kmask1) << 4),
                 ((aux[0] >> 4) & kmask2) | (((aux[2] >> 4) & kmask1) << 4),
                 (aux[1] & kmask2) | (((aux[2] >> 2) & kmask1) << 4),
                 (aux[0] & kmask2) | (((aux[2] >> 0) & kmask1) << 4));
 
-        scales128 = _mm_sub_epi8(scales128, m32);
-        const __m256i all_scales = _mm256_cvtepi8_epi16(scales128);
-        const __m128i l_scales = _mm256_extracti128_si256(all_scales, 0);
-        const __m128i h_scales = _mm256_extracti128_si256(all_scales, 1);
-        const __m256i scales[2] = {MM256_SET_M128I(l_scales, l_scales), MM256_SET_M128I(h_scales, h_scales)};
+        scales8 = _mm_sub_epi8(scales8, m32);
+        const __m256i scales_all = _mm256_cvtepi8_epi16(scales8);
 
         //
         // high bits - preshift bits into position.
@@ -6579,10 +6668,20 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
             // multiply with scales
             //
 
-            p16_0 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(0)), p16_0);
-            p16_1 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(1)), p16_1);
-            p16_2 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(2)), p16_2);
-            p16_3 = _mm256_madd_epi16(_mm256_shuffle_epi8(scales[j], get_scale_shuffle_q3k(3)), p16_3);
+            __m256i idx0 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 0][0]));
+            __m256i idx1 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 1][0]));
+            __m256i idx2 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 2][0]));
+            __m256i idx3 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 3][0]));
+
+            __m256i v_scale0 = _mm256_permutexvar_epi16(idx0, scales_all);
+            __m256i v_scale1 = _mm256_permutexvar_epi16(idx1, scales_all);
+            __m256i v_scale2 = _mm256_permutexvar_epi16(idx2, scales_all);
+            __m256i v_scale3 = _mm256_permutexvar_epi16(idx3, scales_all);
+
+            p16_0 = _mm256_madd_epi16(v_scale0, p16_0);
+            p16_1 = _mm256_madd_epi16(v_scale1, p16_1);
+            p16_2 = _mm256_madd_epi16(v_scale2, p16_2);
+            p16_3 = _mm256_madd_epi16(v_scale3, p16_3);
 
             //
             // accumulate
@@ -6795,7 +6894,80 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
 
     uint32_t utmp[4];
 
-#if defined(__AVX2__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    static const uint16_t k_perm[8][16] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    };
+
+    static const uint32_t kmask4 = 0xc0c0c0c0;
+
+    __m256 acc = _mm256_setzero_ps();
+    const __m256i m4 = _mm256_set1_epi8(0xF);
+    const __m256 zero256 = _mm256_setzero_ps();
+
+   for (int i = 0; i < nb; ++i) {
+
+        const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
+        const float dmin = -y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+
+        const uint32_t * vscales = (uint32_t *)x[i].scales;
+        utmp[3] = ((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2);
+        utmp[2] = vscales[1] & kmask1;
+        utmp[1] = (vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2);
+        utmp[0] = vscales[0] & kmask1;
+
+        const uint8_t * restrict q4 = x[i].qs;
+        const int8_t  * restrict q8 = y[i].qs;
+
+        const __m256i mins_and_scales = _mm256_cvtepu8_epi16(_mm_set_epi32(utmp[3], utmp[2], utmp[1], utmp[0]));
+
+        const __m256i q8sums = _mm256_loadu_si256((const __m256i*)y[i].bsums);
+        const __m128i q8s = _mm_hadd_epi16(_mm256_castsi256_si128(q8sums),
+                                           _mm256_extracti128_si256(q8sums, 1));
+
+        const __m128i prod = _mm_madd_epi16(_mm256_extracti128_si256(mins_and_scales, 1), q8s);
+
+        const __m128 prod_m = _mm_mul_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod));
+        acc = _mm256_add_ps(acc, _mm256_insertf128_ps(zero256, prod_m, 0));
+
+        __m256i sumi = _mm256_setzero_si256();
+
+        for (int j = 0; j < QK_K/64; ++j) {
+            const __m256i idx0 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 2) + 0][0]));
+            const __m256i idx1 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 2) + 1][0]));
+
+            const __m256i scale_l = _mm256_permutexvar_epi16(idx0, mins_and_scales);
+            const __m256i scale_h = _mm256_permutexvar_epi16(idx1, mins_and_scales);
+
+            const __m256i q4bits = _mm256_loadu_si256((const __m256i*)q4); q4 += 32;
+            const __m256i q4l = _mm256_and_si256(q4bits, m4);
+            const __m256i q4h = _mm256_and_si256(_mm256_srli_epi16(q4bits, 4), m4);
+
+            const __m256i q8l = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            __m256i p16l = _mm256_maddubs_epi16(q4l, q8l);
+            p16l = _mm256_madd_epi16(scale_l, p16l);
+
+            const __m256i q8h = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            __m256i p16h = _mm256_maddubs_epi16(q4h, q8h);
+            p16h = _mm256_madd_epi16(scale_h, p16h);
+
+            sumi = _mm256_add_epi32(sumi, _mm256_add_epi32(p16l, p16h));
+        }
+
+        acc = _mm256_fmadd_ps(_mm256_set1_ps(d), _mm256_cvtepi32_ps(sumi), acc);
+    }
+
+    *s = hsum_float_8(acc);
+
+#elif defined(__AVX2__)
 
     static const uint32_t kmask4 = 0xc0c0c0c0;
 
