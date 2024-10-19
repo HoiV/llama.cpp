@@ -256,3 +256,115 @@ Untracked files:
 
 ================================================================================
 
+REM To run llama-bench/kv on a regular CMD prompt: 
+
+set DEVICE=stx
+REM set PYTORCH_AIE_PATH=C:\llama.cpp\Ryzen\example\transformers\
+set PYTORCH_AIE_PATH=C:\llama.test\RyzenAI
+
+Directory of C:\llama.cpp\Ryzen\example\transformers\xclbin\stx => %PYTORCH_AIE_PATH%\xclbin\%DEVICE%\*
+
+10/04/2024  01:02 PM    <DIR>          .
+10/04/2024  01:02 PM    <DIR>          ..
+10/04/2024  01:02 PM            35,051 dummy.xclbin
+10/04/2024  01:02 PM         2,094,049 gemm_4x4_a16fw4acc32f.xclbin
+10/04/2024  01:02 PM         1,632,580 gemm_4x4_a16w8acc64.xclbin
+10/04/2024  01:02 PM         1,713,767 gemm_4x4_a8w8acc32.xclbin
+10/04/2024  01:02 PM           449,670 mladf_4x4_gemm_silu_mul_a16fw4.xclbin
+10/04/2024  01:02 PM         1,186,310 mladf_gemm_2x4x4_a16fw4acc16f.xclbin
+10/04/2024  01:02 PM           490,394 mladf_gemm_4x4_a16fw4acc16f.xclbin
+
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\* => %PYTORCH_AIE_PATH%\dll\%DEVICE%\qlinear_2\*
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_11008_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_12288_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_32768_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_1_4096_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_11008_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_12288_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_32768_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_32_4096_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_11008_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_12288_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_32768_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16fw4acc32f_8_4096_4096_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_1_11264_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_1_4096_11008.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_1_4096_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_32_11264_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_32_4096_11008.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_32_4096_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_64_11264_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_64_4096_11008.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_64_4096_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_8_11264_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_8_4096_11008.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a16w8acc64_8_4096_4096.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_16_2048_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_16_2048_8192.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_16_8192_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_1_2048_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_1_2048_8192.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_1_8192_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_32_2048_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_32_2048_8192.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_32_8192_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_64_2048_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_64_2048_8192.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_64_8192_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_8_2048_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_8_2048_8192.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\a8w8acc32_8_8192_2048.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_128_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_128_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_128_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_128_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_128_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_1_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_1_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_1_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_1_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_1_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_2048_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_2048_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_2048_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_2048_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_2x4x4_a16fw4acc16f_2048_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_256_2048_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_128_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_4096_32768_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_1_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2000_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2000_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2000_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2000_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2000_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2048_11008_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2048_4096_12288_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2048_4096_22528_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2048_4096_32768_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_2048_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_8_256_2048_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_8_256_2048_32.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\mladf_4x4_a16fw4acc16f_8_4096_4096_128.bin
+C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\README.md
+
