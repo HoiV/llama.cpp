@@ -63,16 +63,16 @@ static constexpr __device__ int get_mmq_y_device() {
 #endif // defined(GGML_USE_HIPBLAS) && defined(__HIP_PLATFORM_AMD__)
 }
 
-#define TILE_X_SIZES_Q4_0 tile_x_sizes{mmq_y*WARP_SIZE   + mmq_y, mmq_y*WARP_SIZE/QI4_0 + mmq_y/QI4_0, 0}
-#define TILE_X_SIZES_Q4_1 tile_x_sizes{mmq_y*WARP_SIZE   + mmq_y, mmq_y*WARP_SIZE/QI4_1 + mmq_y/QI4_1, 0}
-#define TILE_X_SIZES_Q5_0 tile_x_sizes{mmq_y*WARP_SIZE*2 + mmq_y, mmq_y*WARP_SIZE/QI5_0 + mmq_y/QI5_0, 0}
-#define TILE_X_SIZES_Q5_1 tile_x_sizes{mmq_y*WARP_SIZE*2 + mmq_y, mmq_y*WARP_SIZE/QI5_1 + mmq_y/QI5_1, 0}
-#define TILE_X_SIZES_Q8_0 tile_x_sizes{mmq_y*WARP_SIZE   + mmq_y, mmq_y*WARP_SIZE/QI8_0 + mmq_y/QI8_0, 0}
-#define TILE_X_SIZES_Q2_K tile_x_sizes{mmq_y*WARP_SIZE   + mmq_y, mmq_y*WARP_SIZE       + mmq_y,       0}
-#define TILE_X_SIZES_Q3_K tile_x_sizes{mmq_y*WARP_SIZE*2 + mmq_y, mmq_y*WARP_SIZE/QI3_K + mmq_y/QI3_K, mmq_y*WARP_SIZE/4 + mmq_y/4}
-#define TILE_X_SIZES_Q4_K tile_x_sizes{mmq_y*WARP_SIZE   + mmq_y, mmq_y*WARP_SIZE/QI4_K + mmq_y/QI4_K, mmq_y*WARP_SIZE/8 + mmq_y/8}
-#define TILE_X_SIZES_Q5_K tile_x_sizes{mmq_y*WARP_SIZE*2 + mmq_y, mmq_y*WARP_SIZE/QI5_K + mmq_y/QI5_K, mmq_y*WARP_SIZE/8 + mmq_y/8}
-#define TILE_X_SIZES_Q6_K tile_x_sizes{mmq_y*WARP_SIZE*2 + mmq_y, mmq_y*WARP_SIZE/QI6_K + mmq_y/QI6_K, mmq_y*WARP_SIZE/8 + mmq_y/8}
+#define TILE_X_SIZES_Q4_0 tile_x_sizes{(int)(mmq_y*WARP_SIZE   + mmq_y), (int)(mmq_y*WARP_SIZE/QI4_0 + mmq_y/QI4_0), 0}
+#define TILE_X_SIZES_Q4_1 tile_x_sizes{(int)(mmq_y*WARP_SIZE   + mmq_y), (int)(mmq_y*WARP_SIZE/QI4_1 + mmq_y/QI4_1), 0}
+#define TILE_X_SIZES_Q5_0 tile_x_sizes{(int)(mmq_y*WARP_SIZE*2 + mmq_y), (int)(mmq_y*WARP_SIZE/QI5_0 + mmq_y/QI5_0), 0}
+#define TILE_X_SIZES_Q5_1 tile_x_sizes{(int)(mmq_y*WARP_SIZE*2 + mmq_y), (int)(mmq_y*WARP_SIZE/QI5_1 + mmq_y/QI5_1), 0}
+#define TILE_X_SIZES_Q8_0 tile_x_sizes{(int)(mmq_y*WARP_SIZE   + mmq_y), (int)(mmq_y*WARP_SIZE/QI8_0 + mmq_y/QI8_0), 0}
+#define TILE_X_SIZES_Q2_K tile_x_sizes{(int)(mmq_y*WARP_SIZE   + mmq_y), (int)(mmq_y*WARP_SIZE       + mmq_y),       0}
+#define TILE_X_SIZES_Q3_K tile_x_sizes{(int)(mmq_y*WARP_SIZE*2 + mmq_y), (int)(mmq_y*WARP_SIZE/QI3_K + mmq_y/QI3_K), (int)(mmq_y*WARP_SIZE/4 + mmq_y/4)}
+#define TILE_X_SIZES_Q4_K tile_x_sizes{(int)(mmq_y*WARP_SIZE   + mmq_y), (int)(mmq_y*WARP_SIZE/QI4_K + mmq_y/QI4_K), (int)(mmq_y*WARP_SIZE/8 + mmq_y/8)}
+#define TILE_X_SIZES_Q5_K tile_x_sizes{(int)(mmq_y*WARP_SIZE*2 + mmq_y), (int)(mmq_y*WARP_SIZE/QI5_K + mmq_y/QI5_K), (int)(mmq_y*WARP_SIZE/8 + mmq_y/8)}
+#define TILE_X_SIZES_Q6_K tile_x_sizes{(int)(mmq_y*WARP_SIZE*2 + mmq_y), (int)(mmq_y*WARP_SIZE/QI6_K + mmq_y/QI6_K), (int)(mmq_y*WARP_SIZE/8 + mmq_y/8)}
 
 #define GET_TILE_X_SIZES_BODY                           \
     return type == GGML_TYPE_Q4_0 ? TILE_X_SIZES_Q4_0 : \

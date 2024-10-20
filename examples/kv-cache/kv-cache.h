@@ -35,6 +35,7 @@ struct gpt_params {
     int32_t n_len                      = 1532; // total length of the sequence including the prompt
     int32_t n_threads                  = 12;
     int32_t n_batch                    = 512;  // size for a single batch
+    int32_t n_ngl                      = 0;    // number of layers offloaded to GPU
     std::string model                  = "";   // model path
     std::string prompt                 = "";
     std::string custom_p_file          = "custom_prompts.txt";  // custom prompts input file

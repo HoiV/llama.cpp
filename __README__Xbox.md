@@ -709,6 +709,95 @@ python run_awq.py --model_name llama-2-7b --task profilemodel --fast_attention  
 xcopy /f /y modeling_llama_bak.py %CONDA_PREFIX%\Lib\site-packages\transformers\models\llama\modeling_llama.py
 Note: Each run generates a log file in ./logs directory with name log_<model_name>.log.
 
+=============================================================================================
+
+Install CUDA toolkit: https://developer.nvidia.com/cuda-downloads
+
+REM Llama on CUBLAS (CUDA 12.4)
+
+------------------------------
+
+If hitting "No CUDA toolset found." then:
+C:\llama.cpp\llama.dc_iqk\build.cuda.msvc>copy "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\visual_studio_integration\MSBuildExtensions" "c:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\BuildCustomizations"\
+c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.6.props
+c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.6.targets
+c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\visual_studio_integration\MSBuildExtensions\CUDA 12.6.xml
+c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\visual_studio_integration\MSBuildExtensions\Nvda.Build.CudaTasks.v12.6.dll
+        4 file(s) copied.
+
+------------------------------
+            if (LLAMA_CUDA)
+                # CUDA compiler nvcc does not handle /std:c++17
+            else()
+                list(APPEND ARCH_FLAGS /std:c++17)
+            endif ()
+------------------------------
  
+Fix cuda error : invalid narrowing conversion from "unsigned int" to "int" in ../ggml-cuda/mmq.cuh (branch dc/matmul_iqk)
 
+-------------------------------
 
+C:\llama.cpp\llama.dc_iqk\build.cuda.msvc>cmake .. -DBUILD_SHARED_LIBS=ON -DLLAMA_CUDA=ON -DLLAMA_IQK=ON
+-- Building for: Visual Studio 17 2022
+-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
+-- The C compiler identification is MSVC 19.41.34123.0
+-- The CXX compiler identification is MSVC 19.41.34123.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.46.0.vfs.0.0")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found OpenMP_C: -openmp (found version "2.0")
+-- Found OpenMP_CXX: -openmp (found version "2.0")
+-- Found OpenMP: TRUE (found version "2.0")
+-- OpenMP found
+-- Found CUDAToolkit: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/include (found version "12.4.131")
+-- CUDA found
+-- Using CUDA architectures: 52;61;70
+-- The CUDA compiler identification is NVIDIA 12.4.131
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done                                                                            
+-- Check for working CUDA compiler: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/bin/nvcc.exe - skipped     
+-- Detecting CUDA compile features                                                                                      
+-- Detecting CUDA compile features - done                                                                               
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with LLAMA_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: AMD64                                                                                        
+-- CMAKE_GENERATOR_PLATFORM:                                                                                            
+-- x86 detected                                                                                                         
+-- Performing Test HAS_AVX_1                                                                                            
+-- Performing Test HAS_AVX_1 - Success
+-- Performing Test HAS_AVX2_1                                                                                           
+-- Performing Test HAS_AVX2_1 - Success                                                                                 
+-- Performing Test HAS_FMA_1                                                                                            
+-- Performing Test HAS_FMA_1 - Success                                                                                  
+-- Performing Test HAS_AVX512_1                                                                                         
+-- Performing Test HAS_AVX512_1 - Success                                                                               
+-- Using optimized iqk matrix multiplications                                                                           
+-- no Clang - enable /fp:fast                                                                                           
+-- Enable AVX512 support                                                                                                
+-- Add flag to generate AVX512 intrinsincs                                                                              
+-- Configuring done (42.2s)                                                                                             
+-- Generating done (1.6s)
+-- Build files have been written to: C:/llama.cpp/llama.dc_iqk/build.cuda.msvc
+
+C:\llama.cpp\llama.dc_iqk\build.cuda.msvc>
+
+With GeForce GTX 1660 SUPER (consumes 4GB)
+| model                          |       size |     params | backend    | ngl | threads |          test |              t/s |
+| phi3 3B Q2_K - Medium          |   1.32 GiB |     3.82 B | CUDA       |  32 |       1 |          tg64 |     31.24 ± 0.40 |
+vs. CPU (8 cores)
+| model                          |       size |     params | backend    | threads |          test |              t/s |
+| phi3 3B Q2_K - Medium          |   1.32 GiB |     3.82 B | CPU        |       8 |          tg64 |     25.77 ± 0.32 |

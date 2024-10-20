@@ -1140,7 +1140,11 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
                 message(STATUS "Using optimized iqk matrix multiplications")
                 add_compile_definitions(GGML_USE_IQK_MULMAT)
             endif ()
-            list(APPEND ARCH_FLAGS /std:c++17)
+            if (LLAMA_CUDA)
+                # CUDA compiler nvcc does not handle /std:c++17
+            else()
+                list(APPEND ARCH_FLAGS /std:c++17)
+            endif ()
             add_compile_definitions(_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING)
             if ((NOT ${CMAKE_C_COMPILER_ID} MATCHES "Clang") AND (NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang"))
                 message(STATUS "no Clang - enable /fp:fast")

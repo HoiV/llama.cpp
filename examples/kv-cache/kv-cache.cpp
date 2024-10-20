@@ -195,6 +195,10 @@ int main(int argc, char** argv) {
         params.openmp = true;
     }
 
+    if (argc >= 7) {
+        params.n_ngl = std::stoi(argv[6]);
+    }
+
     console::init(true);
     printf("[%s]: processing cpf input file [%s]\n", __func__, params.custom_p_file.c_str());
     processCustomPromptsFromFile(params);

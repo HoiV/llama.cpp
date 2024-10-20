@@ -87,6 +87,7 @@ int slm_init(gpt_params& params) {
 
     // initialize the model
     model_params = llama_model_default_params();
+    model_params.n_gpu_layers = params.n_ngl;
 
     model = llama_load_model_from_file(params.model.c_str(), model_params);
     if (model == NULL) {
