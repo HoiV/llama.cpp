@@ -40,6 +40,7 @@ std::string llama_token_to_piece(const struct llama_context * ctx, llama_token t
         result.resize(-n_tokens);
         int check = llama_token_to_piece(llama_get_model(ctx), token, result.data(), result.size(), special);
         GGML_ASSERT(check == -n_tokens);
+        GGML_UNUSED(check);
     } else {
         result.resize(n_tokens);
     }
@@ -77,7 +78,7 @@ std::string pfx_file_path(std::string pfx) {
     return full_file_path;
 }
 
-int slm_init(gpt_params& params) {
+int slm_init(xbapp_params& params) {
     // init LLM
     llama_backend_init();
 
@@ -89,7 +90,7 @@ int slm_init(gpt_params& params) {
     model_params = llama_model_default_params();
     model_params.n_gpu_layers = params.n_ngl;
 
-    model = llama_load_model_from_file(params.model.c_str(), model_params);
+    model = llama_load_model_from_file(params.model_path.c_str(), model_params);
     if (model == NULL) {
         printf("%s: error: unable to load model\n" , __func__);
         return 1;
@@ -202,9 +203,8 @@ int slm_init(gpt_params& params) {
     return 0;
 }
 
-int slm_inference(gpt_params& params) {
+int slm_inference(xbapp_params& params) {
     std::vector<llama_token> embd_inp;
-    int n_consumed = 0;
     int n_past = 0;
     int n_kv_pfx = 0;
 
@@ -212,7 +212,6 @@ int slm_inference(gpt_params& params) {
         // remove any "future" tokens that we might have inherited from the previous session
         llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
         embd_inp.insert(embd_inp.end(), tokens_shared.begin(), tokens_shared.end());
-        n_consumed = tokens_shared.size();
         n_past = tokens_shared.size();
         n_kv_pfx = tokens_shared.size();
 
@@ -221,8 +220,6 @@ int slm_inference(gpt_params& params) {
     } else {
         // start from a known point
         llama_kv_cache_clear(ctx);
-
-        n_consumed = 0;
         n_past = 0;
         n_kv_pfx = 0;
     }
@@ -298,7 +295,7 @@ int slm_inference(gpt_params& params) {
     }
 
     int64_t t_start_generation = ggml_time_us();
-    printf("Prompt TTFT = %.2fms (size = %d)\n", 
+    printf("Prompt TTFT = %.2fms (size = %lld)\n", 
         ((t_start_generation - t_start_decoding) / 1000.0f), 
         embd.size());
 
@@ -396,8 +393,7 @@ int slm_inference(gpt_params& params) {
             }
 
             // save this new token for next evaluation
-            embd.clear();
-            embd.push_back(new_token_id);
+            embd[0] = new_token_id;
 
             n_tokens_generated += 1;
             total_tokens_generated += 1;
@@ -425,16 +421,18 @@ int slm_inference(gpt_params& params) {
     fflush(stdout);
 
     int64_t t_end_generation = ggml_time_us();
-    printf("> token generation time = %.2fms (%d) (%.2ft/s)\n", 
-        ((t_end_generation - t_start_generation) / 1000.0f),
+    double t_ms = (t_end_generation - t_start_generation) / 1000.0f;
+    printf("> token generation time = %.2fms (%d) (%.2ft/s) (%.2fms)\n", 
+        t_ms,
         n_tokens_generated, 
-        n_tokens_generated / ((t_end_generation - t_start_generation) / 1000000.0f));
+        n_tokens_generated / (t_ms / 1000.0f),
+        (t_ms / n_tokens_generated));
 
     t_token_generation += (t_end_generation - t_start_generation);
     return 0;
 }
 
-int slm_infer(gpt_params& params) {
+int slm_infer(xbapp_params& params) {
     const llama_model* model = llama_get_model(ctx);
    
     // for custom_prompt always clear the cache since we want 
@@ -485,6 +483,8 @@ int slm_infer(gpt_params& params) {
         printf("%s: llama_decode() failed\n", __func__);
         return 1;
     }
+
+    int64_t t_start_generation = ggml_time_us();
 
     // main loop
     int n_cur = batch.n_tokens;
@@ -561,13 +561,19 @@ int slm_infer(gpt_params& params) {
 
     llama_batch_free(batch);
 
+    int64_t t_end_generation = ggml_time_us();
+    double t_ms = (t_end_generation - t_start_generation) / 1000.0f;
+    printf("> token generation time = %.2fms (%d) (%.2ft/s) (%.2fms)\n", 
+        t_ms,
+        n_tokens_generated, 
+        n_tokens_generated / (t_ms / 1000.0f),
+        (t_ms / n_tokens_generated));
+
     return 0;
 }
 
 void slm_terminate() {
     printf("\n");
-
-    int64_t t_main_end = ggml_time_us();
 
     printf("%s: generated %d tokens in %.2f s, speed: %.2f t/s\n",
             __func__, 
