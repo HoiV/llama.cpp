@@ -143,6 +143,8 @@ bool processCustomPromptsFromFile(xbapp_params& xbparams) {
 
 #ifdef _WIN32
 
+#include <intrin.h>
+
 uint64_t l1_cache_size = 32ull * 1024ull;
 uint64_t l2_cache_size = 1024ull * 1024ull;
 
@@ -390,7 +392,7 @@ int main(int argc, char** argv) {
     }
 
 #ifdef GGML_USE_OPENMP
-    xbparams.n_threads = MIN(n_threads, omp_get_max_threads());
+    xbparams.n_threads = MIN(xbparams.n_threads, omp_get_max_threads());
     if (xbparams.openmp) {
         printf("%s: OpenMP selected\n", __func__);
         // default mode if GGML_USE_OPENMP is defined
