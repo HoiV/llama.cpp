@@ -115,13 +115,13 @@ bool processCustomPromptsFromFile(xbapp_params& xbparams) {
 
     // process CUSTOM_TEMPLATE_PROMPT
     while (std::getline(cpfile, line)) {
-        if (line == "CUSTOM_TEMPLATE_PROMPT") {
+        if (line.find("CUSTOM_TEMPLATE_PROMPT") != std::string::npos) {
             templatePromptMode = true;
             continue;
-        } else if (line == "CUSTOM_PROMPT") {
+        } else if (line.find("CUSTOM_PROMPT") != std::string::npos) {
             userPromptMode = true;
             continue;
-        } else if (line == "END_SECTION") {
+        } else if (line.find("END_SECTION") != std::string::npos) {
             templatePromptMode = false;
             userPromptMode = false;
             continue;
@@ -255,10 +255,33 @@ xb_set_process_affinity (
 
 #endif // _WIN32
 
+void print_system_info(xbapp_params& xb_params) {
+    std::ostringstream os;
+
+    os << "system_info: n_threads = " << xb_params.n_threads;
+    if (xb_params.n_threads != -1) {
+    os << " (n_batch = " << xb_params.n_batch << ")";
+    }
+#if defined(_WIN32) && (_WIN32_WINNT >= 0x0601) && !defined(__MINGW64__) // windows 7 and later
+    // TODO: windows + arm64 + mingw64
+    DWORD logicalProcessorCount = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    os << " / " << logicalProcessorCount << " | " << llama_print_system_info();
+#else
+    os << " / " << std::thread::hardware_concurrency() << " | " << llama_print_system_info();
+#endif
+
+    printf("\n%s: %s\n\n", __func__, os.str().c_str());
+}
+
 static void print_usage(int, char ** argv) {
     printf("\n%s: example usage:\n", __func__);
-    printf("\n    %s -m model.gguf [-n n_seqlen] [-ngl n_gpu_layers] [-t n_threads] [-cpf cpf_prompt] \n"
-           "                       [-pfc] [-omp] [-vl 1 | 2 | ... | 4] [-vv] [prompt...]\n\n", argv[0]);
+    printf("\n    %s -m model.gguf \n"
+           "                [-n n_seqlen] [-t n_threads] [-cpf cpf_prompt] \n"
+           "                [-pfc] [-ngl n_gpu_layers] [-vl 1|2|...|4] [-vv]\n"
+#ifdef GGML_USE_OPENMP
+           "                [-omp]\n"
+#endif           
+           "                [prompt...]\n", argv[0]);
 }
 
 void xbapp_log_callback(ggml_log_level level, const char * text, void * user_data) {
@@ -276,7 +299,7 @@ void xbapp_log_callback(ggml_log_level level, const char * text, void * user_dat
 
 int64_t t0;
 int main(int argc, char** argv) {
-    xbapp_params xbparams = {0};
+    xbapp_params xbparams;
 
     ggml_time_init();
     t0 = ggml_time_us();
@@ -428,6 +451,8 @@ int main(int argc, char** argv) {
         llama_log_set(xbapp_log_callback, &(xbparams.log_level));
     } 
 
+    print_system_info(xbparams);
+
     // initialize the model
     if (slm_init(xbparams) != 0) {
         printf("%s: Error during slm_init()\n", __func__);
@@ -435,28 +460,35 @@ int main(int argc, char** argv) {
     }
 
     int prompt_index = 1;
+    std::string full_prompt = ::trim(xbparams.custom_template_prompt);
+    size_t message_index = full_prompt.find("{message}");
+    if (message_index == std::string::npos) {
+        printf("%s: template prompt is not correctly formed for cpf mode - "
+               "no \"{message}\" identifier located\n", __func__);
+    }
+
     while (custom_prompts_it != custom_prompts.end())
     {
-        // Create custom user prompt
+        // extract custom user prompt
         std::string& custom_prompt = *custom_prompts_it;
         custom_prompt.erase(
             std::remove(custom_prompt.begin(), custom_prompt.end(), '\"'),
             custom_prompt.end());
+        custom_prompt = ::trim(custom_prompt);
 
-        std::string full_prompt = xbparams.custom_template_prompt;
-        size_t pos = full_prompt.find("{message}");
-        if (pos != std::string::npos) {
-            full_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
-        }
+        // build the full prompt
+        GGML_ASSERT(message_index != std::string::npos);
+        full_prompt.replace(message_index, 
+            std::string("{message}").length(), custom_prompt);
 
         if (xbparams.pfc_mode && !xbparams.pfx_shared.empty()) {
-            xbparams.prompt = ::trim(custom_prompt);
-
+            // for pfc mode the tokenizable part is the part that keeps changing
+            xbparams.prompt = custom_prompt;
         } else {
-            // non pfc mode 
-            xbparams.prompt = ::trim(full_prompt);
+            // use the full prompt for non-pfc mode 
+            xbparams.prompt = full_prompt;
         }
-    
+
         console::set_display(console::prompt);
         printf("> Running with custom prompt => [%d/%zd]: [%s]\n",
             prompt_index++,
