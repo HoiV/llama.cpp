@@ -159,8 +159,7 @@ xb_set_process_affinity (
     uint32_t n_threads
     )
 {
-
-
+#if defined(__x86_64__) || defined(_M_X64)
     //
     // Get number of logical processors per physical core and the maximum number of logical
     // processsors.
@@ -246,12 +245,18 @@ xb_set_process_affinity (
         printf("%s: failed to set process affinity mask\n", __func__);
     }
 
+#else
+
+    printf("%s: set process affinity is only available for x86 architecture\n", __func__);
+
+#endif // __x86_64__ || _M_X64_
+
     return;
 }
 
 #else
 
-#define ggml_set_process_affinity(n)
+#define xb_set_process_affinity(n)
 
 #endif // _WIN32
 
