@@ -895,6 +895,9 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
                                            2, 6, 10, 14, 3, 7, 11, 15);
 
     for (uint64_t i = 0; i < nb; i++) {
+#if GGML_USE_IQK_MULMAT
+        int i4 = i/4, ir = i%4;
+#endif
 
         //
         // Load two 16 element vectors.
@@ -991,7 +994,9 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 #endif
 
     for (uint64_t i = 0; i < nb; i++) {
+#if GGML_USE_IQK_MULMAT
         int i4 = i/4, ir = i%4;
+#endif
         // Load elements into 4 AVX vectors
         __m256 v0 = _mm256_loadu_ps( x );
         __m256 v1 = _mm256_loadu_ps( x + 8 );
