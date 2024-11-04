@@ -800,7 +800,12 @@ ggml_set_process_affinity (
     //
 
     if (maximum_smt_threads <= 32) {
-        affinity_mask <<= maximum_logical - (n_threads * 2);
+        //
+        // this change impacts the token generation heavily as 
+        // the cores allocated could spill outside the complex
+        // causing the cache per complex to be under-utilized
+        //
+        // affinity_mask <<= maximum_logical - (n_threads * 2);
     }
 
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
