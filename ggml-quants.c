@@ -952,7 +952,7 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         v0 = _mm512_mul_ps(v0, xscale);
         v2 = _mm512_mul_ps(v2, xscale);
 
-#if 1
+#if 0
         // Round to nearest integer
         v0 = _mm512_roundscale_ps(v0, _MM_ROUND_NEAREST);
         v2 = _mm512_roundscale_ps(v2, _MM_ROUND_NEAREST);
@@ -1032,7 +1032,7 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         v2 = _mm256_mul_ps( v2, mul );
         v3 = _mm256_mul_ps( v3, mul );
 
-#if 1
+#if 0
         // Round to nearest integer
         v0 = _mm256_round_ps( v0, _MM_ROUND_NEAREST );
         v1 = _mm256_round_ps( v1, _MM_ROUND_NEAREST );
