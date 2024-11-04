@@ -883,6 +883,13 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
+#if GGML_USE_IQK_MULMAT
+    block_q8_0_x4 * y4 = (block_q8_0_x4 *)vy;
+
+    // For __AVX__ then then set pack = false but AVX is no longer here
+    const bool pack = true; 
+#endif
+
     const __m512 signBit = _mm512_set1_ps(-0.0f);
     const __m512i perm = _mm512_setr_epi32(0, 4, 8, 12, 1, 5, 9, 13,
                                            2, 6, 10, 14, 3, 7, 11, 15);
@@ -925,7 +932,16 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
         const float d = amax / 127.f;
 
+        // y[i].d = GGML_FP32_TO_FP16(d);
+#if GGML_USE_IQK_MULMAT
+        if (pack && i < nb4) {
+            y4[i4].d[ir] = GGML_FP32_TO_FP16(d);
+        } else {
+            y[i].d = GGML_FP32_TO_FP16(d);
+        }
+#else
         y[i].d = GGML_FP32_TO_FP16(d);
+#endif
 
         const __m512 xscale = _mm512_set1_ps(iscale);
 
@@ -936,10 +952,10 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         v0 = _mm512_mul_ps(v0, xscale);
         v2 = _mm512_mul_ps(v2, xscale);
 
-#if 0
+#if 1
         // Round to nearest integer
-        v0 = _mm512_round_ps(v0, _MM_ROUND_NEAREST);
-        v2 = _mm512_round_ps(v2, _MM_ROUND_NEAREST);
+        v0 = _mm512_roundscale_ps(v0, _MM_ROUND_NEAREST);
+        v2 = _mm512_roundscale_ps(v2, _MM_ROUND_NEAREST);
 #endif // #if 0
 
 
@@ -954,15 +970,25 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         i0 = _mm512_packs_epi16(i0, i0);
         i0 = _mm512_permutexvar_epi32(perm, i0);
 
+#if GGML_USE_IQK_MULMAT
+        if (i < nb4) {
+            _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, _mm512_castsi512_si256(i0));
+        } else {
+            _mm256_storeu_si256((__m256i *)y[i].qs, _mm512_castsi512_si256(i0));
+        }
+#else
         _mm256_storeu_si256((__m256i *)y[i].qs, _mm512_castsi512_si256(i0));
+#endif
     }
 
 #elif defined(__AVX2__)
 
+#if GGML_USE_IQK_MULMAT
     block_q8_0_x4 * y4 = (block_q8_0_x4 *)vy;
 
     // For __AVX__ then then set pack = false but AVX is no longer here
     const bool pack = true; 
+#endif
 
     for (uint64_t i = 0; i < nb; i++) {
         int i4 = i/4, ir = i%4;
@@ -1006,7 +1032,7 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         v2 = _mm256_mul_ps( v2, mul );
         v3 = _mm256_mul_ps( v3, mul );
 
-#if 0
+#if 1
         // Round to nearest integer
         v0 = _mm256_round_ps( v0, _MM_ROUND_NEAREST );
         v1 = _mm256_round_ps( v1, _MM_ROUND_NEAREST );
@@ -4795,6 +4821,15 @@ static inline __m128i get_scale_shuffle(int i) {
 #endif
 
 void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+#if GGML_USE_IQK_MULMAT
+    #if GGML_IQK_LOG
+        printf("%s: quants_iqk_mul_mat_vec_dot_q4_0_q8_0\n", __func__);
+    #endif
+    if (iqk_mul_mat(nrc, nrc, n, GGML_TYPE_Q4_0, vx, bx, GGML_TYPE_Q8_0, vy, by, s, bs, 0, 1)) {
+        return;
+    }
+#endif
+
     const int qk = QK8_0;
     const int nb = n / qk;
 
@@ -5628,7 +5663,7 @@ void ggml_vec_dot_q5_1_q8_1(int n, float * restrict s, size_t bs, const void * r
     #if GGML_IQK_LOG
         printf("%s: quants_iqk_mul_mat_vec_dot_q5_1 _q8_1\n", __func__);
     #endif
-    if (iqk_mul_mat(nrc, nrc, n, GGML_TYPE_Q5_0, vx, bx, GGML_TYPE_Q8_0, vy, by, s, bs, 0, 1)) {
+    if (iqk_mul_mat(nrc, nrc, n, GGML_TYPE_Q5_1, vx, bx, GGML_TYPE_Q8_1, vy, by, s, bs, 0, 1)) {
         return;
     }
 #endif
