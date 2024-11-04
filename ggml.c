@@ -680,6 +680,38 @@ ggml_set_process_affinity (
     )
 {
 
+    //
+    // Get the default rounding mode.
+    //
+
+#if 0
+    char * default_mode;
+
+    uint32_t mxcsr = _mm_getcsr();
+
+    mxcsr = (mxcsr >> 12) & 3;
+
+    switch (mxcsr) {
+    case 0:
+        default_mode = "round nearest";
+        break;
+
+    case 1:
+        default_mode = "round_down";
+        break;
+
+    case 2:
+        default_mode = "round_up";
+        break;
+
+    case 3:
+        default_mode = "round_toward_zero";
+        break;
+
+    }
+
+    printf("default rounding mode - %s\n", default_mode);
+#endif // #if 0
 
     //
     // Get number of logical processors per physical core and the maximum number of logical
@@ -752,13 +784,25 @@ ggml_set_process_affinity (
         printf("GetProcessGroupAffinity failed\n");
         return;
     }
-#endif // if 0
+#endif // #if 0
 
     //
     // Set process affinity.
     //
 
     int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
+
+    //
+    // It is known that the number of threads fits within the maximum smt set. If the
+    // maximum smt set is less than or equal to 32, then the threads can be pushed
+    // up to higher numbers threads which will remove them from contention issues
+    // with clock and device interrupts.
+    //
+
+    if (maximum_smt_threads <= 32) {
+        affinity_mask <<= maximum_logical - (n_threads * 2);
+    }
+
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
         printf("process group affinity set to 0x%08llx\n", affinity_mask);
 
@@ -4919,7 +4963,7 @@ typedef struct {
 
 guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
 
-#define MAX_BLOCK_FACTOR 128
+#define MAX_BLOCK_FACTOR 512
 int32_t vec_blk_factor_counts[MAX_BLOCK_FACTOR] = {0};
 
 void
@@ -14684,47 +14728,31 @@ void ggml_compute_forward_mul_mat(
     }
 
     //
-    // Compute the dot matric multiply using tiling.
+    // Compute the dot matrix multiply using tiling.
     //
-    // The general algorithm is to perform the dot product on one row from the outer
-    // loop on all rows in the inner loop. Unfortunately this is not very cache
-    // friendly. The strategy used to make this more efficient is to break up the dot
-    // product into tiles. Basically a tile is sized to fit an inner loop tile in the
-    // l1 cache.
+    // The general algorithm is to perform the dot product on one row from the inner
+    // loop on all rows in the outer loop, then move on to the next inner row. This
+    // this is not, however, very cache friendly. The strategy used to make this more
+    // efficient is to break up the dot product into tiles. Basically a tile is sized
+    // to fit an outer loop tile in the l1 cache.
     //
-
-    // Compute the blocking factors based on the sizeof the l1/l2 caches and the size of
-    // the two sources. The goal of the blocking factor is to localize cache residency
-    // by limiting the number of combined rows (src0 and src1) scanned at a time to fit
-    // in the l1 + l2 cache that is available per procesor.
-
-#if 0
-    const int64_t half_cache = (l1_cache_size + l2_cache_size) / 2;
-    int64_t blck0_factor = half_cache / ggml_row_size(src0_type, ne0);
-    int64_t blck1_factor = half_cache / row_size;
-#endif // #if 0
-
-//#if 0
 
     //
-    // Always compute the block factor based on the inner loop operand (src1). This is
-    // the data that is continually referenced for one block iteration of the outer loop.
+    // Always compute the block factor based on the outer loop operand (src0). This is
+    // the data that is continually referenced for one block iteration of the inner loop.
     //
     // N.B. It makes no difference which operand (src0 or src1) has the most rows. The
-    //      inner loop is the data that gets continually referenced as the outer loop
+    //      outer loop is the data that gets continually referenced as the inner loop
     //      sequences through an outer loop block.
     //
 
-    const int64_t cache_size = l1_cache_size;
-//    const int64_t cache_size = l1_cache_size + l2_cache_size;
     int64_t blck0_factor;
 
-    size_t src0_row_size = ggml_row_size(src0_type, ne00); 
-//    blck0_factor = (cache_size - src0_row_size) / row_size; 
-    blck0_factor = (cache_size + (row_size / 2)) / row_size; 
+    size_t src0_row_size = ggml_row_size(src0_type, ne00);
+    blck0_factor = (l1_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
     if (!blck0_factor || (blck0_factor == 1)) {
-        //printf("blck factor 0/1 - cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-        //       cache_size,
+        //printf("blck factor 0/1 - l1_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+        //       l1_cache_size,
         //       src0_row_size,
         //       row_size);
     }
@@ -14733,33 +14761,32 @@ void ggml_compute_forward_mul_mat(
     // The block factor should have a value of at least one.
     //
     // N.B. The computed block factor is zero if the size of the space available in the
-    //      cache is less that the inner loop row size.
+    //      l1 cache is less that the outer loop row size.
     //
     
 
     blck0_factor = max(1, blck0_factor);
     int64_t blck1_factor = blck0_factor;
-//#endif // #if 0
 
 #if 0
     printf("blck0_factor %d row size %d, blck1_factor %d row size %d\n",
            (uint32_t)blck0_factor,
-           (uint32_t)ggml_row_size(src0_type, ne0),
+           (uint32_t)src0_row_size,
            (uint32_t)blck1_factor,
            (uint32_t)row_size);
 #endif // #if 0
 
 #ifdef GGML_TENSOR_OP_PERF
     if (!ith) {
-        uint64_t bucket_index = row_size;
+        uint64_t bucket_index = src0_row_size;
 
         if (bucket_index > ARRAYSIZE(quant_type_row_size[src1_type].counts)) {
             bucket_index = ARRAYSIZE(quant_type_row_size[src1_type].counts);
         }
 
 
-        quant_type_row_size[src1_type].total_count += 1;
-        quant_type_row_size[src1_type].counts[bucket_index - 1] += 1;
+        quant_type_row_size[src0_type].total_count += 1;
+        quant_type_row_size[src0_type].counts[bucket_index - 1] += 1;
 
         uint64_t blk_index = blck0_factor;
 
