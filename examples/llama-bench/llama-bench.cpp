@@ -1347,7 +1347,8 @@ int main(int argc, char ** argv) {
 
     // select openmp if specified
     if (params.openmp) {
-        ggml_select_omp();
+        // not needed for this branch as this is the default if OpenMP is detected
+        // ggml_select_omp();
     }
 
     // initialize printer
