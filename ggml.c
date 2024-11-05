@@ -2841,11 +2841,13 @@ inline static void ggml_vec_sum_f16_ggf(const int n, float * s, const ggml_fp16_
 }
 
 //
-// WARNING: This function, unfortunatly, does not exist in the zo-ggml source code.
+// WARNING: This function, unfortunately, does not exist in the zo-ggml source code.
 //          A minimum implementation is provided to allow performance measurement.
 //
 
 void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
+#ifdef _M_X64
+
     __m128 sumf = _mm_setzero_ps();
     __m128 xv;
 
@@ -2855,6 +2857,8 @@ void ggml_vec_sumsq_f32(const int64_t n, float * s, const float * x) {
     }
 
     _mm_store_ss(s, sumf);
+
+#endif // _M_X64
 }
 
 inline static void ggml_vec_sum_bf16_ggf(const int n, float * s, const ggml_bf16_t * x) {
