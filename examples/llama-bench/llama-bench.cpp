@@ -23,6 +23,141 @@
 #include "ggml-cuda.h"
 #include "ggml-sycl.h"
 
+#ifdef _WIN32
+
+#if !defined WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif // WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <intrin.h>
+
+uint64_t l1_cache_size = 32ull * 1024ull;
+uint64_t l2_cache_size = 1024ull * 1024ull;
+
+typedef struct {
+    uint64_t mask;
+    uint16_t group;
+    uint16_t reserved[3];
+} group_affinity_t;
+
+void
+xb_set_process_affinity (
+    uint32_t n_threads,
+    int64_t affinity_mask_requested = 0
+    )
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    //
+    // Get number of logical processors per physical core and the maximum number of logical
+    // processsors.
+    //
+
+    struct {
+        uint32_t eax;
+        uint32_t ebx;
+        uint32_t ecx;
+        uint32_t edx;
+    } cpu_info;
+
+    int64_t affinity_mask = affinity_mask_requested;
+
+    if (affinity_mask_requested != 0) {
+        goto set_affinity;
+    }
+
+    //
+    // Get L1 cache size.
+    //
+
+    __cpuid((int *)&cpu_info, 0x80000005);
+    l1_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
+    //printf("%s: l1 cache size in kbytes %zd\n", __func__, l1_cache_size);
+
+    //
+    // Get l2 cache size
+    //
+
+    __cpuid((int *)&cpu_info, 0x80000006);
+    l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
+    //printf("%s: l2 cache size in kbytes %zd\n", __func__, l2_cache_size); 
+
+    //printf("%s: n_threads specified %d\n", __func__, n_threads);
+    __cpuid((int *)&cpu_info, 0x8000001e);
+    const uint32_t logical_per_physical_core = ((cpu_info.ebx & 0x300) >> 8) + 1;
+    //printf("%s: number of logical processors per physical core %d\n", __func__, logical_per_physical_core);
+
+    if (logical_per_physical_core == 1) {
+        //printf("%s: bypassing set process affinity - not SMT system\n", __func__);
+        return;
+    }
+
+    __cpuid((int *)&cpu_info, 0x00000001);
+    const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
+    //printf("%s: maximum number of logical processors %d\n", __func__, maximum_logical);
+
+    //
+    // Check the specified number of threads against the maximum logical processor count.
+    //
+
+    const uint32_t maximum_smt_threads = maximum_logical / 2;
+    if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
+        //printf("%s: bypassing set process affinity - number threads odd or gt maximum logical / 2\n", __func__);
+        return;
+    }
+
+    //
+    // Get the current process group count.
+    //
+
+#if 0
+    uint16_t group_array[4];
+    uint16_t group_count = 4;
+
+    if (GetProcessGroupAffinity(GetCurrentProcess(), &group_count, group_array)) {
+        printf("%s: GetProcessGroupAffinity succeeded with %d groups\n", __func__, group_count);
+        if (group_count != 1) {
+            printf("%s: bypassing set affinity process because group count is greater than one\n", __func__);
+            return;
+        }
+
+    } else {
+        printf("%s: GetProcessGroupAffinity failed\n", __fucn__);
+        return;
+    }
+#endif // if 0
+
+    //
+    // Set process affinity.
+    //
+
+    affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
+
+    set_affinity:
+    if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
+        // printf("%s: process group affinity set to 0x%08llx\n", __func__, affinity_mask);
+
+    } else {
+        printf("%s: failed to set process affinity mask\n", __func__);
+    }
+
+#else
+
+    // printf("%s: set process affinity is only available for x86 architecture\n", __func__);
+
+#endif // __x86_64__ || _M_X64_
+
+    return;
+}
+
+#else
+
+#define xb_set_process_affinity(n)
+
+#endif // _WIN32
+
 // utils
 static uint64_t get_time_ns() {
     using clock = std::chrono::high_resolution_clock;
@@ -181,6 +316,8 @@ struct cmd_params {
     std::vector<ggml_type> type_k;
     std::vector<ggml_type> type_v;
     std::vector<int> n_threads;
+    std::vector<int> n_threads_prompt;
+    std::vector<int> n_threads_gen;
     std::vector<int> n_gpu_layers;
     std::vector<std::string> rpc_servers;
     std::vector<llama_split_mode> split_mode;
@@ -192,7 +329,7 @@ struct cmd_params {
     std::vector<bool> embeddings;
     ggml_numa_strategy numa;
     int reps;
-    bool no_process_affinity;
+    bool process_affinity;
     bool openmp;
     bool verbose;
     output_formats output_format;
@@ -209,6 +346,8 @@ static const cmd_params cmd_params_defaults = {
     /* type_k               */ {GGML_TYPE_F16},
     /* type_v               */ {GGML_TYPE_F16},
     /* n_threads            */ {cpu_get_num_math()},
+    /* n_threads_prompt     */ {8},
+    /* n_threads_gen        */ {4},
     /* n_gpu_layers         */ {0},
     /* rpc_servers          */ {""},
     /* split_mode           */ {LLAMA_SPLIT_MODE_LAYER},
@@ -220,7 +359,7 @@ static const cmd_params cmd_params_defaults = {
     /* embeddings           */ {false},
     /* numa                 */ GGML_NUMA_STRATEGY_DISABLED,
     /* reps                 */ 5,
-    /* no_process_affinity  */ false,
+    /* process_affinity     */ false,
     /* openmp               */ false,
     /* verbose              */ false,
     /* output_format        */ MARKDOWN,
@@ -241,6 +380,8 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -ctk, --cache-type-k <t>            (default: %s)\n", join(transform_to_str(cmd_params_defaults.type_k, ggml_type_name), ",").c_str());
     printf("  -ctv, --cache-type-v <t>            (default: %s)\n", join(transform_to_str(cmd_params_defaults.type_v, ggml_type_name), ",").c_str());
     printf("  -t, --threads <n>                   (default: %s)\n", join(cmd_params_defaults.n_threads, ",").c_str());
+    printf("  -tp, --threads-prompt <n>           (default: %s)\n", join(cmd_params_defaults.n_threads_prompt, ",").c_str());
+    printf("  -tn, --threads-gen <n>              (default: %s)\n", join(cmd_params_defaults.n_threads_gen, ",").c_str());
     printf("  -ngl, --n-gpu-layers <n>            (default: %s)\n", join(cmd_params_defaults.n_gpu_layers, ",").c_str());
     printf("  -rpc, --rpc <rpc_servers>           (default: %s)\n", join(cmd_params_defaults.rpc_servers, ",").c_str());
     printf("  -sm, --split-mode <none|layer|row>  (default: %s)\n", join(transform_to_str(cmd_params_defaults.split_mode, split_mode_str), ",").c_str());
@@ -254,7 +395,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -r, --repetitions <n>               (default: %d)\n", cmd_params_defaults.reps);
     printf("  -o, --output <csv|json|md|sql>      (default: %s)\n", output_format_str(cmd_params_defaults.output_format));
     printf("  -oe, --output-err <csv|json|md|sql> (default: %s)\n", output_format_str(cmd_params_defaults.output_format_stderr));
-    printf("  -no-affin, --no-process_affinity    (default: %s)\n", cmd_params_defaults.no_process_affinity ? "1" : "0");
+    printf("  -affin, --process_affinity          (default: %s)\n", cmd_params_defaults.process_affinity ? "1" : "0");
     printf("  -omp, --openmp                      (default: %s)\n", cmd_params_defaults.openmp ? "1" : "0");
     printf("  -v, --verbose                       (default: %s)\n", cmd_params_defaults.verbose ? "1" : "0");
     printf("\n");
@@ -300,7 +441,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.output_format_stderr = cmd_params_defaults.output_format_stderr;
     params.reps = cmd_params_defaults.reps;
     params.numa = cmd_params_defaults.numa;
-    params.no_process_affinity = cmd_params_defaults.no_process_affinity;
+    params.process_affinity = cmd_params_defaults.process_affinity;
     params.openmp = cmd_params_defaults.openmp;
 
     for (int i = 1; i < argc; i++) {
@@ -397,6 +538,20 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             }
             auto p = string_split<int>(argv[i], split_delim);
             params.n_threads.insert(params.n_threads.end(), p.begin(), p.end());
+        } else if (arg == "-tp" || arg == "--threads-prompt") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            auto p = string_split<int>(argv[i], split_delim);
+            params.n_threads_prompt.insert(params.n_threads_prompt.end(), p.begin(), p.end());
+        } else if (arg == "-tg" || arg == "--threads-gen") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            auto p = string_split<int>(argv[i], split_delim);
+            params.n_threads_gen.insert(params.n_threads_gen.end(), p.begin(), p.end());
         } else if (arg == "-ngl" || arg == "--n-gpu-layers") {
             if (++i >= argc) {
                 invalid_param = true;
@@ -519,8 +674,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             invalid_param = !output_format_from_str(argv[i], params.output_format_stderr);
         } else if (arg == "-v" || arg == "--verbose") {
             params.verbose = true;
-        } else if (arg == "-no-affin" || arg == "--no-process-affinity") {
-            params.no_process_affinity = true;
+        } else if (arg == "-affin" || arg == "--process-affinity") {
+            params.process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
         } else {
@@ -553,10 +708,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     if (params.use_mmap.empty())     { params.use_mmap = cmd_params_defaults.use_mmap; }
     if (params.embeddings.empty())   { params.embeddings = cmd_params_defaults.embeddings; }
     if (params.n_threads.empty())    { params.n_threads = cmd_params_defaults.n_threads; }
-
-    if (!params.no_process_affinity) {
-        ggml_set_process_affinity(params.n_threads.at(0));
-    }
+    if (params.n_threads_prompt.empty()) { params.n_threads_prompt = cmd_params_defaults.n_threads_prompt; }
+    if (params.n_threads_gen.empty())    { params.n_threads_gen = cmd_params_defaults.n_threads_gen; }
 
     return params;
 }
@@ -570,6 +723,8 @@ struct cmd_params_instance {
     ggml_type type_k;
     ggml_type type_v;
     int n_threads;
+    int n_threads_prompt;
+    int n_threads_gen;
     int n_gpu_layers;
     std::string rpc_servers;
     llama_split_mode split_mode;
@@ -639,7 +794,9 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
     for (const auto & tv : params.type_v)
     for (const auto & nkvo : params.no_kv_offload)
     for (const auto & fa : params.flash_attn)
-    for (const auto & nt : params.n_threads) {
+    for (const auto & nt : params.n_threads)
+    for (const auto & ntp : params.n_threads_prompt)
+    for (const auto & ntg : params.n_threads_gen) {
         for (const auto & n_prompt : params.n_prompt) {
             if (n_prompt == 0) {
                 continue;
@@ -653,6 +810,8 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_k       = */ tk,
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
+                /* .n_threads_prompt = */ ntp,
+                /* .n_threads_prompt = */ ntg,
                 /* .n_gpu_layers = */ nl,
                 /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
@@ -679,6 +838,8 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_k       = */ tk,
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
+                /* .n_threads_prompt = */ ntp,
+                /* .n_threads_prompt = */ ntg,
                 /* .n_gpu_layers = */ nl,
                 /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
@@ -705,6 +866,8 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_k       = */ tk,
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
+                /* .n_threads_prompt = */ ntp,
+                /* .n_threads_prompt = */ ntg,
                 /* .n_gpu_layers = */ nl,
                 /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
@@ -741,6 +904,8 @@ struct test {
     int n_batch;
     int n_ubatch;
     int n_threads;
+    int n_threads_prompt;
+    int n_threads_gen;
     bool has_rpc;
     ggml_type type_k;
     ggml_type type_v;
@@ -767,6 +932,8 @@ struct test {
         n_batch = inst.n_batch;
         n_ubatch = inst.n_ubatch;
         n_threads = inst.n_threads;
+        n_threads_prompt = inst.n_threads;
+        n_threads_gen = inst.n_threads_gen;
         has_rpc = !inst.rpc_servers.empty();
         type_k = inst.type_k;
         type_v = inst.type_v;
@@ -1408,10 +1575,40 @@ int main(int argc, char ** argv) {
         // warmup run
         if (t.n_prompt > 0) {
             //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
-            test_prompt(ctx, t.n_prompt, 0, t.n_batch, t.n_threads);
+            if (params.process_affinity) {
+                if (t.n_threads_prompt == 8) {
+                    xb_set_process_affinity(0, 0xAAAA00);
+                } else {
+                    xb_set_process_affinity(t.n_threads_prompt);
+                }
+            }
+
+            // for printer.print_test() to print the correct thread count
+            t.n_threads = t.n_threads_prompt;
+
+            test_prompt(ctx, t.n_prompt, 0, t.n_batch, t.n_threads_prompt);
         }
+
         if (t.n_gen > 0) {
-            test_gen(ctx, 1, 0, t.n_threads);
+            if (params.process_affinity) {
+                switch (t.n_threads_gen) {
+                    case 2:
+                    case 4: 
+                        xb_set_process_affinity(0, 0x0000AA);
+                        break;
+                    case 8: 
+                        xb_set_process_affinity(0, 0x00AAAA);
+                        break;
+                    default: 
+                        xb_set_process_affinity(t.n_threads_gen);
+                        break;
+                }
+            }
+
+            // for printer.print_test() to print the correct thread count
+            t.n_threads = t.n_threads_gen;
+
+            test_gen(ctx, 1, 0, t.n_threads_gen);
         }
 
         for (int i = 0; i < params.reps; i++) {
@@ -1420,10 +1617,10 @@ int main(int argc, char ** argv) {
             uint64_t t_start = get_time_ns();
 
             if (t.n_prompt > 0) {
-                test_prompt(ctx, t.n_prompt, 0, t.n_batch, t.n_threads);
+                test_prompt(ctx, t.n_prompt, 0, t.n_batch, t.n_threads_prompt);
             }
             if (t.n_gen > 0) {
-                test_gen(ctx, t.n_gen, t.n_prompt, t.n_threads);
+                test_gen(ctx, t.n_gen, t.n_prompt, t.n_threads_gen);
             }
 
             uint64_t t_ns = get_time_ns() - t_start;
