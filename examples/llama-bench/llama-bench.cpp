@@ -135,7 +135,7 @@ xb_set_process_affinity (
 
     affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
 
-    set_affinity:
+set_affinity:
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
         // printf("%s: process group affinity set to 0x%08llx\n", __func__, affinity_mask);
 
@@ -381,7 +381,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -ctv, --cache-type-v <t>            (default: %s)\n", join(transform_to_str(cmd_params_defaults.type_v, ggml_type_name), ",").c_str());
     printf("  -t, --threads <n>                   (default: %s)\n", join(cmd_params_defaults.n_threads, ",").c_str());
     printf("  -tp, --threads-prompt <n>           (default: %s)\n", join(cmd_params_defaults.n_threads_prompt, ",").c_str());
-    printf("  -tn, --threads-gen <n>              (default: %s)\n", join(cmd_params_defaults.n_threads_gen, ",").c_str());
+    printf("  -tg, --threads-gen <n>              (default: %s)\n", join(cmd_params_defaults.n_threads_gen, ",").c_str());
     printf("  -ngl, --n-gpu-layers <n>            (default: %s)\n", join(cmd_params_defaults.n_gpu_layers, ",").c_str());
     printf("  -rpc, --rpc <rpc_servers>           (default: %s)\n", join(cmd_params_defaults.rpc_servers, ",").c_str());
     printf("  -sm, --split-mode <none|layer|row>  (default: %s)\n", join(transform_to_str(cmd_params_defaults.split_mode, split_mode_str), ",").c_str());
@@ -932,7 +932,7 @@ struct test {
         n_batch = inst.n_batch;
         n_ubatch = inst.n_ubatch;
         n_threads = inst.n_threads;
-        n_threads_prompt = inst.n_threads;
+        n_threads_prompt = inst.n_threads_prompt;
         n_threads_gen = inst.n_threads_gen;
         has_rpc = !inst.rpc_servers.empty();
         type_k = inst.type_k;
@@ -1576,10 +1576,19 @@ int main(int argc, char ** argv) {
         if (t.n_prompt > 0) {
             //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
             if (params.process_affinity) {
-                if (t.n_threads_prompt == 8) {
-                    xb_set_process_affinity(0, 0xAAAA00);
-                } else {
-                    xb_set_process_affinity(t.n_threads_prompt);
+                switch (t.n_threads_prompt) {
+                    case 2:
+                        xb_set_process_affinity(0, 0xA00000);
+                        break;
+                    case 4: 
+                        xb_set_process_affinity(0, 0xAA0000);
+                        break;
+                    case 8: 
+                        xb_set_process_affinity(0, 0xAAAA00);
+                        break;
+                    default: 
+                        xb_set_process_affinity(t.n_threads_prompt);
+                        break;
                 }
             }
 
