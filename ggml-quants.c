@@ -662,12 +662,14 @@ static inline __m128i packNibbles( __m256i bytes ) {
 #endif  //__loongarch_asx
 
 // reference implementation for deterministic creation of model files
-void quantize_row_q4_0_reference(const float * restrict x, block_q4_0 * restrict y, int64_t k) {
+void quantize_row_q4_0(const float * restrict x, void * restrict vy, int64_t k) {
     static const int qk = QK4_0;
 
     assert(k % qk == 0);
 
     const int nb = k / qk;
+
+    block_q4_0 *y = (block_q4_0 *)vy;
 
     for (int i = 0; i < nb; i++) {
         float amax = 0.0f; // absolute max
@@ -698,11 +700,6 @@ void quantize_row_q4_0_reference(const float * restrict x, block_q4_0 * restrict
         }
     }
 }
-
-void quantize_row_q4_0(const float * restrict x, void * restrict y, int64_t k) {
-    quantize_row_q4_0_reference(x, y, k);
-}
-
 
 void quantize_row_q4_1_reference(const float * restrict x, block_q4_1 * restrict y, int64_t k) {
     const int qk = QK4_1;
@@ -903,9 +900,8 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         // Load two 16 element vectors.
         //
 
-        __m512 v0 = _mm512_loadu_ps(x);
-        __m512 v2 = _mm512_loadu_ps(x + 16);
-        x += 32;
+        __m512 v0 = _mm512_loadu_ps(x + (i * 32) + 0);
+        __m512 v2 = _mm512_loadu_ps(x + (i * 32) + 16);
 
         //
         // Compute max(abs(e)) for two 16 element vectors.
@@ -973,6 +969,11 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         i0 = _mm512_packs_epi16(i0, i0);
         i0 = _mm512_permutexvar_epi32(perm, i0);
 
+        //
+        // N.B. The reduction to bytes packs the last value with itself generating
+        //      32 bytes of quant values.
+        //
+
 #if GGML_USE_IQK_MULMAT
         if (i < nb4) {
             _mm256_storeu_si256((__m256i *)y4[i4].qs + ir, _mm512_castsi512_si256(i0));
@@ -998,11 +999,10 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
         int i4 = i/4, ir = i%4;
 #endif
         // Load elements into 4 AVX vectors
-        __m256 v0 = _mm256_loadu_ps( x );
-        __m256 v1 = _mm256_loadu_ps( x + 8 );
-        __m256 v2 = _mm256_loadu_ps( x + 16 );
-        __m256 v3 = _mm256_loadu_ps( x + 24 );
-        x += 32;
+        __m256 v0 = _mm256_loadu_ps(x + (i * 32) + 0);
+        __m256 v1 = _mm256_loadu_ps(x + (i * 32) + 8);
+        __m256 v2 = _mm256_loadu_ps(x + (i * 32) + 16);
+        __m256 v3 = _mm256_loadu_ps(x + (i * 32) + 24);
 
         // Compute max(abs(e)) for the block
         const __m256 signBit = _mm256_set1_ps( -0.0f );
@@ -1095,9 +1095,27 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
 #else
 
-    GGML_UNUSED(nb);
     // scalar
-    quantize_row_q8_0_reference(x, y, k);
+
+    for (uint64_t i = 0; i < nb; i++) {
+        float amax = 0.0f; // absolute max
+
+        for (uint64_t j = 0; j < QK8_0; j++) {
+            const float v = x[i*QK8_0 + j];
+            amax = MAX(amax, fabsf(v));
+        }
+
+        const float d = amax / ((1 << 7) - 1);
+        const float id = d ? 1.0f/d : 0.0f;
+
+        y[i].d = GGML_FP32_TO_FP16(d);
+
+        for (uint64_t j = 0; j < QK8_0; ++j) {
+            const float x0 = x[i*QK8_0 + j]*id;
+
+            y[i].qs[j] = roundf(x0);
+        }
+    }
 
 #endif // defined(__AVX2__) || defined(__AVX512F__)
 
@@ -1259,11 +1277,10 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
         int i4 = i/4, ir = i%4;
 #endif
         // Load elements into 4 AVX vectors
-        __m256 v0 = _mm256_loadu_ps( x );
-        __m256 v1 = _mm256_loadu_ps( x + 8 );
-        __m256 v2 = _mm256_loadu_ps( x + 16 );
-        __m256 v3 = _mm256_loadu_ps( x + 24 );
-        x += 32;
+        __m256 v0 = _mm256_loadu_ps(x + (i * 32) + 0);
+        __m256 v1 = _mm256_loadu_ps(x + (i * 32) + 8);
+        __m256 v2 = _mm256_loadu_ps(x + (i * 32) + 16);
+        __m256 v3 = _mm256_loadu_ps(x + (i * 32) + 24);
 
         // Compute max(abs(e)) for the block
         const __m256 signBit = _mm256_set1_ps( -0.0f );
@@ -3969,7 +3986,7 @@ static void quantize_row_q4_0_impl(const float * restrict x, block_q4_0 * restri
     static_assert(QK4_0 == 32, "QK4_0 must be 32");
 
     if (!quant_weights) {
-        quantize_row_q4_0_reference(x, y, n_per_row);
+        quantize_row_q4_0(x, y, n_per_row);
         return;
     }
 
@@ -3995,7 +4012,7 @@ static void quantize_row_q4_0_impl(const float * restrict x, block_q4_0 * restri
 
 size_t quantize_q4_0(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
     if (!quant_weights) {
-        quantize_row_q4_0_reference(src, dst, (int64_t)nrow*n_per_row);
+        quantize_row_q4_0(src, dst, (int64_t)nrow*n_per_row);
         return nrow * ggml_row_size(GGML_TYPE_Q4_0, n_per_row);
     }
     size_t row_size = ggml_row_size(GGML_TYPE_Q4_0, n_per_row);
@@ -4163,7 +4180,7 @@ size_t quantize_q5_1(const float * restrict src, void * restrict dst, int64_t nr
 size_t quantize_q8_0(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
     (void)quant_weights; // not used
     const size_t row_size = ggml_row_size(GGML_TYPE_Q8_0, n_per_row);
-    quantize_row_q8_0_reference(src, dst, (int64_t)nrow*n_per_row);
+    quantize_row_q8_0(src, dst, (int64_t)nrow*n_per_row);
     return nrow * row_size;
 }
 
@@ -6904,15 +6921,15 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
             const __m256i scale_l = _mm256_permutexvar_epi16(idx0, mins_and_scales);
             const __m256i scale_h = _mm256_permutexvar_epi16(idx1, mins_and_scales);
 
-            const __m256i q4bits = _mm256_loadu_si256((const __m256i*)q4); q4 += 32;
+            const __m256i q4bits = _mm256_loadu_si256((const __m256i*)(q4 + (j * 32)));
             const __m256i q4l = _mm256_and_si256(q4bits, m4);
             const __m256i q4h = _mm256_and_si256(_mm256_srli_epi16(q4bits, 4), m4);
 
-            const __m256i q8l = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            const __m256i q8l = _mm256_loadu_si256((const __m256i*)(q8 + (j * 64) + 0));
             __m256i p16l = _mm256_maddubs_epi16(q4l, q8l);
             p16l = _mm256_madd_epi16(scale_l, p16l);
 
-            const __m256i q8h = _mm256_loadu_si256((const __m256i*)q8); q8 += 32;
+            const __m256i q8h = _mm256_loadu_si256((const __m256i*)(q8 + (j * 64) + 32));
             __m256i p16h = _mm256_maddubs_epi16(q4h, q8h);
             p16h = _mm256_madd_epi16(scale_h, p16h);
 
