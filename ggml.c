@@ -684,34 +684,32 @@ ggml_set_process_affinity (
     // Get the default rounding mode.
     //
 
-#if 0
-    char * default_mode;
+    char * default_mode = "none";
 
     uint32_t mxcsr = _mm_getcsr();
 
-    mxcsr = (mxcsr >> 12) & 3;
+    uint32_t round_mode = mxcsr & _MM_ROUND_MASK;
 
-    switch (mxcsr) {
-    case 0:
+    switch (round_mode) {
+    case _MM_ROUND_NEAREST:
         default_mode = "round nearest";
         break;
 
-    case 1:
+    case _MM_ROUND_DOWN:
         default_mode = "round_down";
         break;
 
-    case 2:
+    case _MM_ROUND_UP:
         default_mode = "round_up";
         break;
 
-    case 3:
+    case _MM_ROUND_TOWARD_ZERO:
         default_mode = "round_toward_zero";
         break;
 
     }
 
-    printf("default rounding mode - %s\n", default_mode);
-#endif // #if 0
+    printf("mxcsr 0x%08lx, default rounding mode - %s\n", mxcsr, default_mode);
 
     //
     // Get number of logical processors per physical core and the maximum number of logical
@@ -905,7 +903,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = (ggml_to_float_t) dequantize_row_q4_0,
         .from_float               = quantize_row_q4_0,
-        .from_float_reference     = (ggml_from_float_t) quantize_row_q4_0_reference,
+        .from_float_reference     = quantize_row_q4_0,
         .vec_dot                  = ggml_vec_dot_q4_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
 #if defined (__ARM_FEATURE_MATMUL_INT8)
@@ -985,7 +983,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = (ggml_to_float_t) dequantize_row_q8_0,
         .from_float               = quantize_row_q8_0,
-        .from_float_reference     = (ggml_from_float_t) quantize_row_q8_0_reference,
+        .from_float_reference     = quantize_row_q8_0,
         .vec_dot                  = ggml_vec_dot_q8_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
 #if defined (__ARM_FEATURE_MATMUL_INT8)
@@ -4966,7 +4964,18 @@ typedef struct {
     int32_t counts[ROW_SIZE_BUCKETS]; 
 } guant_type_info;
 
-guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
+DECLSPEC_CACHEALIGN guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
+
+#define SPIN_WAIT_BUCKET 1000
+#define SPIN_WAIT_BUCKETS 16385
+
+typedef struct {
+    atomic_int64 total_spin;
+    atomic_int total_count;
+    atomic_int counts[SPIN_WAIT_BUCKETS]; 
+} spin_type_info;
+
+DECLSPEC_CACHEALIGN spin_type_info spin_wait_count = {0};
 
 #define MAX_BLOCK_FACTOR 512
 int32_t vec_blk_factor_counts[MAX_BLOCK_FACTOR] = {0};
@@ -4976,7 +4985,9 @@ print_tensor_op_perf_data (
     void
     )
 {
+    int32_t other_count;
     int32_t total_count = 0;
+    int64_t total_spin;
     int32_t total_op_count = 0;
     double total_percent = 0.;
     int32_t total_tensors = 0;
@@ -4998,6 +5009,7 @@ print_tensor_op_perf_data (
     }
 
     total_op_count = total_count;
+    total_percent = 0.;
     for (int64_t i = 0; i < ARRAYSIZE(compute_op_counts); i += 1) {
         if (compute_op_counts[i]) {
             percent = (double)compute_op_time[i] * 100.f / (double)total_time;
@@ -5015,6 +5027,35 @@ print_tensor_op_perf_data (
            total_count,
            (double)(total_time) / (1000. * 1000.),
            total_percent);
+
+    printf("Tensor op dispatch spin wait histogram\n");
+    printf("Spin counts less than 0.05%% listed under others\n");
+    printf("   Spin    Count      %%\n\n");
+    other_count = 0;
+    total_count = spin_wait_count.total_count;
+    total_spin = spin_wait_count.total_spin;
+    total_percent = 0.;
+    for (int64_t i = 0; i < ARRAYSIZE(spin_wait_count.counts); i += 1) {
+        if (spin_wait_count.counts[i]) {
+            percent = (double)spin_wait_count.counts[i] * 100.f / (double)total_count;
+            total_percent += percent;
+            if (percent >= 0.05f) {
+                printf("% 7d  %7d    %5.2f\n",
+                       (uint32_t)((i + 1) * SPIN_WAIT_BUCKET),
+                       spin_wait_count.counts[i],
+                       percent);
+
+            } else {
+                other_count += spin_wait_count.counts[i];
+            }
+        }
+    }
+
+    percent = (double)other_count * 100.f / (double)total_count;
+    printf(" others  %7d    %5.2f\n\n", other_count, percent);
+    printf("         %7d   %5.2f\n\n", total_count, total_percent);
+    printf("  total spin count %zd\n\n", total_spin);
+    printf("average spin count %zd\n\n", (total_spin + (total_count - 1)) / total_count);
 
     printf("vector dot matrix multiply type frequency\n\n");
     printf("   Count     %%\n\n");
@@ -21390,9 +21431,30 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             // Wait for a new set of work to arrive.
             //
 
+#ifdef GGML_TENSOR_OP_PERF
+            uint32_t spin_count = 0;
+            do {
+                spin_count += 1;
+                YieldProcessor();
+            } while (shared->node_n == last_n);
+
+            atomic_fetch_add64(&spin_wait_count.total_spin, spin_count);
+
+            spin_count /= SPIN_WAIT_BUCKET;
+            if (spin_count >= ARRAYSIZE(spin_wait_count.counts)) {
+                spin_count = ARRAYSIZE(spin_wait_count.counts) - 1;
+            }
+
+            atomic_fetch_add(&spin_wait_count.total_count, 1);
+            atomic_fetch_add(&spin_wait_count.counts[spin_count], 1);
+
+#else
+
             do {
                 YieldProcessor();
             } while (shared->node_n == last_n);
+#endif // GGML_TENSOR_OP_PERF
+
         }
 
         //
@@ -21407,10 +21469,10 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         // Perform the parallel computation.
         //
 
+        node = shared->node;
         if (state->ith < shared->n_tasks) {
             params.ith = state->ith;
             params.nth = shared->n_tasks;
-            node = shared->node;
             // printf("--> %s: dispatching // %s-(%s)\n", __func__, node->name, ggml_op_name(node->op));fflush(stdout);
             ggml_compute_op_dispatch[node->op](&params, node);
         }
@@ -21698,6 +21760,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
         .node = NULL,
         .t0 = 0,
         .b0 = 0,
+        .b1 = 0,
         .cgraph_nodes = cgraph->nodes,
         .cplan_work_size = cplan->work_size,
         .cplan_work_data = cplan->work_data,
