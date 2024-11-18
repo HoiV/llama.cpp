@@ -278,7 +278,58 @@ int slm_inference(xbapp_params& params) {
     // printf("%s: start decoding @n_past = %d - inference size = %zd\n", __func__, n_past, embd.size());
     int64_t t_start_decoding = ggml_time_us();
 
+    int32_t n_maxthreads = std::thread::hardware_concurrency();
+    if (params.process_affinity) {
+        // set affinity for prompt eval phase
+        int64_t affinity_mask = 0;
+        switch (params.n_threads) {
+            case 2:
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xA00000ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x00018000uL;
+                }
+                break;
+            case 4: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAA0000ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x000AA000uL;
+                }
+                break;
+            case 6: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAAA000ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x004AA400uL;
+                }
+                break;
+            case 8: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAAAA00ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x00AAAA00uL;
+                }
+                break;
+            default: 
+                break;
+        }
+
+        xb_set_process_affinity(params.n_threads, affinity_mask);
+        printf("%08X: ", (uint32_t)affinity_mask);
+    }
+
     // decode the remaining prompt not covered by the shared portion
+    // or the full prompt in non-pfc mode
+
     for (int i = 0; i < (int)embd.size(); i += params.n_batch) {
         int n_eval = (int) embd.size() - i;
         if (n_eval > params.n_batch) {
@@ -330,6 +381,57 @@ int slm_inference(xbapp_params& params) {
         save_slm_state = false;
         printf("%s: DONE saving SLM state...\n", __func__);
 #endif
+    }
+
+    if (params.process_affinity) {
+        // set affinity for prompt eval phase
+        int64_t affinity_mask = 0;        
+        // for 2-8 threads use the mask for Classic cores 
+        // if possible. On systems with 16 cores (32 LP)
+        // then use the cores landing in the middle (yes!)
+        switch (params.n_threads) {
+            case 2:
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0x0000A0ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x00018000uL;
+                }
+                break;
+            case 4: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0x0000AAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x000AA000uL;
+                }
+                break;
+            case 6: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0x000AAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x004AA400uL;
+                }
+                break;
+            case 8: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0x00AAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x00AAAA00uL;
+                }
+                break;
+            default: 
+                break;
+        }
+
+        xb_set_process_affinity(params.n_threads, affinity_mask);
+        printf("%08X: ", (uint32_t)affinity_mask);
     }
 
     // compute max_len output
