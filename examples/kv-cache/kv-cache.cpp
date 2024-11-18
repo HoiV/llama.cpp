@@ -156,7 +156,8 @@ typedef struct {
 
 void
 xb_set_process_affinity (
-    uint32_t n_threads
+    uint32_t n_threads,
+    int64_t affinity_mask_requested
     )
 {
 #if defined(__x86_64__) || defined(_M_X64)
@@ -172,13 +173,19 @@ xb_set_process_affinity (
         uint32_t edx;
     } cpu_info;
 
+    int64_t affinity_mask = affinity_mask_requested;
+
+    if (affinity_mask_requested != 0) {
+        goto set_affinity;
+    }
+
     //
     // Get L1 cache size.
     //
 
     __cpuid((int *)&cpu_info, 0x80000005);
     l1_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
-    printf("%s: l1 cache size in kbytes %zd\n", __func__, l1_cache_size);
+    //printf("%s: l1 cache size in kbytes %zd\n", __func__, l1_cache_size);
 
     //
     // Get l2 cache size
@@ -186,21 +193,21 @@ xb_set_process_affinity (
 
     __cpuid((int *)&cpu_info, 0x80000006);
     l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
-    printf("%s: l2 cache size in kbytes %zd\n", __func__, l2_cache_size); 
+    //printf("%s: l2 cache size in kbytes %zd\n", __func__, l2_cache_size); 
 
-    printf("%s: n_threads specified %d\n", __func__, n_threads);
+    //printf("%s: n_threads specified %d\n", __func__, n_threads);
     __cpuid((int *)&cpu_info, 0x8000001e);
     const uint32_t logical_per_physical_core = ((cpu_info.ebx & 0x300) >> 8) + 1;
-    printf("%s: number of logical processors per physical core %d\n", __func__, logical_per_physical_core);
+    //printf("%s: number of logical processors per physical core %d\n", __func__, logical_per_physical_core);
 
     if (logical_per_physical_core == 1) {
-        printf("%s: bypassing set process affinity - not SMT system\n", __func__);
+        //printf("%s: bypassing set process affinity - not SMT system\n", __func__);
         return;
     }
 
     __cpuid((int *)&cpu_info, 0x00000001);
     const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
-    printf("%s: maximum number of logical processors %d\n", __func__, maximum_logical);
+    //printf("%s: maximum number of logical processors %d\n", __func__, maximum_logical);
 
     //
     // Check the specified number of threads against the maximum logical processor count.
@@ -208,7 +215,7 @@ xb_set_process_affinity (
 
     const uint32_t maximum_smt_threads = maximum_logical / 2;
     if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
-        printf("%s: bypassing set process affinity - number threads odd or gt maximum logical / 2\n", __func__);
+        //printf("%s: bypassing set process affinity - number threads odd or gt maximum logical / 2\n", __func__);
         return;
     }
 
@@ -237,9 +244,11 @@ xb_set_process_affinity (
     // Set process affinity.
     //
 
-    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
+    affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
+
+set_affinity:
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        printf("%s: process group affinity set to 0x%08llx\n", __func__, affinity_mask);
+        // printf("%s: process group affinity set to 0x%08llx\n", __func__, affinity_mask);
 
     } else {
         printf("%s: failed to set process affinity mask\n", __func__);
@@ -247,7 +256,7 @@ xb_set_process_affinity (
 
 #else
 
-    printf("%s: set process affinity is only available for x86 architecture\n", __func__);
+    // printf("%s: set process affinity is only available for x86 architecture\n", __func__);
 
 #endif // __x86_64__ || _M_X64_
 
@@ -304,6 +313,7 @@ void xbapp_log_callback(ggml_log_level level, const char * text, void * user_dat
 
 int64_t t0;
 int main(int argc, char** argv) {
+    // get default values
     xbapp_params xbparams;
 
     ggml_time_init();
@@ -428,11 +438,24 @@ int main(int argc, char** argv) {
     }
 #endif
 
-    printf("%s: Actual using: %d threads\n", __func__, xbparams.n_threads);
+    CPUInfo cinfo;
+    cout << "CPU vendor = " << cinfo.vendor() << endl;
+    cout << "CPU Brand String = " << cinfo.model() << endl;
+    cout << "# of cores = " << cinfo.cores() << endl;
+    cout << "# of logical cores = " << cinfo.logicalCpus() << endl;
+    cout << "Is CPU Hyper threaded = " << cinfo.isHyperThreaded() << endl;
 
-    if (xbparams.process_affinity) {
-        xb_set_process_affinity(xbparams.n_threads);
+    if (cinfo.vendor().find("AMD") != std::string::npos) {
+        if (cinfo.model().find("AMD Ryzen AI 9 HX 370") != std::string::npos) {
+            printf("%s: Detected AMD Ryzen HX 370\n", __func__);
+            xbparams.is_AMD_Ryzen_HX_370 = true;
+        } else if (cinfo.model().find("AMD RYZEN AI MAX+ PRO 395") != std::string::npos) {
+            printf("%s: Detected AMD Ryzen PRO 395\n", __func__);
+            xbparams.is_AMD_Ryzen_PRO_395 = true;
+        }
     }
+
+    printf("%s: Actual using: %d threads\n", __func__, xbparams.n_threads);
 
     console::init(true);
     printf("[%s]: processing cpf input file [%s]\n", __func__, xbparams.custom_p_file.c_str());
