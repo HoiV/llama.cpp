@@ -609,6 +609,11 @@ static void set_current_style()
     set_window_style(style_window());
 }
 
+// The following is a shadow copy of any string being transcibed to
+// the screen - for speech or other logging purpose.
+
+std::string shadow_string;
+
 // The following implements a circular buffer to track the state of the
 // screen so that recent history can be stored in save files for
 // playback on restore.
@@ -848,6 +853,7 @@ static void put_char_base(uint16_t c, bool unicode)
                 // expectation that it appear in a transcript, which means it also
                 // ought to appear in the history.
                 history.add_char(c);
+                shadow_string.push_back(c);
 
                 transcribe(c);
             }
@@ -2109,7 +2115,14 @@ void zprint_addr()
 
 void zprint_paddr()
 {
+    // xbox-b612
     print_handler(unpack_string(zargs[0]), nullptr);
+    if (!shadow_string.empty() || 
+        ((shadow_string.size() == 1) && shadow_string[0] != '\n')) {
+        // printf("%s: ~>>>%s<<<~\n", __func__, shadow_string.c_str());
+        // TTS me right now
+    }
+    shadow_string.clear();
 }
 
 // XXX This is more complex in V6 and needs to be updated when V6 windowing is implemented.
@@ -2851,6 +2864,10 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
 
         try {
             line = IO::standard_in().readline();
+
+            // xbox-b612
+            // Query Phi-3 for advice and paste reply here
+
         } catch (const IO::EndOfFile &) {
             zquit();
         }
