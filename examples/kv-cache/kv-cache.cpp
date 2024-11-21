@@ -145,8 +145,10 @@ bool processCustomPromptsFromFile(xbapp_params& xbparams) {
 
 #include <intrin.h>
 
-uint64_t l1_cache_size = 32ull * 1024ull;
+uint64_t l1d_cache_size = 48ull * 1024ull;
+uint64_t l1i_cache_size = 32ull * 1024ull;
 uint64_t l2_cache_size = 1024ull * 1024ull;
+uint64_t l3_cache_size = 1024ull * 1024ull;
 
 typedef struct {
     uint64_t mask;
@@ -161,6 +163,38 @@ xb_set_process_affinity (
     )
 {
 #if defined(__x86_64__) || defined(_M_X64)
+
+    //
+    // Get the default rounding mode.
+    //
+
+    char * default_mode = "none";
+
+    uint32_t mxcsr = _mm_getcsr();
+
+    uint32_t round_mode = mxcsr & _MM_ROUND_MASK;
+
+    switch (round_mode) {
+    case _MM_ROUND_NEAREST:
+        default_mode = "round nearest";
+        break;
+
+    case _MM_ROUND_DOWN:
+        default_mode = "round_down";
+        break;
+
+    case _MM_ROUND_UP:
+        default_mode = "round_up";
+        break;
+
+    case _MM_ROUND_TOWARD_ZERO:
+        default_mode = "round_toward_zero";
+        break;
+
+    }
+
+    printf("mxcsr 0x%08lx, default rounding mode - %s\n", mxcsr, default_mode);
+
     //
     // Get number of logical processors per physical core and the maximum number of logical
     // processsors.
@@ -180,34 +214,54 @@ xb_set_process_affinity (
     }
 
     //
-    // Get L1 cache size.
+    // Get L1 instruction and data cache attributes.
     //
 
     __cpuid((int *)&cpu_info, 0x80000005);
-    l1_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
-    //printf("%s: l1 cache size in kbytes %zd\n", __func__, l1_cache_size);
+
+//    printf("l1 d-cache line size %d\n", cpu_info.ecx & 0xff);
+//    printf("l1 d-cache lines per tag %d\n", (cpu_info.ecx >> 8) & 0xff);
+//    printf("l1 d-cache associativity %d\n", (cpu_info.ecx >> 16) & 0xff);
+
+    l1d_cache_size = ((cpu_info.ecx >> 24) & 0xff) * 1024ull;
+    printf("l1 d-cache size in bytes %zd\n", l1d_cache_size);
+
+//    printf("l1 i-cache line size %d\n", cpu_info.edx & 0xff);
+//    printf("l1 i-cache lines per tag %d\n", (cpu_info.edx >> 8) & 0xff);
+//    printf("l1 i-cache associativity %d\n", (cpu_info.edx >> 16) & 0xff);
+
+    l1i_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
+    printf("l1 i-cache size in bytes %zd\n", l1i_cache_size);
 
     //
-    // Get l2 cache size
+    // Get l2 and l3 cache sizes.
     //
 
     __cpuid((int *)&cpu_info, 0x80000006);
-    l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
-    //printf("%s: l2 cache size in kbytes %zd\n", __func__, l2_cache_size); 
 
-    //printf("%s: n_threads specified %d\n", __func__, n_threads);
+    l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
+    printf("l2 cache size in bytes %zd\n", l2_cache_size); 
+
+//    l3_cache_size = ((cpu_info.edx >> 18) & 0x3fff); // * 1024ull;
+//    printf("l3 cache size in bytes %zd\n", l3_cache_size); 
+
+    //
+    // Get logical processors per core.
+    //
+
+    printf("n_threads specified %d\n", n_threads);
     __cpuid((int *)&cpu_info, 0x8000001e);
     const uint32_t logical_per_physical_core = ((cpu_info.ebx & 0x300) >> 8) + 1;
-    //printf("%s: number of logical processors per physical core %d\n", __func__, logical_per_physical_core);
+    printf("number of logical processors per physical core %d\n", logical_per_physical_core);
 
     if (logical_per_physical_core == 1) {
-        //printf("%s: bypassing set process affinity - not SMT system\n", __func__);
+        printf("bypassing set process affinity - not SMT system\n");
         return;
     }
 
     __cpuid((int *)&cpu_info, 0x00000001);
     const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
-    //printf("%s: maximum number of logical processors %d\n", __func__, maximum_logical);
+    printf("maximum number of logical processors %d\n", maximum_logical);
 
     //
     // Check the specified number of threads against the maximum logical processor count.
@@ -215,7 +269,7 @@ xb_set_process_affinity (
 
     const uint32_t maximum_smt_threads = maximum_logical / 2;
     if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
-        //printf("%s: bypassing set process affinity - number threads odd or gt maximum logical / 2\n", __func__);
+        printf("bypassing set process affinity - number threads odd or gt maximum logical / 2\n");
         return;
     }
 
@@ -228,31 +282,52 @@ xb_set_process_affinity (
     uint16_t group_count = 4;
 
     if (GetProcessGroupAffinity(GetCurrentProcess(), &group_count, group_array)) {
-        printf("%s: GetProcessGroupAffinity succeeded with %d groups\n", __func__, group_count);
+        printf("GetProcessGroupAffinity succeeded with %d groups\n", group_count);
         if (group_count != 1) {
-            printf("%s: bypassing set affinity process because group count is greater than one\n", __func__);
+            printf("bypassing set affinity process because group count is greater than one\n");
             return;
         }
 
     } else {
-        printf("%s: GetProcessGroupAffinity failed\n", __fucn__);
+        printf("GetProcessGroupAffinity failed\n");
         return;
     }
-#endif // if 0
+#endif // #if 0
 
     //
     // Set process affinity.
     //
 
-    affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0xaaaaaaaaull;
+    affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
+
+    //
+    // It is known that the number of threads fits within the maximum smt set. If the
+    // maximum smt set is less than or equal to 32, then the threads can be pushed
+    // up to higher numbers threads which will remove them from contention issues
+    // with clock and device interrupts.
+    //
+
+    if (maximum_smt_threads <= 32) {
+
+        //
+        // Compute the shift up such that the thread affinity straddles CCDs.
+        //
+
+        uint32_t half_shift = maximum_logical - (n_threads * 2);
+
+        half_shift = ((half_shift / 2) + 1) & 0x1e;
+
+        affinity_mask <<= half_shift;
+    }
 
 set_affinity:
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        // printf("%s: process group affinity set to 0x%08llx\n", __func__, affinity_mask);
+        printf("process group affinity set to 0x%08llx\n", affinity_mask);
 
     } else {
-        printf("%s: failed to set process affinity mask\n", __func__);
+        printf("failed to set process affinity mask\n");
     }
+
 
 #else
 
