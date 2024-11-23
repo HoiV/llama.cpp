@@ -55,7 +55,7 @@ option(LLAMA_STATIC                     "llama: static link libraries"          
 option(LLAMA_NATIVE                     "llama: enable -march=native flag"                      ON)
 option(LLAMA_LTO                        "llama: enable link time optimization"                  OFF)
 option(LLAMA_CCACHE                     "llama: use ccache if available"                        ON)
-option(LLAMA_IQK                        "llama: use iqk lib"                                    OFF)
+option(LLAMA_IQK                        "llama: use iqk lib"                                    ON)
 
 # debug
 option(LLAMA_ALL_WARNINGS               "llama: enable all compiler warnings"                   ON)

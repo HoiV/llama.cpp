@@ -40,6 +40,19 @@
 #include <utility>
 #include <vector>
 
+#if !defined WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif // WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+// Xbox-B612 - from speech.cpp
+extern std::string tts_string;
+extern void StartTTS();
+extern void StopTTS();
+
 #ifdef ZTERP_GLK
 extern "C" {
 #include <glk.h>
@@ -609,11 +622,6 @@ static void set_current_style()
     set_window_style(style_window());
 }
 
-// The following is a shadow copy of any string being transcibed to
-// the screen - for speech or other logging purpose.
-
-std::string shadow_string;
-
 // The following implements a circular buffer to track the state of the
 // screen so that recent history can be stored in save files for
 // playback on restore.
@@ -853,8 +861,8 @@ static void put_char_base(uint16_t c, bool unicode)
                 // expectation that it appear in a transcript, which means it also
                 // ought to appear in the history.
                 history.add_char(c);
-                shadow_string.push_back(c);
-
+                // Xbox-B612 - logging the char
+                tts_string.push_back(c);
                 transcribe(c);
             }
 
@@ -913,6 +921,9 @@ static std::vector<uint32_t> cleanse_control(uint32_t c)
 //
 // This string should be UTF-8 encoded. If it’s not, invalid sequences
 // will be represented as the Unicode replacement character.
+//
+// Xbox-b612 - not relevant from the game
+//
 void screen_print(const std::string &s)
 {
     auto io = std::make_unique<IO>(std::vector<uint8_t>(s.begin(), s.end()), IO::Mode::ReadOnly);
@@ -936,6 +947,9 @@ void screen_print(const std::string &s)
 
 // Print a Unicode character directly to the main window. This is the
 // single-character analog of screen_print().
+//
+// Xbox-B612 - not relevant text from the game
+//
 void screen_putc(uint32_t c)
 {
     transcribe(c);
@@ -1499,7 +1513,7 @@ static int print_zcode(uint32_t addr, bool in_abbr, void (*outc)(uint8_t))
 // put_char is used.
 int print_handler(uint32_t addr, void (*outc)(uint8_t))
 {
-    return print_zcode(addr, false, outc != nullptr ? outc : put_char);
+    return(print_zcode(addr, false, outc != nullptr ? outc : put_char));
 }
 
 void zprint()
@@ -2117,12 +2131,6 @@ void zprint_paddr()
 {
     // xbox-b612
     print_handler(unpack_string(zargs[0]), nullptr);
-    if (!shadow_string.empty() || 
-        ((shadow_string.size() == 1) && shadow_string[0] != '\n')) {
-        // printf("%s: ~>>>%s<<<~\n", __func__, shadow_string.c_str());
-        // TTS me right now
-    }
-    shadow_string.clear();
 }
 
 // XXX This is more complex in V6 and needs to be updated when V6 windowing is implemented.
@@ -2918,6 +2926,9 @@ void zread_char()
     uint16_t routine = zargs[2];
     Input input;
 
+    // Xbox-B612 - flush text to speaker
+    StartTTS();
+
     input.type = Input::Type::Char;
 
     if (options.autosave && !in_interrupt()) {
@@ -2949,6 +2960,9 @@ void zread_char()
     }
 
     store(input.key);
+
+    // Xbox-B612 - stop synthesizing text
+    StopTTS();
 }
 
 // §8.2.3.2 says the hours can be assumed to be in the range [0, 23] and
@@ -3298,8 +3312,13 @@ static bool read_handler()
 
 void zread()
 {
+    // Xbox-B612 - narrate before getting input 
+    StartTTS();
+
     while (!read_handler()) {
     }
+
+    StopTTS();
 }
 
 void zprint_unicode()
@@ -4503,6 +4522,7 @@ void screen_read_bfhs(IO &io, bool autosave)
     if (size == 0 && autosave) {
         warning("empty history record");
         screen_print(">");
+        // Xbox-B612 - nothing for speech synthesizer
         return;
     }
 

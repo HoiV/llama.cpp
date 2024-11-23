@@ -54,6 +54,11 @@
 #include <glk.h>
 #endif
 
+// From speech.cpp
+extern std::string tts_string;
+extern int InitializeSpeechModels();
+extern void ListSpeechSynthesisVoices();
+
 using namespace std::literals;
 
 std::string game_file;
@@ -706,6 +711,11 @@ void zquit()
         }
     }
 
+    // Xbox-B612 - clear TTS string as previous content is 
+    // no longer relevant for the game.
+
+    tts_string.clear();
+
     throw Operation::Quit();
 }
 
@@ -859,6 +869,11 @@ static void real_main(int argc, char **argv)
     zterp_os_init_term();
 #endif
 
+    // Xbox-B612: List out all options for voice synthesis
+    if (InitializeSpeechModels() != 0) {
+        die("Speech init failed");
+    };
+
     if (options.show_version) {
         screen_puts("Bocfel " ZTERP_VERSION);
 #ifdef ZTERP_NO_SAFETY_CHECKS
@@ -871,6 +886,9 @@ static void real_main(int argc, char **argv)
 #else
         screen_puts("Cheat support enabled");
 #endif
+
+        // Show voice models supported
+        ListSpeechSynthesisVoices();
 
         auto config = zterp_os_rcfile(false);
         if (config != nullptr) {
