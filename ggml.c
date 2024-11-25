@@ -670,6 +670,70 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 
 #ifdef _WIN32
 
+#include <powrprof.h>
+
+void ggml_disable_core_parking(void)
+{
+#if WIN32_POWERPROF // UNDONE: powerprof.lib
+
+    GUID* activeScheme = NULL;
+    DWORD acValue = 100; // Set to 100% to disable core parking
+#if 0
+    DWORD dcValue = 100; // Set to 100% to disable core parking
+#endif // #if 0
+
+    //
+    // Retrieve the active power scheme.
+    //
+
+    if (PowerGetActiveScheme(NULL, &activeScheme) != ERROR_SUCCESS) {
+        printf("Failed to get the active power scheme.\n");
+        return;
+    }
+
+    //
+    // Processor Performance Core Parking Minimum Cores (AC).
+    //
+
+    GUID SUB_PROCESSOR = GUID_PROCESSOR_SETTINGS_SUBGROUP;
+    GUID CORE_PARK_MIN_CORES = GUID_PROCESSOR_CORE_PARKING_MIN_CORES;
+
+    if (PowerWriteACValueIndex(NULL, activeScheme, &SUB_PROCESSOR, &CORE_PARK_MIN_CORES, acValue) != ERROR_SUCCESS) {
+        printf("Failed to set core parking minimum cores (AC).\n");
+        return;
+    }
+
+#if 0
+    //
+    // Processor Performance Core Parking Minimum Cores (DC).
+    //
+
+    if (PowerWriteDCValueIndex(NULL, activeScheme, &SUB_PROCESSOR, &CORE_PARK_MIN_CORES, dcValue) != ERROR_SUCCESS) {
+        printf("Failed to set core parking minimum cores (DC).\n");
+        return;
+    }
+#endif // #if 0
+
+    //
+    // Apply the updated settings.
+    //
+
+    if (PowerSetActiveScheme(NULL, activeScheme) != ERROR_SUCCESS) {
+        printf("Failed to apply the power scheme.\n");
+        return;
+    }
+
+    //
+    // Clean up.
+    //
+
+    LocalFree(activeScheme);
+
+#endif // #if WIN32_POWERPROF
+
+    printf("Core parking disabled successfully.\n");
+}
+
 uint64_t l1d_cache_size = 48ull * 1024ull;
 uint64_t l1i_cache_size = 32ull * 1024ull;
 uint64_t l2_cache_size = 1024ull * 1024ull;
@@ -681,11 +745,48 @@ typedef struct {
     uint16_t reserved[3];
 } group_affinity_t;
 
+ULONG master_index = 0;
+uint32_t maximum_logical = 0;
+
+bool
+ggml_set_thread_affinity (
+    uint32_t ith,
+    uint64_t * affinity
+    )
+
+{
+
+    //
+    // Set the affinity of the current thread if the maximum number of logical
+    // processors is less than or equal to 64, i.e., one affinity group.
+    //
+
+    if (maximum_logical <= 64) {
+        uint32_t index = master_index + (2 * ith);
+
+        if (SetThreadAffinityMask(GetCurrentThread(), 1ull << index)) {
+            *affinity = SetThreadAffinityMask(GetCurrentThread(), 1ull << index);
+            return true;
+
+        } else {
+            printf("failed to set thread affinity\n");
+        }
+    }
+
+    return false;
+}
+
 void
 ggml_set_process_affinity (
     uint32_t n_threads
     )
 {
+
+    //
+    // Disable core parking.
+    //
+
+    ggml_disable_core_parking();
 
     //
     // Get the default rounding mode.
@@ -777,7 +878,7 @@ ggml_set_process_affinity (
     }
 
     __cpuid((int *)&cpu_info, 0x00000001);
-    const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
+    maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
     printf("maximum number of logical processors %d\n", maximum_logical);
 
     //
@@ -815,12 +916,12 @@ ggml_set_process_affinity (
     // Set process affinity.
     //
 
-    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
+    uint64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
 
     //
     // It is known that the number of threads fits within the maximum smt set. If the
     // maximum smt set is less than or equal to 32, then the threads can be pushed
-    // up to higher numbers threads which will remove them from contention issues
+    // up to higher numbered threads which will remove them from contention issues
     // with clock and device interrupts.
     //
 
@@ -838,7 +939,26 @@ ggml_set_process_affinity (
     }
 
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        printf("process group affinity set to 0x%08llx\n", affinity_mask);
+        printf("process group affinity set to 0x%016llx\n", affinity_mask);
+
+        //
+        // Compute the processor index of the master thread.
+        //
+
+        BitScanForward64(&master_index, affinity_mask);
+        printf("processor index of master thread %d\n", master_index);
+
+#if 0
+        //
+        // Attempt to set the affinity of the master thread.
+        //
+
+        uint64_t master_affinity;
+
+        if (ggml_set_thread_affinity(0, &master_affinity)) {
+            printf("master thread affinity set to 0x%016llx\n", master_affinity);
+        }
+#endif // #if 0
 
     } else {
         printf("failed to set process affinity mask\n");
@@ -14961,10 +15081,10 @@ IQK_MulMat_Not_Available2:;
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
     if (!blck0_factor || (blck0_factor == 1)) {
-        printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-               l1d_cache_size,
-               src0_row_size,
-               row_size);
+        //printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+        //       l1d_cache_size,
+        //       src0_row_size,
+        //       row_size);
     }
 
     //
@@ -21497,7 +21617,21 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         .barrier1 = &shared->b1
     };
 
-    do {
+    #if 0
+    //
+    // Attempt to set thread affinity.
+    //
+    // N.B. The affinity of the master thread is only set once during initialization.
+    //
+
+    uint64_t affinity;
+
+    if (!state->ith && ggml_set_thread_affinity(state->ith, &affinity)) {
+//        printf("work thread %d affinity set to 0x%016llx\n", state->ith, affinity);
+    }
+#endif // #if 0
+
+do {
 
         //
         // Check if compute should be aborted.
