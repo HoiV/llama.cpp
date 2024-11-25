@@ -730,6 +730,7 @@ void ggml_disable_core_parking(void)
 }
 
 uint64_t l1d_cache_size = 48ull * 1024ull;
+uint64_t l1id_cache_size = 48ull * 1024ull;
 uint64_t l1i_cache_size = 32ull * 1024ull;
 uint64_t l2_cache_size = 1024ull * 1024ull;
 uint64_t l3_cache_size = 1024ull * 1024ull;
@@ -14926,7 +14927,7 @@ void ggml_compute_forward_mul_mat(
     // loop on all rows in the outer loop, then move on to the next inner row. This
     // this is not, however, very cache friendly. The strategy used to make this more
     // efficient is to break up the dot product into tiles. Basically a tile is sized
-    // to fit an outer loop tile in the l1 data cache.
+    // to fit an outer loop tile in the l1 cache.
     //
 
     //
@@ -14943,8 +14944,8 @@ void ggml_compute_forward_mul_mat(
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
     if (!blck0_factor || (blck0_factor == 1)) {
-        //printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-        //       l1d_cache_size,
+        //printf("blck factor 0/1 - l1_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+        //       l1_cache_size,
         //       src0_row_size,
         //       row_size);
     }
