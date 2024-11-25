@@ -41,20 +41,32 @@ std::string tts_string;
 std::string g_string_to_synthesize;
 std::atomic<bool> g_synthesizingText(false);
 shared_ptr<SpeechSynthesizer> g_synthesizer;
+HANDLE g_synthThreadHandle = NULL;
 
 void StopTTS() {
-    if (g_synthesizingText.load()) {
-        g_synthesizer->StopSpeakingAsync().get();
+    // printf("%s: Stop TTS StopTTS()\n", __func__);
+
+    #if 0
+    // TermninateThread() causes locking and long pauses
+    if (g_synthThreadHandle != NULL) {
+        printf("%s: terminating thread\n", __func__);
+        TerminateThread(g_synthThreadHandle, 0);
     }
+    #endif
+
     g_synthesizingText.store(false);
+    g_synthesizer->StopSpeakingAsync().get();
 }
 
 void StartTTS() {
     if (!HasSpeechSynthesisVoice()) {
+        // The system has no speech synthesis capability
         return;
     }
 
     while (g_synthesizingText.load()) {
+        // Stop any synthesizing speech
+        // printf("%s: Stop TTS StartTTS()\n", __func__);
         StopTTS();
     }
 
@@ -300,18 +312,26 @@ void ListSpeechSynthesisVoices()
 
 void SynthesizeSpeech(string textInput, shared_ptr<SpeechSynthesizer> synthesizer)
 {
-#if 0 // Options to register to interesting events
+#if 0
 
     // Subscribes to events.
     synthesizer->SynthesisStarted += [](const SpeechSynthesisEventArgs& e)
     {
         UNUSED(e);
         // cout << "Synthesis started." << endl;
+        if (!g_synthesizingText.load()) {
+            //printf("%s: Stop TTS SynthesisStarted\n", __func__);
+            g_synthesizer->StopSpeakingAsync().get();
+        }
     };
 
     synthesizer->Synthesizing += [](const SpeechSynthesisEventArgs& e)
     {
         // cout << "Synthesizing, received an audio chunk of " << e.Result->GetAudioLength() << " bytes." << endl;
+        if (!g_synthesizingText.load()) {
+            //printf("%s: Stop TTS Synthesizing\n", __func__);
+            g_synthesizer->StopSpeakingAsync().get();
+        }
     };
 
     synthesizer->WordBoundary += [](const SpeechSynthesisWordBoundaryEventArgs& e)
@@ -321,6 +341,10 @@ void SynthesizeSpeech(string textInput, shared_ptr<SpeechSynthesizer> synthesize
         //     // Unit of AudioOffset is tick (1 tick = 100 nanoseconds).
         //     << "Audio offset " << (e.AudioOffset + 5000) / 10000 << "ms"
         //     << endl;
+        if (!g_synthesizingText.load()) {
+            //printf("%s: Stop TTS WordBoundary\n", __func__);
+            g_synthesizer->StopSpeakingAsync().get();
+        }
     };
 
 #endif
@@ -398,6 +422,9 @@ void SynthesizeSpeech(string textInput, shared_ptr<SpeechSynthesizer> synthesize
 void SpeechSynthesisToSpeaker(string textInput)
 {
     thread synthesizerThread(SynthesizeSpeech, textInput, g_synthesizer);
+    g_synthThreadHandle = synthesizerThread.native_handle();
+
+    // Let the thread go and resume
     synthesizerThread.detach();
 }
 

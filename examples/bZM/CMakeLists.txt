@@ -7,7 +7,7 @@ if(MSVC)
 endif()
 
 set(TARGET bZM)
-add_executable(bZM blorb.cpp branch.cpp dict.cpp iff.cpp io.cpp mathop.cpp meta.cpp memory.cpp objects.cpp options.cpp osdep.cpp patches.cpp process.cpp random.cpp screen.cpp sound.cpp speech.cpp stack.cpp stash.cpp unicode.cpp util.cpp zoom.cpp zterp.cpp)
+add_executable(bZM blorb.cpp branch.cpp dict.cpp iff.cpp io.cpp mathop.cpp meta.cpp memory.cpp objects.cpp options.cpp osdep.cpp patches.cpp process.cpp random.cpp screen.cpp slm.cpp sound.cpp speech.cpp stack.cpp stash.cpp unicode.cpp util.cpp zoom.cpp zterp.cpp)
 install(TARGETS ${TARGET} RUNTIME)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/speech/include_cxx_api)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/speech/include_c_api)
