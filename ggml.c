@@ -665,8 +665,74 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 
 #ifdef _WIN32
 
-uint64_t l1_cache_size = 32ull * 1024ull;
+#include <powrprof.h>
+
+void ggml_disable_core_parking(void)
+{
+#if WIN32_POWERPROF // UNDONE: powerprof.lib
+
+    GUID* activeScheme = NULL;
+    DWORD acValue = 100; // Set to 100% to disable core parking
+#if 0
+    DWORD dcValue = 100; // Set to 100% to disable core parking
+#endif // #if 0
+
+    //
+    // Retrieve the active power scheme.
+    //
+
+    if (PowerGetActiveScheme(NULL, &activeScheme) != ERROR_SUCCESS) {
+        printf("Failed to get the active power scheme.\n");
+        return;
+    }
+
+    //
+    // Processor Performance Core Parking Minimum Cores (AC).
+    //
+
+    GUID SUB_PROCESSOR = GUID_PROCESSOR_SETTINGS_SUBGROUP;
+    GUID CORE_PARK_MIN_CORES = GUID_PROCESSOR_CORE_PARKING_MIN_CORES;
+
+    if (PowerWriteACValueIndex(NULL, activeScheme, &SUB_PROCESSOR, &CORE_PARK_MIN_CORES, acValue) != ERROR_SUCCESS) {
+        printf("Failed to set core parking minimum cores (AC).\n");
+        return;
+    }
+
+#if 0
+    //
+    // Processor Performance Core Parking Minimum Cores (DC).
+    //
+
+    if (PowerWriteDCValueIndex(NULL, activeScheme, &SUB_PROCESSOR, &CORE_PARK_MIN_CORES, dcValue) != ERROR_SUCCESS) {
+        printf("Failed to set core parking minimum cores (DC).\n");
+        return;
+    }
+#endif // #if 0
+
+    //
+    // Apply the updated settings.
+    //
+
+    if (PowerSetActiveScheme(NULL, activeScheme) != ERROR_SUCCESS) {
+        printf("Failed to apply the power scheme.\n");
+        return;
+    }
+
+    //
+    // Clean up.
+    //
+
+    LocalFree(activeScheme);
+
+#endif // #if WIN32_POWERPROF
+
+    printf("Core parking disabled successfully.\n");
+}
+
+uint64_t l1d_cache_size = 48ull * 1024ull;
+uint64_t l1i_cache_size = 32ull * 1024ull;
 uint64_t l2_cache_size = 1024ull * 1024ull;
+uint64_t l3_cache_size = 1024ull * 1024ull;
 
 typedef struct {
     uint64_t mask;
@@ -674,11 +740,48 @@ typedef struct {
     uint16_t reserved[3];
 } group_affinity_t;
 
+ULONG master_index = 0;
+uint32_t maximum_logical = 0;
+
+bool
+ggml_set_thread_affinity (
+    uint32_t ith,
+    uint64_t * affinity
+    )
+
+{
+
+    //
+    // Set the affinity of the current thread if the maximum number of logical
+    // processors is less than or equal to 64, i.e., one affinity group.
+    //
+
+    if (maximum_logical <= 64) {
+        uint32_t index = master_index + (2 * ith);
+
+        if (SetThreadAffinityMask(GetCurrentThread(), 1ull << index)) {
+            *affinity = SetThreadAffinityMask(GetCurrentThread(), 1ull << index);
+            return true;
+
+        } else {
+            printf("failed to set thread affinity\n");
+        }
+    }
+
+    return false;
+}
+
 void
 ggml_set_process_affinity (
     uint32_t n_threads
     )
 {
+
+    //
+    // Disable core parking.
+    //
+
+    ggml_disable_core_parking();
 
     //
     // Get the default rounding mode.
@@ -724,20 +827,40 @@ ggml_set_process_affinity (
     } cpu_info;
 
     //
-    // Get L1 cache size.
+    // Get L1 instruction and data cache attributes.
     //
 
     __cpuid((int *)&cpu_info, 0x80000005);
-    l1_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
-    printf("l1 cache size in kbytes %zd\n", l1_cache_size);
+
+//    printf("l1 d-cache line size %d\n", cpu_info.ecx & 0xff);
+//    printf("l1 d-cache lines per tag %d\n", (cpu_info.ecx >> 8) & 0xff);
+//    printf("l1 d-cache associativity %d\n", (cpu_info.ecx >> 16) & 0xff);
+
+    l1d_cache_size = ((cpu_info.ecx >> 24) & 0xff) * 1024ull;
+    printf("l1 d-cache size in bytes %zd\n", l1d_cache_size);
+
+//    printf("l1 i-cache line size %d\n", cpu_info.edx & 0xff);
+//    printf("l1 i-cache lines per tag %d\n", (cpu_info.edx >> 8) & 0xff);
+//    printf("l1 i-cache associativity %d\n", (cpu_info.edx >> 16) & 0xff);
+
+    l1i_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
+    printf("l1 i-cache size in bytes %zd\n", l1i_cache_size);
 
     //
-    // Get l2 cache size
+    // Get l2 and l3 cache sizes.
     //
 
     __cpuid((int *)&cpu_info, 0x80000006);
+
     l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
-    printf("l2 cache size in kbytes %zd\n", l2_cache_size); 
+    printf("l2 cache size in bytes %zd\n", l2_cache_size); 
+
+//    l3_cache_size = ((cpu_info.edx >> 18) & 0x3fff); // * 1024ull;
+//    printf("l3 cache size in bytes %zd\n", l3_cache_size); 
+
+    //
+    // Get logical processors per core.
+    //
 
     printf("n_threads specified %d\n", n_threads);
     __cpuid((int *)&cpu_info, 0x8000001e);
@@ -750,7 +873,7 @@ ggml_set_process_affinity (
     }
 
     __cpuid((int *)&cpu_info, 0x00000001);
-    const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
+    maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
     printf("maximum number of logical processors %d\n", maximum_logical);
 
     //
@@ -788,26 +911,49 @@ ggml_set_process_affinity (
     // Set process affinity.
     //
 
-    int64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
+    uint64_t affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
 
     //
     // It is known that the number of threads fits within the maximum smt set. If the
     // maximum smt set is less than or equal to 32, then the threads can be pushed
-    // up to higher numbers threads which will remove them from contention issues
+    // up to higher numbered threads which will remove them from contention issues
     // with clock and device interrupts.
     //
 
     if (maximum_smt_threads <= 32) {
+
         //
-        // this change impacts the token generation heavily as 
-        // the cores allocated could spill outside the complex
-        // causing the cache per complex to be under-utilized
+        // Compute the shift up such that the thread affinity straddles CCDs.
         //
-        // affinity_mask <<= maximum_logical - (n_threads * 2);
+
+        uint32_t half_shift = maximum_logical - (n_threads * 2);
+
+        half_shift = ((half_shift / 2) + 1) & 0x1e;
+
+        affinity_mask <<= half_shift;
     }
 
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        printf("process group affinity set to 0x%08llx\n", affinity_mask);
+        printf("process group affinity set to 0x%016llx\n", affinity_mask);
+
+        //
+        // Compute the processor index of the master thread.
+        //
+
+        BitScanForward64(&master_index, affinity_mask);
+        printf("processor index of master thread %d\n", master_index);
+
+#if 0
+        //
+        // Attempt to set the affinity of the master thread.
+        //
+
+        uint64_t master_affinity;
+
+        if (ggml_set_thread_affinity(0, &master_affinity)) {
+            printf("master thread affinity set to 0x%016llx\n", master_affinity);
+        }
+#endif // #if 0
 
     } else {
         printf("failed to set process affinity mask\n");
@@ -4966,7 +5112,7 @@ typedef struct {
 
 DECLSPEC_CACHEALIGN guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
 
-#define SPIN_WAIT_BUCKET 1000
+#define SPIN_WAIT_BUCKET 250
 #define SPIN_WAIT_BUCKETS 16385
 
 typedef struct {
@@ -14780,7 +14926,7 @@ void ggml_compute_forward_mul_mat(
     // loop on all rows in the outer loop, then move on to the next inner row. This
     // this is not, however, very cache friendly. The strategy used to make this more
     // efficient is to break up the dot product into tiles. Basically a tile is sized
-    // to fit an outer loop tile in the l1 cache.
+    // to fit an outer loop tile in the l1 data cache.
     //
 
     //
@@ -14795,10 +14941,10 @@ void ggml_compute_forward_mul_mat(
     int64_t blck0_factor;
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
-    blck0_factor = (l1_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
+    blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
     if (!blck0_factor || (blck0_factor == 1)) {
-        //printf("blck factor 0/1 - l1_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-        //       l1_cache_size,
+        //printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+        //       l1d_cache_size,
         //       src0_row_size,
         //       row_size);
     }
@@ -14826,8 +14972,8 @@ void ggml_compute_forward_mul_mat(
     if (!ith) {
         uint64_t bucket_index = src0_row_size;
 
-        if (bucket_index > ARRAYSIZE(quant_type_row_size[src1_type].counts)) {
-            bucket_index = ARRAYSIZE(quant_type_row_size[src1_type].counts);
+        if (bucket_index > ARRAYSIZE(quant_type_row_size[src0_type].counts)) {
+            bucket_index = ARRAYSIZE(quant_type_row_size[src0_type].counts);
         }
 
 
@@ -21333,7 +21479,21 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         .barrier1 = &shared->b1
     };
 
-    do {
+    #if 0
+    //
+    // Attempt to set thread affinity.
+    //
+    // N.B. The affinity of the master thread is only set once during initialization.
+    //
+
+    uint64_t affinity;
+
+    if (!state->ith && ggml_set_thread_affinity(state->ith, &affinity)) {
+//        printf("work thread %d affinity set to 0x%016llx\n", state->ith, affinity);
+    }
+#endif // #if 0
+
+do {
 
         //
         // Check if compute should be aborted.
