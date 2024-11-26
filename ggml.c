@@ -842,26 +842,42 @@ ggml_set_process_affinity (
 //    printf("l1 d-cache associativity %d\n", (cpu_info.ecx >> 16) & 0xff);
 
     l1d_cache_size = ((cpu_info.ecx >> 24) & 0xff) * 1024ull;
-    printf("l1 d-cache size in bytes %zd\n", l1d_cache_size);
+    //printf("l1 d-cache size %zdkb\n", l1d_cache_size / 1024);
 
 //    printf("l1 i-cache line size %d\n", cpu_info.edx & 0xff);
 //    printf("l1 i-cache lines per tag %d\n", (cpu_info.edx >> 8) & 0xff);
 //    printf("l1 i-cache associativity %d\n", (cpu_info.edx >> 16) & 0xff);
 
     l1i_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
-    printf("l1 i-cache size in bytes %zd\n", l1i_cache_size);
+    //printf("l1 i-cache size %zdkb\n", l1i_cache_size / 1024);
 
     //
-    // Get l2 and l3 cache sizes.
+    // Get l2 cache information.
     //
 
     __cpuid((int *)&cpu_info, 0x80000006);
 
     l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
-    printf("l2 cache size in bytes %zd\n", l2_cache_size); 
+    //printf("l2 cache size %zdkb\n", l2_cache_size / 1024); 
 
-//    l3_cache_size = ((cpu_info.edx >> 18) & 0x3fff); // * 1024ull;
-//    printf("l3 cache size in bytes %zd\n", l3_cache_size); 
+    //
+    // Get l3 cache information.
+    //
+
+    __cpuidex((int *)&cpu_info, 0x8000001d, 3);
+
+    uint32_t line_size = (cpu_info.ebx & 0xfff) + 1;
+    uint32_t partitions = ((cpu_info.ebx >> 12) & 0x3ff) + 1;
+    uint32_t associativity = ((cpu_info.ebx >> 22) & 0x3ff) + 1;
+    uint32_t sets = cpu_info.ecx + 1;
+
+//    printf("l3 line size %d\n", line_size);
+//    printf("l3 partitions %d\n", partitions);
+//    printf("l3 associativity %d\n", associativity);
+//    printf("l3 sets %d\n", sets);
+
+    l3_cache_size = line_size * partitions * associativity * sets;
+    //printf("l3 cache size %zdmb\n", l3_cache_size / (1024 * 1024)); 
 
     //
     // Get logical processors per core.
@@ -15062,33 +15078,33 @@ IQK_MulMat_Not_Available2:;
     //
     // Compute the dot matrix multiply using tiling.
     //
-    // The general algorithm is to perform the dot product on one row from the inner
-    // loop on all rows in the outer loop, then move on to the next inner row. This
-    // this is not, however, very cache friendly. The strategy used to make this more
-    // efficient is to break up the dot product into tiles. Basically a tile is sized
-    // to fit an outer loop tile in the l1 data cache.
+    // The general algorithm is to perform the dot product on one column from src1
+    // on all the rows in src0, then move on to the next src1 column. This is not,
+    // however, very cache friendly. The strategy used to make this more efficient
+    // is to break up the dot product into tiles. Basically a tile is sized to fit
+    // a contiguous set of src0 rows in the l1d-cache.
     //
-    // Always compute the block factor based on the outer loop operand (src0). This is
-    // the data that is continually referenced for one block iteration of the inner loop.
+    // Always compute the block factor based on the src0 row size. This is the data
+    // that is repeated referenced for one tile block iteration of the src1 loop.
     //
     // N.B. It makes no difference which operand (src0 or src1) has the most rows. The
-    //      outer loop is the data that gets continually referenced as the inner loop
-    //      sequences through an outer loop block.
+    //      src0 loop is the data that gets continually referenced as the src1 loop
+    //      sequences through scr0 tile blocks.
     //
 
     int64_t blck0_factor;
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
-    if (!blck0_factor || (blck0_factor == 1)) {
-        //printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-        //       l1d_cache_size,
-        //       src0_row_size,
-        //       row_size);
+    if (blck0_factor <= 1) {
+        printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
+               l1d_cache_size,
+               src0_row_size,
+               row_size);
     }
 
     //
-    // The block factor should have a value of at least one.
+    // The block factor must have a value of at least one.
     //
     // N.B. The computed block factor is zero if the size of the space available in the
     //      l1 cache is less that the outer loop row size.
@@ -15096,14 +15112,11 @@ IQK_MulMat_Not_Available2:;
     
 
     blck0_factor = max(1, blck0_factor);
-    int64_t blck1_factor = blck0_factor;
 
 #if 0
-    printf("blck0_factor %d row size %d, blck1_factor %d row size %d\n",
+    printf("blck0_factor %d row size %d\n",
            (uint32_t)blck0_factor,
-           (uint32_t)src0_row_size,
-           (uint32_t)blck1_factor,
-           (uint32_t)row_size);
+           (uint32_t)src0_row_size);
 #endif // #if 0
 
 #ifdef GGML_TENSOR_OP_PERF
@@ -15128,42 +15141,49 @@ IQK_MulMat_Not_Available2:;
     }
 #endif // GGML_TENSOR_OP_PERF
 
+    //
+    // This loop breaks up src0 rows into tile blocks that fit in the l1d-cache.
+    // The number of rows in a tile is the size of the blocking factor.
+    //
+
     void * dst_data = dst->data;
-    for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck0_factor) {
-        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck1_factor) {
-            const int64_t limit1 = min(iir1 + blck0_factor, ir111);
-            for (int64_t ir1 = iir1; ir1 < limit1; ++ir1) {
-                const int64_t i13 = (ir1/(ne12*ne1));
-                const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
-                const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
+    for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck0_factor) {
 
-                // broadcast src0 into src1
-                const int64_t i03 = i13/r3;
-                const int64_t i02 = i12/r2;
+        //
+        // This loop sequences through the all src1 columns.
+        //
 
-                const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
+        for (int64_t ir1 = ir110; ir1 < ir111; ++ir1) {
+            const int64_t i13 = (ir1/(ne12*ne1));
+            const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
+            const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
 
-                // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
-                //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
-                //       the original src1 data pointer, so we should index using the indices directly
-                // TODO: this is a bit of a hack, we should probably have a better way to handle this
+            // broadcast src0 into src1
+            const int64_t i03 = i13/r3;
+            const int64_t i02 = i12/r2;
 
-                const char * src1_col = (const char *) wdata +
-                    (src1_cont || init_mat
-                     ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
-                     : (i11*nb11 + i12*nb12 + i13*nb13));
+            const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
 
-                float * dst_col = (float *) ((char *) dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
+            // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
+            //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
+            //       the original src1 data pointer, so we should index using the indices directly
+            // TODO: this is a bit of a hack, we should probably have a better way to handle this
 
-                const int64_t limit0 = min(iir0 + blck1_factor, ir011);
-                for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
-                    vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
-                }
+            const char * src1_col = (const char *) wdata +
+                (src1_cont || init_mat
+                    ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
+                    : (i11*nb11 + i12*nb12 + i13*nb13));
 
-                //for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir011; ++ir0) {
-                //    vec_dot(ne00, &tmp[ir0 - iir0], src0_row + ir0*nb01, src1_col);
-                //}
-                // memcpy(&dst_col[iir0], tmp, (MIN(iir0 + blck_0, ir011) - iir0)*sizeof(float));
+            float * dst_col = (float *) ((char *) dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
+
+            //
+            // This loop computes the dot product of one src1 column versus a tile block of
+            // src0 rows.
+            //
+
+            const int64_t limit0 = min(iir0 + blck0_factor, ir011);
+            for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
+                vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
             }
         }
     }
