@@ -2874,14 +2874,13 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
 
         try {
             line = IO::standard_in().readline();
-
-            // xbox-b612
-            // Query SLM and replace with new command
-            slm_inference(line, true);
-
         } catch (const IO::EndOfFile &) {
             zquit();
         }
+
+        // xbox-b612
+        // Query SLM and replace with new command
+        slm_inference(line, true);
 
         if (line.empty()) {
             input.key = ZSCII_NEWLINE;
@@ -2912,6 +2911,10 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
             if (line.size() > input.maxlen - input.preloaded) {
                 line.resize(input.maxlen - input.preloaded);
             }
+
+            // xbox-b612
+            // Query SLM and replace with new command
+            slm_inference(line, true);
 
             std::copy(line.begin(), line.end(), &input.line[input.preloaded]);
             input.len += line.size();

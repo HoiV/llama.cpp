@@ -43,13 +43,13 @@ struct xbapp_params {
     int32_t n_ngl                      = 0;    // number of layers offloaded to GPU
     int32_t n_seqlen                   = 128;  // max sequence length to generate
     int32_t verbose_level              = 0;    // verbose level (0 - none, 1 - info, 2 - warn, 3 - error, 4 - debug)
-    std::string model_path             = "./Phi-3-mini-4k-instruct-Q2_K.gguf";   // model path
+    std::string model_path             = "./Phi-3-mini-4k-instruct-Q4_K_M-LMStudio.gguf"; // model path
     std::string prompt                 = "";
     std::string custom_p_file          = "bZM.txt"; // custom prompts input file
     std::string custom_template_prompt = "";
     std::string pfx_shared             = "";    // shared prompt for prefix cache (or prompt cache)
-    std::string pfx_file               = "";    // file name for prefix cache
-    bool pfc_mode                      = false; // prefix cache mode
+    std::string pfx_file               = "./bZM_cache.bin"; // file name for prefix cache
+    bool pfc_mode                      = true; // prefix cache mode
     bool first_prompt                  = true;  // indicate first time through
     bool openmp                        = false; // true when openmp is present
     bool verbose_extra                 = false; // true for extra llama logging (i.e. debug messages)

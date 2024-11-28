@@ -106,9 +106,6 @@ void xb_set_process_affinity(int64_t affinity_mask) {
 }
 
 int slm_init() {
-    // get default values
-    xbapp_params xbparams;
-
     CPUInfo cinfo;
     cout << "CPU vendor = " << cinfo.vendor() << endl;
     cout << "CPU Brand String = " << cinfo.model() << endl;
@@ -163,8 +160,8 @@ int slm_init() {
         return 1;
     }
 
-    //printf("\n%s: n_len = %d, n_ctx = %d\n", __func__, xbparams.n_len, llama_n_ctx(ctx));
-    //printf("%s: n_threads = %d, n_threads_batch = %d\n\n", __func__, ctx_params.n_threads, ctx_params.n_threads_batch);
+    printf("\n%s: n_len = %d, n_ctx = %d\n", __func__, xbparams.n_len, llama_n_ctx(ctx));
+    printf("%s: n_threads = %d, n_threads_batch = %d\n\n", __func__, ctx_params.n_threads, ctx_params.n_threads_batch);
 
     if (xbparams.pfc_mode) {
         // start from a known point
@@ -288,8 +285,8 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     for (auto it = line_in.begin(); it != line_in.end(); ++it) {
         xbparams.prompt += (char)*it;
     }
-    xbparams.prompt.append('\0');
-    printf("%s: user prompt =[%s]\n", __func__, xbparams.prompt.c_str());
+    xbparams.prompt += '\0';
+    printf("%s: user prompt = [%s]\n", __func__, xbparams.prompt.c_str());
     std::string full_prompt = ::trim(xbparams.custom_template_prompt);
     size_t message_index = full_prompt.find("{message}");
     if (message_index != std::string::npos) {
@@ -392,9 +389,9 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     }
 
     int64_t t_start_generation = ggml_time_us();
-    // printf("Prompt TTFT = %.2fms (size = %lld)\n", 
-    //     ((t_start_generation - t_start_decoding) / 1000.0f), 
-    //     embd.size());
+    printf("Prompt TTFT = %.2fms (size = %lld)\n", 
+        ((t_start_generation - t_start_decoding) / 1000.0f), 
+        embd.size());
 
     // compute max_len output
     int max_len = std::min(xbparams.n_len, (n_past + 128));
@@ -483,10 +480,10 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     }
 #endif
 
-    // printf("%s\n", slm_output.c_str());
+    printf("%s\n", slm_output.c_str());
 
     // parse the reply (json format)
-    json jsonObject = json::parse(slm_output);
+    json jsonObject = json::parse(slm_output.c_str());
 
     // Access the values
     std::string answer = jsonObject["answer"];
