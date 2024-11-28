@@ -9,6 +9,7 @@ std::vector<llama_token> session_tokens;
 static int64_t t_token_generation = 0;
 std::vector<llama_token> tokens_shared;
 std::vector<std::string> custom_prompts;
+xbapp_params xbparams;
 
 std::vector<llama_token> llama_tokenize(
     const struct llama_model * model,
@@ -57,7 +58,7 @@ void llama_batch_add(struct llama_batch & batch, llama_token id, llama_pos pos, 
     batch.n_tokens++;
 }
 
-bool processCustomPromptsFromFile(xbapp_params& xbparams) {
+bool processCustomPromptsFromFile() {
     std::ifstream cpfile(xbparams.custom_p_file);
     if (!cpfile.is_open()) {
         printf("[%s]: failed to open [%s]\n", __func__, xbparams.custom_p_file.c_str());
@@ -104,7 +105,10 @@ void xb_set_process_affinity(int64_t affinity_mask) {
     }
 }
 
-int slm_init(xbapp_params& params) {
+int slm_init() {
+    // get default values
+    xbapp_params xbparams;
+
     CPUInfo cinfo;
     cout << "CPU vendor = " << cinfo.vendor() << endl;
     cout << "CPU Brand String = " << cinfo.model() << endl;
@@ -115,30 +119,30 @@ int slm_init(xbapp_params& params) {
     if (cinfo.vendor().find("AMD") != std::string::npos) {
         if (cinfo.model().find("AMD Ryzen AI 9 HX 370") != std::string::npos) {
             //printf("%s: Detected AMD Ryzen HX 370\n", __func__);
-            params.is_AMD_Ryzen_HX_370 = true;
+            xbparams.is_AMD_Ryzen_HX_370 = true;
         } else if (cinfo.model().find("AMD RYZEN AI MAX+ PRO 395") != std::string::npos) {
             //printf("%s: Detected AMD Ryzen PRO 395\n", __func__);
-            params.is_AMD_Ryzen_PRO_395 = true;
+            xbparams.is_AMD_Ryzen_PRO_395 = true;
         }
     }
 
-    printf("%s: Actual using: %d threads\n", __func__, params.n_threads);
+    printf("%s: Actual using: %d threads\n", __func__, xbparams.n_threads);
 
     // init LLM
     llama_backend_init();
 
-    if (params.openmp) {
+    if (xbparams.openmp) {
         ggml_select_omp();
     }
 
-    printf("[%s]: processing cpf input file [%s]\n", __func__, params.custom_p_file.c_str());
-    processCustomPromptsFromFile(params);
+    printf("[%s]: processing cpf input file [%s]\n", __func__, xbparams.custom_p_file.c_str());
+    processCustomPromptsFromFile();
 
     // initialize the model
     model_params = llama_model_default_params();
-    model_params.n_gpu_layers = params.n_ngl;
+    model_params.n_gpu_layers = xbparams.n_ngl;
 
-    model = llama_load_model_from_file(params.model_path.c_str(), model_params);
+    model = llama_load_model_from_file(xbparams.model_path.c_str(), model_params);
     if (model == NULL) {
         printf("%s: error: unable to load model\n" , __func__);
         return 1;
@@ -147,11 +151,11 @@ int slm_init(xbapp_params& params) {
     // initialize the context
     ctx_params = llama_context_default_params();
 
-    ctx_params.seed  = params.seed;
-    ctx_params.n_ctx = params.n_ctx;
-    ctx_params.n_batch = params.n_ctx;
-    ctx_params.n_threads = params.n_threads;
-    ctx_params.n_threads_batch = params.n_threads;
+    ctx_params.seed  = xbparams.seed;
+    ctx_params.n_ctx = xbparams.n_ctx;
+    ctx_params.n_batch = xbparams.n_ctx;
+    ctx_params.n_threads = xbparams.n_threads;
+    ctx_params.n_threads_batch = xbparams.n_threads;
 
     ctx = llama_new_context_with_model(model, ctx_params);
     if (ctx == NULL) {
@@ -159,33 +163,33 @@ int slm_init(xbapp_params& params) {
         return 1;
     }
 
-    //printf("\n%s: n_len = %d, n_ctx = %d\n", __func__, params.n_len, llama_n_ctx(ctx));
+    //printf("\n%s: n_len = %d, n_ctx = %d\n", __func__, xbparams.n_len, llama_n_ctx(ctx));
     //printf("%s: n_threads = %d, n_threads_batch = %d\n\n", __func__, ctx_params.n_threads, ctx_params.n_threads_batch);
 
-    if (params.pfc_mode) {
+    if (xbparams.pfc_mode) {
         // start from a known point
         llama_kv_cache_clear(ctx);
 
-        std::string template_prompt = params.custom_template_prompt;
+        std::string template_prompt = xbparams.custom_template_prompt;
         size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared prompt
-            params.pfx_shared = ::trim(template_prompt.substr(0, pos));
+            xbparams.pfx_shared = ::trim(template_prompt.substr(0, pos));
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+            tokens_shared = llama_tokenize(model, xbparams.pfx_shared, false, false);
 
             // load the cache and create one if it does not exist
-            session_tokens.resize(params.n_ctx);
-            size_t n_token_count_out = params.first_prompt ? 0xffffffff : 0;
+            session_tokens.resize(xbparams.n_ctx);
+            size_t n_token_count_out = xbparams.first_prompt ? 0xffffffff : 0;
             if (llama_state_load_file(ctx, 
-                                      params.pfx_file.c_str(),
+                                      xbparams.pfx_file.c_str(),
                                       session_tokens.data(),
                                       session_tokens.capacity(),
                                       &n_token_count_out)) {
 
-                printf("%s: Loading saved state from '%s' (size %zd)...\n", __func__, params.pfx_file.c_str(), tokens_shared.size());
+                printf("%s: Loading saved state from '%s' (size %zd)...\n", __func__, xbparams.pfx_file.c_str(), tokens_shared.size());
                 session_tokens.resize(n_token_count_out);
-                llama_set_rng_seed(ctx, params.seed);
+                llama_set_rng_seed(ctx, xbparams.seed);
                 // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
 
                 // sanity check
@@ -205,10 +209,10 @@ int slm_init(xbapp_params& params) {
                 llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
 
             } else {
-                printf("%s: Load state file failed: %s\n", __func__, params.pfx_file.c_str());
+                printf("%s: Load state file failed: %s\n", __func__, xbparams.pfx_file.c_str());
                 session_tokens.resize(0);
                 tokens_shared.clear();
-                params.pfx_shared = "";
+                xbparams.pfx_shared = "";
 
                 // for now this plug-in should not create cache files - comment this out for cache generation
                 return 1;
@@ -224,45 +228,45 @@ int slm_init(xbapp_params& params) {
         tokens_shared.clear();
     }
 
-    if (params.process_affinity) {
+    if (xbparams.process_affinity) {
         // set affinity for prompt eval phase
         int64_t affinity_mask = 0;        
         // for 2-8 threads use the mask for Classic cores 
         // if possible. On systems with 16 cores (32 LP)
         // then use the cores landing in the middle (yes!)
-        switch (params.n_threads) {
+        switch (xbparams.n_threads) {
             case 2:
-                if (params.is_AMD_Ryzen_HX_370) {
+                if (xbparams.is_AMD_Ryzen_HX_370) {
                     // use dense cores
                     affinity_mask = 0x0000A0ul;
-                } else if (params.is_AMD_Ryzen_PRO_395) {
+                } else if (xbparams.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x00018000uL;
                 }
                 break;
             case 4: 
-                if (params.is_AMD_Ryzen_HX_370) {
+                if (xbparams.is_AMD_Ryzen_HX_370) {
                     // use dense cores
                     affinity_mask = 0x0000AAul;
-                } else if (params.is_AMD_Ryzen_PRO_395) {
+                } else if (xbparams.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x000AA000uL;
                 }
                 break;
             case 6: 
-                if (params.is_AMD_Ryzen_HX_370) {
+                if (xbparams.is_AMD_Ryzen_HX_370) {
                     // use dense cores
                     affinity_mask = 0x000AAAul;
-                } else if (params.is_AMD_Ryzen_PRO_395) {
+                } else if (xbparams.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x004AA400uL;
                 }
                 break;
             case 8: 
-                if (params.is_AMD_Ryzen_HX_370) {
+                if (xbparams.is_AMD_Ryzen_HX_370) {
                     // use dense cores
                     affinity_mask = 0x00AAAAul;
-                } else if (params.is_AMD_Ryzen_PRO_395) {
+                } else if (xbparams.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x00AAAA00uL;
                 }
@@ -278,12 +282,27 @@ int slm_init(xbapp_params& params) {
     return 0;
 }
 
-int slm_inference(xbapp_params& params) {
+int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
+    xbparams.prompt.clear();
+    // prepare the user prompt from the app
+    for (auto it = line_in.begin(); it != line_in.end(); ++it) {
+        xbparams.prompt += (char)*it;
+    }
+    xbparams.prompt.append('\0');
+    printf("%s: user prompt =[%s]\n", __func__, xbparams.prompt.c_str());
+    std::string full_prompt = ::trim(xbparams.custom_template_prompt);
+    size_t message_index = full_prompt.find("{message}");
+    if (message_index != std::string::npos) {
+        full_prompt.replace(message_index, 
+            std::string("{message}").length(), 
+            xbparams.prompt);
+    }
+
     std::vector<llama_token> embd_inp;
     int n_past = 0;
     int n_kv_pfx = 0;
 
-    if (params.pfc_mode) {
+    if (xbparams.pfc_mode) {
         // remove any "future" tokens that we might have inherited from the previous session
         llama_kv_cache_seq_rm(ctx, -1, tokens_shared.size(), -1);
         embd_inp.insert(embd_inp.end(), tokens_shared.begin(), tokens_shared.end());
@@ -291,7 +310,7 @@ int slm_inference(xbapp_params& params) {
         n_kv_pfx = tokens_shared.size();
 
         // re-apply the template since it was destroyed in pfc mode
-        params.prompt.append("\"\n<|end|>\n<|Assistant|>\nYou:");
+        xbparams.prompt.append("\"\n<|end|>\n<|Assistant|>\nYou:");
     } else {
         // start from a known point
         llama_kv_cache_clear(ctx);
@@ -300,13 +319,13 @@ int slm_inference(xbapp_params& params) {
     }
 
     // tokenize the remaining prompt or full prompt if pfc_mode is off
-    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
+    std::vector<llama_token> tokens_input = llama_tokenize(model, xbparams.prompt, false, false);
 
     // append the variant part of the prompt or the full prompt for non pfc mode
     embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
 
     const int n_ctx = llama_n_ctx(ctx);
-    const int n_kv_req = tokens_input.size() + (params.n_len - tokens_input.size() - n_kv_pfx);
+    const int n_kv_req = tokens_input.size() + (xbparams.n_len - tokens_input.size() - n_kv_pfx);
 
     // make sure the KV cache is big enough to hold all the prompt and generated tokens
     if (n_kv_req > n_ctx) {
@@ -324,7 +343,7 @@ int slm_inference(xbapp_params& params) {
 
     // calculate how much has been processed through the saved state file
     int prompt_index = 0;
-    if (params.pfc_mode) {
+    if (xbparams.pfc_mode) {
         int n_tokens_processed = 0;
         for (; prompt_index < embd_inp.size(); prompt_index++) {
             // not fully matched with shared tokens
@@ -357,10 +376,10 @@ int slm_inference(xbapp_params& params) {
     // decode the remaining prompt not covered by the shared portion
     // or the full prompt in non-pfc mode
 
-    for (int i = 0; i < (int)embd.size(); i += params.n_batch) {
+    for (int i = 0; i < (int)embd.size(); i += xbparams.n_batch) {
         int n_eval = (int) embd.size() - i;
-        if (n_eval > params.n_batch) {
-            n_eval = params.n_batch;
+        if (n_eval > xbparams.n_batch) {
+            n_eval = xbparams.n_batch;
         }
 
         if (llama_decode(ctx, llama_batch_get_one(&embd[i], n_eval, n_past, 0))) {
@@ -378,7 +397,7 @@ int slm_inference(xbapp_params& params) {
     //     embd.size());
 
     // compute max_len output
-    int max_len = std::min(params.n_len, (n_past + 128));
+    int max_len = std::min(xbparams.n_len, (n_past + 128));
 
     std::string slm_output;
     bool valid_reply = false;
@@ -465,7 +484,24 @@ int slm_inference(xbapp_params& params) {
 #endif
 
     // printf("%s\n", slm_output.c_str());
+
+    // parse the reply (json format)
+    json jsonObject = json::parse(slm_output);
+
+    // Access the values
+    std::string answer = jsonObject["answer"];
+    std::string justification = jsonObject["justification"];
+
+    if (slm_verbose) {
+        printf("%s: \"answer\": %s\n", __func__, answer.c_str());
+        printf("%s: \"justfication\": %s\n", __func__, justification.c_str());
+    }
+    line_in.clear();
+    for (char c : answer) {
+        line_in.push_back((uint16_t)c);
+    }
     slm_output.clear();
+
     valid_reply = false;
     fflush(stdout);
 

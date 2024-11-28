@@ -40,6 +40,7 @@ bool HasSpeechSynthesisVoice();
 std::string tts_string;
 std::string g_string_to_synthesize;
 std::atomic<bool> g_synthesizingText(false);
+shared_ptr<SpeechRecognizer> g_recognizer;
 shared_ptr<SpeechSynthesizer> g_synthesizer;
 HANDLE g_synthThreadHandle = NULL;
 
@@ -59,10 +60,10 @@ void StopTTS() {
 }
 
 void StartTTS() {
-    if (!HasSpeechSynthesisVoice()) {
+    //if (!HasSpeechSynthesisVoice()) {
         // The system has no speech synthesis capability
         return;
-    }
+    //}
 
     while (g_synthesizingText.load()) {
         // Stop any synthesizing speech
@@ -90,6 +91,18 @@ void StartTTS() {
 // This applies to embedded speech recognition and synthesis.
 // It is presumed that all the customer's embedded speech models use the same license.
 const string EmbeddedSpeechModelLicense = "YourEmbeddedSpeechModelLicense"; // or set EMBEDDED_SPEECH_MODEL_LICENSE
+
+// Path to the local embedded speech recognition model(s) on the device file system.
+// This may be a single model folder or a top-level folder for several models.
+// Use an absolute path or a path relative to the application working folder.
+// The path is recursively searched for model files.
+// Files belonging to a specific model must be available as normal individual files in a model folder,
+// not inside an archive, and they must be readable by the application process.
+const string EmbeddedSpeechRecognitionModelPath = "YourEmbeddedSpeechRecognitionModelPath"; // or set EMBEDDED_SPEECH_RECOGNITION_MODEL_PATH
+
+// Name of the embedded speech recognition model to be used for recognition.
+// For example: "en-US" or "Microsoft Speech Recognizer en-US FP Model V8"
+const string EmbeddedSpeechRecognitionModelName = "YourEmbeddedSpeechRecognitionModelName"; // or set EMBEDDED_SPEECH_RECOGNITION_MODEL_NAME
 
 // Path to the local embedded speech synthesis voice(s) on the device file system.
 // This may be a single voice folder or a top-level folder for several voices.
@@ -121,8 +134,21 @@ const string GetSetting(const char* environmentVariableName, const string& defau
 
 // These are set in VerifySettings() after some basic verification.
 string SpeechModelLicense;
+string SpeechRecognitionModelPath;
+string SpeechRecognitionModelName;
 string SpeechSynthesisVoicePath;
 string SpeechSynthesisVoiceName;
+
+// Utility functions for main menu.
+bool HasSpeechRecognitionModel()
+{
+    if (SpeechRecognitionModelPath.empty() || SpeechRecognitionModelName.empty())
+    {
+        cerr << "## ERROR: No speech recognition model specified.\n";
+        return false;
+    }
+    return true;
+}
 
 bool HasSpeechSynthesisVoice()
 {
@@ -139,6 +165,11 @@ shared_ptr<EmbeddedSpeechConfig> CreateSpeechConfig()
 {
     vector<string> paths;
 
+    // Add paths for offline data.
+    if (!SpeechRecognitionModelPath.empty())
+    {
+        paths.push_back(SpeechRecognitionModelPath);
+    }
     if (!SpeechSynthesisVoicePath.empty())
     {
         paths.push_back(SpeechSynthesisVoicePath);
@@ -158,9 +189,15 @@ shared_ptr<EmbeddedSpeechConfig> CreateSpeechConfig()
     // Enable Speech SDK logging. If you want to report an issue, include this log with the report.
     // If no path is specified, the log file will be created in the program default working folder.
     // If a path is specified, make sure that it is writable by the application process.
-    /*
+    //
     config->SetProperty(PropertyId::Speech_LogFilename, "SpeechSDK.log");
-    */
+    //
+
+    if (!SpeechRecognitionModelName.empty())
+    {
+        // Mandatory configuration for embedded speech (and intent) recognition.
+        config->SetSpeechRecognitionModel(SpeechRecognitionModelName, SpeechModelLicense);
+    }
 
     if (!SpeechSynthesisVoiceName.empty())
     {
@@ -204,6 +241,17 @@ bool VerifySettings()
         return false;
     }
 
+    SpeechRecognitionModelPath = GetSetting("EMBEDDED_SPEECH_RECOGNITION_MODEL_PATH", EmbeddedSpeechRecognitionModelPath);
+    if (SpeechRecognitionModelPath.compare("YourEmbeddedSpeechRecognitionModelPath") == 0)
+    {
+        SpeechRecognitionModelPath.clear();
+    }
+    SpeechRecognitionModelName = GetSetting("EMBEDDED_SPEECH_RECOGNITION_MODEL_NAME", EmbeddedSpeechRecognitionModelName);
+    if (SpeechRecognitionModelName.compare("YourEmbeddedSpeechRecognitionModelName") == 0)
+    {
+        SpeechRecognitionModelName.clear();
+    }
+
     SpeechSynthesisVoicePath = GetSetting("EMBEDDED_SPEECH_SYNTHESIS_VOICE_PATH", EmbeddedSpeechSynthesisVoicePath);
     if (SpeechSynthesisVoicePath.compare("YourEmbeddedSpeechSynthesisVoicePath") == 0)
     {
@@ -213,6 +261,24 @@ bool VerifySettings()
     if (SpeechSynthesisVoiceName.compare("YourEmbeddedSpeechSynthesisVoiceName") == 0)
     {
         SpeechSynthesisVoiceName.clear();
+    }
+
+    // Find an embedded speech recognition model based on the name.
+    if (!SpeechRecognitionModelPath.empty() && !SpeechRecognitionModelName.empty())
+    {
+        auto config = EmbeddedSpeechConfig::FromPath(SpeechRecognitionModelPath);
+        auto models = config->GetSpeechRecognitionModels();
+
+        auto result =
+            find_if(models.begin(), models.end(), [&](shared_ptr<SpeechRecognitionModel> model)
+                {
+                    return model->Name.compare(SpeechRecognitionModelName) == 0 || model->Locales[0].compare(SpeechRecognitionModelName) == 0;
+                });
+
+        if (result == models.end())
+        {
+            cout << "## WARNING: Cannot locate an embedded speech recognition model \"" << SpeechRecognitionModelName << "\"\n";
+        }
     }
 
     // Find an embedded speech synthesis voice based on the name.
@@ -244,11 +310,63 @@ bool VerifySettings()
             cout << "## WARNING: Cannot locate an embedded speech synthesis voice \"" << SpeechSynthesisVoiceName << "\"\n";
         }
     }
+
+    cout << "Embedded speech recognition\n";
+    cout << "  model search path: " << (SpeechRecognitionModelPath.empty() ? "(not set)" : SpeechRecognitionModelPath) << endl;
+    cout << "  model name:        " << (SpeechRecognitionModelName.empty() ? "(not set)" : SpeechRecognitionModelName) << endl;
     cout << "Embedded speech synthesis\n";
     cout << "  voice search path: " << (SpeechSynthesisVoicePath.empty() ? "(not set)" : SpeechSynthesisVoicePath) << endl;
     cout << "  voice name:        " << (SpeechSynthesisVoiceName.empty() ? "(not set)" : SpeechSynthesisVoiceName) << endl;
 
     return true;
+}
+
+// Lists available embedded speech recognition models.
+void ListSpeechRecognitionModels()
+{
+    // Creates an instance of an embedded speech config.
+    auto speechConfig = CreateSpeechConfig();
+    if (!speechConfig)
+    {
+        return;
+    }
+
+    // Gets a list of models.
+    auto models = speechConfig->GetSpeechRecognitionModels();
+
+    if (!models.empty())
+    {
+        cout << "Models found:" << endl;
+        for (const auto& model : models)
+        {
+            cout << model->Name << endl;
+            cout << " Locale(s): ";
+            for (const auto& locale : model->Locales)
+            {
+                cout << locale << " ";
+            }
+            cout << endl;
+            cout << " Path:      " << model->Path << endl;
+        }
+
+        // To find a model that supports a specific locale, for example:
+        /*
+        auto locale = "en-US";
+        auto found =
+            find_if(models.begin(), models.end(), [&](shared_ptr<SpeechRecognitionModel> model)
+                {
+                    return model->Locales[0].compare(locale) == 0;
+                });
+        if (found != models.end())
+        {
+            cout << "Found " << locale << " model: " << (*found)->Name << endl;
+        }
+        */
+    }
+    else
+    {
+        cerr << "No models found. Either the path is not valid or the format of model(s) is unknown." << endl;
+    }
 }
 
 // Lists available embedded speech synthesis voices.
@@ -426,6 +544,201 @@ void SpeechSynthesisToSpeaker(string textInput)
 
     // Let the thread go and resume
     synthesizerThread.detach();
+}
+
+void RecognizeSpeech(shared_ptr<SpeechRecognizer> recognizer, bool useKeyword, bool waitForUser)
+{
+    promise<void> recognitionEnd;
+
+    // Subscribes to events.
+    recognizer->Recognizing += [](const SpeechRecognitionEventArgs& e)
+    {
+        // Intermediate result (hypothesis).
+        if (e.Result->Reason == ResultReason::RecognizingSpeech)
+        {
+            cout << "Recognizing:" << e.Result->Text << endl;
+        }
+        else if (e.Result->Reason == ResultReason::RecognizingKeyword)
+        {
+            // ignored
+        }
+    };
+
+    recognizer->Recognized += [](const SpeechRecognitionEventArgs& e)
+    {
+        if (e.Result->Reason == ResultReason::RecognizedKeyword)
+        {
+            // Keyword detected, speech recognition will start.
+            cout << "KEYWORD: Text=" << e.Result->Text << endl;
+        }
+        else if (e.Result->Reason == ResultReason::RecognizedSpeech)
+        {
+            // Final result. May differ from the last intermediate result.
+            cout << "RECOGNIZED: Text=" << e.Result->Text << endl;
+
+            // See where the result came from, cloud (online) or embedded (offline)
+            // speech recognition.
+            // This can change during a session where HybridSpeechConfig is used.
+            /*
+            cout << "Recognition backend: " << e.Result->Properties.GetProperty(PropertyId::SpeechServiceResponse_RecognitionBackend) << endl;
+            */
+
+            // Recognition results in JSON format.
+            //
+            // Offset and duration values are in ticks, where a single tick
+            // represents 100 nanoseconds or one ten-millionth of a second.
+            //
+            // To get word level detail, set the output format to detailed.
+            // See EmbeddedSpeechRecognitionFromWavFile() in this source file
+            // for a configuration example.
+            //
+            // If an embedded speech recognition model does not support word
+            // timing, the word offset and duration values are always 0, and the
+            // phrase offset and duration only indicate a time window inside of
+            // which the phrase appeared, not the accurate start and end of speech.
+            /*
+            string jsonResult = e.Result->Properties.GetProperty(PropertyId::SpeechServiceResponse_JsonResult);
+            cout << "JSON result: " << jsonResult << endl;
+            */
+            // For parsing and better presentation, use e.g. nlohmann/json.
+            /*
+            auto json = nlohmann::json::parse(jsonResult);
+            cout << json.dump(4) << endl;
+
+            if (json.contains("NBest")) // detailed results
+            {
+                auto best = json["NBest"].at(0);
+                if (best.contains("Words")) // word level detail
+                {
+                    for (const auto& word : best["Words"])
+                    {
+                        cout << "Word: " << word["Word"] << " | "
+                            << "Offset: " << word["Offset"] / 10000 << "ms | "
+                            << "Duration: " << word["Duration"] / 10000 << "ms" << endl;
+                    }
+                }
+            }
+            */
+        }
+        else if (e.Result->Reason == ResultReason::NoMatch)
+        {
+            // NoMatch occurs when no speech phrase was recognized.
+            auto reason = NoMatchDetails::FromResult(e.Result)->Reason;
+            cout << "NO MATCH: Reason=";
+            switch (reason)
+            {
+            case NoMatchReason::NotRecognized:
+                // Input audio was not silent but contained no recognizable speech.
+                cout << "NotRecognized" << endl;
+                break;
+            case NoMatchReason::InitialSilenceTimeout:
+                // Input audio was silent and the (initial) silence timeout expired.
+                // In continuous recognition this can happen multiple times during
+                // a session, not just at the very beginning.
+                cout << "InitialSilenceTimeout" << endl;
+                break;
+            default:
+                // Other reasons are not supported in embedded speech at the moment.
+                cout << int(reason) << endl;
+                break;
+            }
+        }
+    };
+
+    recognizer->Canceled += [](const SpeechRecognitionCanceledEventArgs& e)
+    {
+        switch (e.Reason)
+        {
+        case CancellationReason::EndOfStream:
+            // Input stream was closed or the end of an input file was reached.
+            cout << "CANCELED: EndOfStream" << endl;
+            break;
+
+        case CancellationReason::Error:
+            // NOTE: In case of an error, do not use the same recognizer for recognition anymore.
+            cerr << "CANCELED: ErrorCode=" << int(e.ErrorCode) << endl;
+            cerr << "CANCELED: ErrorDetails=\"" << e.ErrorDetails << "\"" << endl;
+            break;
+
+        default:
+            cout << "CANCELED: Reason=" << int(e.Reason) << endl;
+            break;
+        }
+    };
+
+    recognizer->SessionStarted += [](const SessionEventArgs& e)
+    {
+        UNUSED(e);
+        cout << "Session started." << endl;
+    };
+
+    recognizer->SessionStopped += [&recognitionEnd](const SessionEventArgs& e)
+    {
+        UNUSED(e);
+        cout << "Session stopped." << endl;
+        recognitionEnd.set_value();
+    };
+
+    if (useKeyword) {
+        // Creates an instance of a keyword recognition model.
+        auto keywordModel = KeywordRecognitionModel::FromFile("./bZM_keyword.table");
+
+        // Starts the following routine:
+        // 1. Listen for a keyword in input audio. There is no timeout.
+        //    Speech that does not start with the keyword is ignored.
+        // 2. If the keyword is spotted, start normal speech recognition.
+        // 3. After a recognition result (that always includes at least
+        //    the keyword), go back to step 1.
+        // Steps 1-3 repeat until StopKeywordRecognitionAsync() is called.
+        recognizer->StartKeywordRecognitionAsync(keywordModel).get();
+
+        // Wait for the user to press Enter
+        cin.get();
+
+        // Stops recognition.
+        recognizer->StopKeywordRecognitionAsync().get();
+    
+    } else {
+        // Start continuous recognition
+        recognizer->StartContinuousRecognitionAsync().get();
+
+        if (waitForUser) {
+            cin.get();
+
+        } else {
+            recognitionEnd.get_future().get();
+        }
+
+        // Stops recognition.
+        recognizer->StopContinuousRecognitionAsync().get();
+    }
+}
+
+// Recognizes speech using embedded speech config and the system default microphone device.
+void SpeechRecognitionFromMicrophone()
+{
+    auto useKeyword = false;
+    auto waitForUser = true;
+
+    auto speechConfig = CreateSpeechConfig();
+    auto audioConfig = AudioConfig::FromDefaultMicrophoneInput();
+
+    g_recognizer = SpeechRecognizer::FromConfig(speechConfig, audioConfig);
+    RecognizeSpeech(g_recognizer, useKeyword, waitForUser);
+}
+
+// Recognizes speech using embedded speech config and the system default microphone device.
+// Recognition is triggered with a keyword.
+void SpeechRecognitionWithKeywordFromMicrophone()
+{
+    auto useKeyword = true;
+    auto waitForUser = true;
+
+    auto speechConfig = CreateSpeechConfig();
+    auto audioConfig = AudioConfig::FromDefaultMicrophoneInput();
+
+    g_recognizer = SpeechRecognizer::FromConfig(speechConfig, audioConfig);
+    RecognizeSpeech(g_recognizer, useKeyword, waitForUser);
 }
 
 int InitializeSpeechModels()

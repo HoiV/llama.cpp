@@ -53,6 +53,9 @@ extern std::string tts_string;
 extern void StartTTS();
 extern void StopTTS();
 
+// Xbox-B612 - from slm.cpp
+extern int slm_inference(std::vector<uint16_t>&, bool);
+
 #ifdef ZTERP_GLK
 extern "C" {
 #include <glk.h>
@@ -861,7 +864,7 @@ static void put_char_base(uint16_t c, bool unicode)
                 // expectation that it appear in a transcript, which means it also
                 // ought to appear in the history.
                 history.add_char(c);
-                // Xbox-B612 - logging the char
+                // Xbox-B612 - save the char for TTS
                 tts_string.push_back(c);
                 transcribe(c);
             }
@@ -2129,7 +2132,6 @@ void zprint_addr()
 
 void zprint_paddr()
 {
-    // xbox-b612
     print_handler(unpack_string(zargs[0]), nullptr);
 }
 
@@ -2874,7 +2876,8 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
             line = IO::standard_in().readline();
 
             // xbox-b612
-            // Query Phi-3 for advice and paste reply here
+            // Query SLM and replace with new command
+            slm_inference(line, true);
 
         } catch (const IO::EndOfFile &) {
             zquit();
@@ -2926,9 +2929,6 @@ void zread_char()
     uint16_t routine = zargs[2];
     Input input;
 
-    // Xbox-B612 - flush text to speaker
-    StartTTS();
-
     input.type = Input::Type::Char;
 
     if (options.autosave && !in_interrupt()) {
@@ -2938,6 +2938,9 @@ void zread_char()
     if (zversion >= 4 && znargs > 1) {
         timer = zargs[1];
     }
+
+    // Xbox-B612 - flush current input to speaker before taking more input
+    StartTTS();
 
     if (!get_input(timer, routine, input)) {
         store(0);
@@ -3312,11 +3315,17 @@ static bool read_handler()
 
 void zread()
 {
-    // Xbox-B612 - narrate before getting input 
+    // Xbox-B612 - flush current input to speaker before taking more input
     StartTTS();
 
+#if 1
+    // Support typing input
     while (!read_handler()) {
     }
+#else
+    // Xbox-B612 - enable speaking parts
+    SpeechRecognitionFromMicrophone();
+#endif
 
     StopTTS();
 }

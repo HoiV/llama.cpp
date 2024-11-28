@@ -2,6 +2,7 @@
 
 #include "llama.h"
 #include "log.h"
+#include "json.hpp"
 
 #ifdef GGML_USE_OPENMP
 #include <omp.h>
@@ -29,6 +30,8 @@
 #include <stdint.h>
 
 using namespace std;
+using json = nlohmann::json;
+
 #endif // WIN32
 
 struct xbapp_params {
@@ -40,7 +43,7 @@ struct xbapp_params {
     int32_t n_ngl                      = 0;    // number of layers offloaded to GPU
     int32_t n_seqlen                   = 128;  // max sequence length to generate
     int32_t verbose_level              = 0;    // verbose level (0 - none, 1 - info, 2 - warn, 3 - error, 4 - debug)
-    std::string model_path             = "";   // model path
+    std::string model_path             = "./Phi-3-mini-4k-instruct-Q2_K.gguf";   // model path
     std::string prompt                 = "";
     std::string custom_p_file          = "bZM.txt"; // custom prompts input file
     std::string custom_template_prompt = "";
@@ -56,9 +59,8 @@ struct xbapp_params {
     ggml_log_level log_level           = (ggml_log_level)0;
 };
 
-
-int slm_inference(xbapp_params& params);
-int slm_init(xbapp_params& params);
+int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose);
+int slm_init();
 void slm_terminate();
 void xb_set_process_affinity (uint32_t n_threads, int64_t affinity_mask_requested = 0);
 

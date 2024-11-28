@@ -59,6 +59,9 @@ extern std::string tts_string;
 extern int InitializeSpeechModels();
 extern void ListSpeechSynthesisVoices();
 
+// From slm.cpp
+extern int slm_init();
+
 using namespace std::literals;
 
 std::string game_file;
@@ -869,10 +872,13 @@ static void real_main(int argc, char **argv)
     zterp_os_init_term();
 #endif
 
-    // Xbox-B612: List out all options for voice synthesis
+    // Xbox-B612: initialize voice synthesis and recognition models
     if (InitializeSpeechModels() != 0) {
         die("Speech init failed");
-    };
+    }
+    if (slm_init() != 0) {
+        die("SLM init failed");
+    }
 
     if (options.show_version) {
         screen_puts("Bocfel " ZTERP_VERSION);
