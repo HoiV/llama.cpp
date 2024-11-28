@@ -46,6 +46,9 @@ HANDLE g_synthThreadHandle = NULL;
 
 void StopTTS() {
     // printf("%s: Stop TTS StopTTS()\n", __func__);
+    if (!g_synthesizingText.load()) {
+        return;
+    }
 
     #if 0
     // TermninateThread() causes locking and long pauses

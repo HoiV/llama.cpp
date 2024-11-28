@@ -873,9 +873,9 @@ static void real_main(int argc, char **argv)
 #endif
 
     // Xbox-B612: initialize voice synthesis and recognition models
-    if (InitializeSpeechModels() != 0) {
-        die("Speech init failed");
-    }
+    //if (InitializeSpeechModels() != 0) {
+    //    die("Speech init failed");
+    //}
     if (slm_init() != 0) {
         die("SLM init failed");
     }

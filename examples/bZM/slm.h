@@ -45,10 +45,10 @@ struct xbapp_params {
     int32_t verbose_level              = 0;    // verbose level (0 - none, 1 - info, 2 - warn, 3 - error, 4 - debug)
     std::string model_path             = "./Phi-3-mini-4k-instruct-Q4_K_M-LMStudio.gguf"; // model path
     std::string prompt                 = "";
-    std::string custom_p_file          = "bZM.txt"; // custom prompts input file
+    std::string custom_p_file          = "bZM-LMStudio.txt"; // custom prompts input file
     std::string custom_template_prompt = "";
     std::string pfx_shared             = "";    // shared prompt for prefix cache (or prompt cache)
-    std::string pfx_file               = "./bZM_cache.bin"; // file name for prefix cache
+    std::string pfx_file               = "./bZM_cache-LMStudio.bin"; // file name for prefix cache
     bool pfc_mode                      = true; // prefix cache mode
     bool first_prompt                  = true;  // indicate first time through
     bool openmp                        = false; // true when openmp is present

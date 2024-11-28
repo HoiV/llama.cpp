@@ -44,47 +44,47 @@ Here are some examples:
 User: 
 "Where am I?"
 You: 
-{ answer: "LOOK around"
-  Justification: "the user wants to find out where they are so the command 'Look' is best to locate whee the user is."
+{ "answer": "LOOK around",
+  "Justification": "the user wants to find out where they are so the command 'Look' is best to locate whee the user is."
 }
 
 User: 
 "What do I have right now?"
 You:
-{ answer: "INVENTORY"
-  justification: "the users wants to know what they currently have or carry right now so the command 'Inventory' is best to list out all the objects the user currently has."
+{ "answer": "INVENTORY",
+  "justification": "the users wants to know what they currently have or carry right now so the command 'Inventory' is best to list out all the objects the user currently has."
 }
 
 User: 
 "go straight"
 You:
 {
-    answer: "NORTH"
-    justification: "the user wants to go straight so the best command is 'NORTH'."
+    "answer": "NORTH",
+    "justification": "the user wants to go straight so the best command is 'NORTH'."
 }
 
 User: 
 "go left"
 You:
 {
-    answer: "WEST"
-    justification: "the user wants to go left so 'WEST' would be the correct command since it points to the left direction."
+    "answer": "WEST",
+    "justification": "the user wants to go left so 'WEST' would be the correct command since it points to the left direction."
 }
 
 User: 
 "Climb the tree"
 You:
 {
-    answer: "UP the tree"
-    justification: "the user wants to climb up the tree so the best command is 'UP'."
+    "answer": "UP the tree",
+    "justification": "the user wants to climb up the tree so the best command is 'UP'."
 }
 
 User: 
 "Open the window"
 You:
 {
-    answer: "PUSH window"
-    justification: "the user wants to go North so the best command is to 'PUSH' the window open."
+    "answer": "PUSH window",
+    "justification": "the user wants to go North so the best command is to 'PUSH' the window open."
 }
 
 <|end|>

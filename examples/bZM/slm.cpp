@@ -280,10 +280,17 @@ int slm_init() {
 }
 
 int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
+    if ((line_in.size() == 0) || (line_in[0] != '@')) {
+        // no work for SLM if the user typed nothing or the first character  
+        // is not an '@' character
+
+        return 0;
+    }
+
     xbparams.prompt.clear();
     // prepare the user prompt from the app
-    for (auto it = line_in.begin(); it != line_in.end(); ++it) {
-        xbparams.prompt += (char)*it;
+    for (int i = 1; i < line_in.size(); i++) {
+        xbparams.prompt += (char)line_in[i];
     }
     xbparams.prompt += '\0';
     printf("%s: user prompt = [%s]\n", __func__, xbparams.prompt.c_str());
@@ -389,9 +396,9 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     }
 
     int64_t t_start_generation = ggml_time_us();
-    printf("Prompt TTFT = %.2fms (size = %lld)\n", 
-        ((t_start_generation - t_start_decoding) / 1000.0f), 
-        embd.size());
+    //printf("Prompt TTFT = %.2fms (size = %lld)\n", 
+    //    ((t_start_generation - t_start_decoding) / 1000.0f), 
+    //    embd.size());
 
     // compute max_len output
     int max_len = std::min(xbparams.n_len, (n_past + 128));
@@ -433,12 +440,10 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
 
             const std::string token_str = llama_token_to_piece(ctx, new_token_id);
 
-#if 0
             if (token_str.find('{') != std::string::npos) {
                 // accepted answers have '{' characters
                 valid_reply = true;
             }
-#endif
 
             // if (valid_reply) {
 #if 0
@@ -472,31 +477,31 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
         }
     }
 
-#if 0
     // we have reached max_len of output, hit eog char or "}"
     if (!valid_reply) {
         // reply not correctly formatted or unhelpful
         printf("%s: ***** invalid formatted reply from model *****\n", __func__);
+
+    } else {
+        // parse the reply (json format)
+        json jsonObject = json::parse(slm_output.c_str());
+
+        // Access the values
+        std::string answer = jsonObject["answer"];
+        std::string justification = jsonObject["justification"];
+
+        if (slm_verbose) {
+            printf("%s: \"answer\": %s\n", __func__, answer.c_str());
+            printf("%s: \"justfication\": %s\n\n", __func__, justification.c_str());
+        }
+
+        line_in.clear();
+        for (char c : answer) {
+            line_in.push_back((uint16_t)c);
+        }
+        line_in.push_back(0);
     }
-#endif
 
-    printf("%s\n", slm_output.c_str());
-
-    // parse the reply (json format)
-    json jsonObject = json::parse(slm_output.c_str());
-
-    // Access the values
-    std::string answer = jsonObject["answer"];
-    std::string justification = jsonObject["justification"];
-
-    if (slm_verbose) {
-        printf("%s: \"answer\": %s\n", __func__, answer.c_str());
-        printf("%s: \"justfication\": %s\n", __func__, justification.c_str());
-    }
-    line_in.clear();
-    for (char c : answer) {
-        line_in.push_back((uint16_t)c);
-    }
     slm_output.clear();
 
     valid_reply = false;
@@ -504,11 +509,11 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
 
     int64_t t_end_generation = ggml_time_us();
     double t_ms = (t_end_generation - t_start_generation) / 1000.0f;
-    printf("> token generation time = %.2fms (%d) (%.2ft/s) (%.2fms)\n", 
-        t_ms,
-        n_tokens_generated, 
-        n_tokens_generated / (t_ms / 1000.0f),
-        (t_ms / n_tokens_generated));
+    //printf("> token generation time = %.2fms (%d) (%.2ft/s) (%.2fms)\n", 
+    //    t_ms,
+    //    n_tokens_generated, 
+    //    n_tokens_generated / (t_ms / 1000.0f),
+    //    (t_ms / n_tokens_generated));
 
     t_token_generation += (t_end_generation - t_start_generation);
     return 0;
