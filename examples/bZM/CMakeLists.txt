@@ -19,5 +19,15 @@ target_link_libraries(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/speech/libs/Microsof
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(${TARGET} PRIVATE cxx_std_11)
 
+set(TARGET bZM-cache)
+add_executable(${TARGET} bZM-cache/kv-cache.cpp bZM-cache/slminfer.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+target_include_directories(bZM-cache PUBLIC ./bZM-cache)
+target_include_directories(bZM-cache PUBLIC ../..)
+target_include_directories(bZM-cache PUBLIC ../../common)
+target_link_libraries(${TARGET} PRIVATE llama ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_11)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+
 # end of CMakeLists.txt ...
 

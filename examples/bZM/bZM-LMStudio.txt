@@ -90,10 +90,16 @@ You:
 <|end|>
 Conversation:
 <|user|>
-User: "{message}"
+User: " {CurrentSetting} - {message}"
 <|end|>
 <|assistant|>
 You:
+END_SECTION
+CUSTOM_SETTING
+West of House: You are standing in an open field west of a white house, with a boarded front door. There is a small mailbox here.
+North of House: You are facing the north side of a white house. There is no door here, and all the windows are boarded up. To the north a narrow path winds through the trees.
+Forest Path: This is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path.
+Clearing: You are in a clearing, with a forest surrounding you on all sides. A path leads south. On the ground is a pile of leaves.
 END_SECTION
 CUSTOM_PROMPT
 "What should I do with a leaflet?"

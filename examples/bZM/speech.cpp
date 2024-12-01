@@ -36,16 +36,26 @@ void SpeechSynthesisToSpeaker(string);
 bool HasSpeechSynthesisVoice();
 
 // The following is a shadow copy of any string being transcibed to
-// the screen - for speech or other logging purpose.
+// the screen - for speech or other AI needs (i.e. SLM)
 std::string tts_string;
+
 std::string g_string_to_synthesize;
 std::atomic<bool> g_synthesizingText(false);
-shared_ptr<SpeechRecognizer> g_recognizer;
-shared_ptr<SpeechSynthesizer> g_synthesizer;
+shared_ptr<SpeechRecognizer> g_recognizer = nullptr;
+shared_ptr<SpeechSynthesizer> g_synthesizer = nullptr;
 HANDLE g_synthThreadHandle = NULL;
 
 void StopTTS() {
     // printf("%s: Stop TTS StopTTS()\n", __func__);
+
+    // clear current buffer to allow new incoming text
+    tts_string.clear();
+
+    if (g_synthesizer == nullptr) {
+        // the speech synthesizer was not initialized
+        return;
+    }
+
     if (!g_synthesizingText.load()) {
         return;
     }
@@ -63,10 +73,10 @@ void StopTTS() {
 }
 
 void StartTTS() {
-    //if (!HasSpeechSynthesisVoice()) {
+    if ((g_synthesizer == nullptr) || !HasSpeechSynthesisVoice()) {
         // The system has no speech synthesis capability
         return;
-    //}
+    }
 
     while (g_synthesizingText.load()) {
         // Stop any synthesizing speech
@@ -147,7 +157,7 @@ bool HasSpeechRecognitionModel()
 {
     if (SpeechRecognitionModelPath.empty() || SpeechRecognitionModelName.empty())
     {
-        cerr << "## ERROR: No speech recognition model specified.\n";
+        // cerr << "## ERROR: No speech recognition model specified.\n";
         return false;
     }
     return true;
@@ -157,7 +167,7 @@ bool HasSpeechSynthesisVoice()
 {
     if (SpeechSynthesisVoicePath.empty() || SpeechSynthesisVoiceName.empty())
     {
-        cerr << "## ERROR: No speech synthesis voice specified.\n";
+        // cerr << "## ERROR: No speech synthesis voice specified.\n";
         return false;
     }
     return true;

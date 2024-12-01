@@ -2,7 +2,6 @@
 
 #include "llama.h"
 #include "log.h"
-#include "json.hpp"
 
 #ifdef GGML_USE_OPENMP
 #include <omp.h>
@@ -26,41 +25,45 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <fcntl.h>
 #include <io.h>
 #include <stdint.h>
 
 using namespace std;
-using json = nlohmann::json;
 
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
 #endif // WIN32
 
 struct xbapp_params {
     uint32_t seed                      = 42;   // RNG sampling seed - default was 0xFFFFFFFF
-    uint32_t n_ctx                     = 2048; // context size (max of n_len + n_seqlen)
-    int32_t n_len                      = 1536; // max length of the prompt including the system prompt
-    int32_t n_threads                  = 4;    // default number of hw threads
+    uint32_t n_ctx                     = 1536; // context size (max of n_len + n_seqlen)
+    int32_t n_len                      = 1024; // max length of the prompt including the system prompt
+    int32_t n_threads                  = 8;    // default number of hw threads
     int32_t n_batch                    = 512;  // size for a single batch (could be as large as prompt size)
     int32_t n_ngl                      = 0;    // number of layers offloaded to GPU
     int32_t n_seqlen                   = 128;  // max sequence length to generate
     int32_t verbose_level              = 0;    // verbose level (0 - none, 1 - info, 2 - warn, 3 - error, 4 - debug)
-    std::string model_path             = "./Phi-3-mini-4k-instruct-Q4_K_M-LMStudio.gguf"; // model path
+    std::string model_path             = "";   // model path
     std::string prompt                 = "";
-    std::string custom_p_file          = "bZM-LMStudio.txt"; // custom prompts input file
+    std::string custom_p_file          = "custom_prompts.txt";  // custom prompts input file
     std::string custom_template_prompt = "";
     std::string pfx_shared             = "";    // shared prompt for prefix cache (or prompt cache)
-    std::string pfx_file               = "./bZM_cache-LMStudio.zbin"; // file name for prefix cache
-    bool pfc_mode                      = true; // prefix cache mode
+    std::string pfx_file               = "";    // file name for prefix cache
+    bool pfc_mode                      = false; // prefix cache mode
     bool first_prompt                  = true;  // indicate first time through
     bool openmp                        = false; // true when openmp is present
     bool verbose_extra                 = false; // true for extra llama logging (i.e. debug messages)
-    bool process_affinity              = true;  // true if set process affinity is enabled
+    bool process_affinity              = false; // true if set process affinity is enabled
     bool is_AMD_Ryzen_HX_370           = false; // AMD Ryzen AI 9 HX 370 w/ Radeon 890M
     bool is_AMD_Ryzen_PRO_395          = false; // AMD Ryzen AI MAX+ PRO 395 w/ Radeon 8060S
     ggml_log_level log_level           = (ggml_log_level)0;
 };
 
-int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose);
-int slm_init();
+
+int slm_inference(xbapp_params& params);
+int slm_init(xbapp_params& params);
 void slm_terminate();
 void xb_set_process_affinity (uint32_t n_threads, int64_t affinity_mask_requested = 0);
 

@@ -168,7 +168,7 @@ int slm_init() {
         llama_kv_cache_clear(ctx);
 
         std::string template_prompt = xbparams.custom_template_prompt;
-        size_t pos = template_prompt.find("{message}");
+        size_t pos = template_prompt.find("{CurrentSetting}");
         if (pos != std::string::npos) {
             // build the shared prompt
             xbparams.pfx_shared = ::trim(template_prompt.substr(0, pos));
@@ -279,28 +279,30 @@ int slm_init() {
     return 0;
 }
 
-int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
-    if ((line_in.size() == 0) || (line_in[0] != '@')) {
+int slm_inference(std::vector<uint16_t>& user_prompt, std::string sys_prompt, bool slm_verbose = false) {
+    if ((user_prompt.empty()) || (user_prompt[0] != '@')) {
         // no work for SLM if the user typed nothing or the first character  
         // is not an '@' character
-
         return 0;
     }
 
+    // reset the user prompt
     xbparams.prompt.clear();
-    // prepare the user prompt from the app
-    for (int i = 1; i < line_in.size(); i++) {
-        xbparams.prompt += (char)line_in[i];
+
+    // prepare the extra context for the prompt if it exists
+    if (sys_prompt.size() != 0) {
+        sys_prompt.insert(0, " Current setting: ");
+        xbparams.prompt.insert(0, sys_prompt);
+        sys_prompt.clear();
+    }
+
+    // add the main user prompt - start at 1 to skip the trigger char '@'
+    for (int i = 1; i < user_prompt.size(); i++) {
+        xbparams.prompt += (char)user_prompt[i];
     }
     xbparams.prompt += '\0';
-    printf("%s: user prompt = [%s]\n", __func__, xbparams.prompt.c_str());
-    std::string full_prompt = ::trim(xbparams.custom_template_prompt);
-    size_t message_index = full_prompt.find("{message}");
-    if (message_index != std::string::npos) {
-        full_prompt.replace(message_index, 
-            std::string("{message}").length(), 
-            xbparams.prompt);
-    }
+
+    printf("%s: user full prompt = [%s]\n", __func__, xbparams.prompt.c_str());
 
     std::vector<llama_token> embd_inp;
     int n_past = 0;
@@ -401,7 +403,7 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     //    embd.size());
 
     // compute max_len output
-    int max_len = std::min(xbparams.n_len, (n_past + 128));
+    int max_len = std::min(xbparams.n_len, (n_past + xbparams.n_seqlen));
 
     std::string slm_output;
     bool valid_reply = false;
@@ -446,13 +448,8 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
             }
 
             // if (valid_reply) {
-#if 0
-            // enable the following printf for streaming replies
-            printf("%s", token_str.c_str());
-#else
-            // batched output
-            slm_output += token_str;
-#endif
+            // if (slm_verbose) printf("%s", token_str.c_str());
+                slm_output += token_str;
             // }
 
             if (token_str.find('}') != std::string::npos) {
@@ -480,9 +477,16 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
     // we have reached max_len of output, hit eog char or "}"
     if (!valid_reply) {
         // reply not correctly formatted or unhelpful
-        printf("%s: ***** invalid formatted reply from model *****\n", __func__);
+        if (slm_verbose) {
+            printf("%s: ***** invalid formatted reply from model *****\n%s\n", __func__, slm_output.c_str());
+        }
+        user_prompt.clear();
 
     } else {
+        if (slm_verbose) {
+            // printf("%s: SLM reply (%d):\n%s\n", __func__, n_past, slm_output.c_str());
+        }
+
         // parse the reply (json format)
         json jsonObject = json::parse(slm_output.c_str());
 
@@ -491,15 +495,19 @@ int slm_inference(std::vector<uint16_t>& line_in, bool slm_verbose = false) {
         std::string justification = jsonObject["justification"];
 
         if (slm_verbose) {
-            printf("%s: \"answer\": %s\n", __func__, answer.c_str());
-            printf("%s: \"justfication\": %s\n\n", __func__, justification.c_str());
+            printf("*** \"answer\": %s\n", answer.c_str());
+            printf("*** \"justfication\": %s\n\n", justification.c_str());
         }
 
-        line_in.clear();
+        user_prompt.clear();
+
+#if 0 // do not return SLM answer directly yet
         for (char c : answer) {
-            line_in.push_back((uint16_t)c);
+            user_prompt.push_back((uint16_t)c);
         }
-        line_in.push_back(0);
+        user_prompt.push_back(0);
+#endif
+
     }
 
     slm_output.clear();

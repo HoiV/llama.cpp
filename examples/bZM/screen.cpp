@@ -54,7 +54,8 @@ extern void StartTTS();
 extern void StopTTS();
 
 // Xbox-B612 - from slm.cpp
-extern int slm_inference(std::vector<uint16_t>&, bool);
+std::string slm_context_string;
+extern int slm_inference(std::vector<uint16_t>&, std::string, bool);
 
 #ifdef ZTERP_GLK
 extern "C" {
@@ -2873,14 +2874,18 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
         std::vector<uint16_t> line;
 
         try {
-            line = IO::standard_in().readline();
+            do {
+                line = IO::standard_in().readline();
+
+                // xbox-b612
+                // Query SLM and replace with new command
+                slm_inference(line, slm_context_string, true);
+
+            } while ((line.size() != 0) && (line[0] == '@'));
+
         } catch (const IO::EndOfFile &) {
             zquit();
         }
-
-        // xbox-b612
-        // Query SLM and replace with new command
-        slm_inference(line, true);
 
         if (line.empty()) {
             input.key = ZSCII_NEWLINE;
@@ -2903,10 +2908,15 @@ static bool get_input(uint16_t timer, uint16_t routine, Input &input)
             std::vector<uint16_t> line;
 
             try {
-                line = IO::standard_in().readline();
-                // xbox-b612
-                // Query SLM and replace with new command
-                slm_inference(line, true);
+                do {
+                    line = IO::standard_in().readline();
+
+                    // xbox-b612
+                    // Query SLM and replace with new command
+                    slm_inference(line, slm_context_string, true);
+
+                } while ((line.size() != 0) && (line[0] == '@'));
+
             } catch (const IO::EndOfFile &) {
                 zquit();
             }
@@ -2942,6 +2952,7 @@ void zread_char()
     }
 
     // Xbox-B612 - flush current input to speaker before taking more input
+    slm_context_string = tts_string;
     StartTTS();
 
     if (!get_input(timer, routine, input)) {
@@ -3318,6 +3329,7 @@ static bool read_handler()
 void zread()
 {
     // Xbox-B612 - flush current input to speaker before taking more input
+    slm_context_string = tts_string;
     StartTTS();
 
 #if 1
@@ -3325,7 +3337,7 @@ void zread()
     while (!read_handler()) {
     }
 #else
-    // Xbox-B612 - enable speaking parts
+    // Xbox-B612 - enable speech recognition
     SpeechRecognitionFromMicrophone();
 #endif
 
