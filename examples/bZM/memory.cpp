@@ -23,7 +23,7 @@
 #include "memory.h"
 #include "branch.h"
 #include "meta.h"
-#include "process.h"
+#include "processp.h"
 #include "screen.h"
 #include "types.h"
 #include "util.h"

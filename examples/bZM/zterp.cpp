@@ -41,7 +41,7 @@
 #include "options.h"
 #include "osdep.h"
 #include "patches.h"
-#include "process.h"
+#include "processp.h"
 #include "random.h"
 #include "screen.h"
 #include "sound.h"

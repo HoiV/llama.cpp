@@ -23,7 +23,7 @@ extern "C" {
 }
 #endif
 
-#include "process.h"
+#include "processp.h"
 #include "branch.h"
 #include "dict.h"
 #include "mathop.h"

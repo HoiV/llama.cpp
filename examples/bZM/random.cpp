@@ -25,7 +25,7 @@
 #include "iff.h"
 #include "io.h"
 #include "options.h"
-#include "process.h"
+#include "processp.h"
 #include "stash.h"
 #include "types.h"
 #include "util.h"

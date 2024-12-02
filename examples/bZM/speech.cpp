@@ -4,7 +4,6 @@
 //
 
 #include <iostream>
-#include <thread>
 #include <speechapi_cxx.h>
 
 using namespace std;
@@ -27,6 +26,8 @@ using namespace Microsoft::CognitiveServices::Speech::Audio;
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <process.h>
+#include <thread>
 
 // extern void ListSpeechRecognitionModels();
 // extern void SpeechRecognitionFromMicrophone();

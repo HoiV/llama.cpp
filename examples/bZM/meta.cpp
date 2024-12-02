@@ -30,7 +30,7 @@
 #include "objects.h"
 #include "options.h"
 #include "osdep.h"
-#include "process.h"
+#include "processp.h"
 #include "screen.h"
 #include "stack.h"
 #include "stash.h"

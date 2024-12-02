@@ -93,7 +93,7 @@ extern "C" {
 #include "objects.h"
 #include "options.h"
 #include "osdep.h"
-#include "process.h"
+#include "processp.h"
 #include "sound.h"
 #include "stack.h"
 #include "stash.h"
