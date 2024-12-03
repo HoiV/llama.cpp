@@ -184,7 +184,8 @@ int slm_init() {
                                       session_tokens.capacity(),
                                       &n_token_count_out)) {
 
-                printf("%s: Loading saved state from '%s' (size %zd)...\n", __func__, xbparams.pfx_file.c_str(), tokens_shared.size());
+                printf("%s: Loading saved state from '%s' (size %zd) (token_count %zd)...\n", 
+                    __func__, xbparams.pfx_file.c_str(), tokens_shared.size(), n_token_count_out);
                 session_tokens.resize(n_token_count_out);
                 llama_set_rng_seed(ctx, xbparams.seed);
                 // printf("%s: n_token_count_out=%zd: %s\n", __func__, n_token_count_out, LOG_TOKENS_TOSTR_PRETTY(ctx, session_tokens).c_str());
@@ -302,7 +303,7 @@ int slm_inference(std::vector<uint16_t>& user_prompt, std::string sys_prompt, bo
     }
     xbparams.prompt += '\0';
 
-    printf("%s: user full prompt = [%s]\n", __func__, xbparams.prompt.c_str());
+    // printf("%s: user full prompt = [%s]\n", __func__, xbparams.prompt.c_str());
 
     std::vector<llama_token> embd_inp;
     int n_past = 0;
@@ -480,7 +481,6 @@ int slm_inference(std::vector<uint16_t>& user_prompt, std::string sys_prompt, bo
         if (slm_verbose) {
             printf("%s: ***** invalid formatted reply from model *****\n%s\n", __func__, slm_output.c_str());
         }
-        user_prompt.clear();
 
     } else {
         if (slm_verbose) {
@@ -498,17 +498,16 @@ int slm_inference(std::vector<uint16_t>& user_prompt, std::string sys_prompt, bo
             printf("*** \"answer\": %s\n", answer.c_str());
             printf("*** \"justfication\": %s\n\n", justification.c_str());
         }
-
-        user_prompt.clear();
-
-#if 0 // do not return SLM answer directly yet
-        for (char c : answer) {
-            user_prompt.push_back((uint16_t)c);
-        }
-        user_prompt.push_back(0);
-#endif
-
     }
+
+    user_prompt.clear();
+#if 1 // Always return "LOOK" to generate a recap of where we are
+    std::string canned_reply = "Look";
+    for (char c : canned_reply) {
+        user_prompt.push_back((uint16_t)c);
+    }
+    user_prompt.push_back((uint16_t)' ');
+#endif
 
     slm_output.clear();
 
