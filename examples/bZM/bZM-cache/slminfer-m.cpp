@@ -476,8 +476,9 @@ int slm_inference(xbapp_params& params) {
 
             const std::string token_str = llama_token_to_piece(ctx, new_token_id);
 
-            if (token_str.find('{') != std::string::npos) {
-                // accepted answers have '{' characters
+            if (!valid_reply && 
+                (token_str.find('<') != std::string::npos)) {
+                // accepted answers start with '<' character
                 valid_reply = true;
             }
 
@@ -491,7 +492,8 @@ int slm_inference(xbapp_params& params) {
 #endif
             //}
 
-            if (token_str.find('}') != std::string::npos) {
+            if ((slm_output.find("</justification>") != std::string::npos) ||
+                (slm_output.find("</Command>") != std::string::npos)) {
                 // force end of output since we have a valid JSON reply
                 break;
             }

@@ -38,12 +38,12 @@ using namespace std;
 
 struct xbapp_params {
     uint32_t seed                      = 42;   // RNG sampling seed - default was 0xFFFFFFFF
-    uint32_t n_ctx                     = 1536; // context size (max of n_len + n_seqlen)
-    int32_t n_len                      = 1024; // max length of the prompt including the system prompt
+    uint32_t n_ctx                     = 2048; // context size (max of n_len + n_seqlen)
+    int32_t n_len                      = 1536; // max length of the prompt including the system prompt
     int32_t n_threads                  = 8;    // default number of hw threads
     int32_t n_batch                    = 512;  // size for a single batch (could be as large as prompt size)
     int32_t n_ngl                      = 0;    // number of layers offloaded to GPU
-    int32_t n_seqlen                   = 128;  // max sequence length to generate
+    int32_t n_seqlen                   = 256;  // max sequence length to generate
     int32_t verbose_level              = 0;    // verbose level (0 - none, 1 - info, 2 - warn, 3 - error, 4 - debug)
     std::string model_path             = "";   // model path
     std::string prompt                 = "";

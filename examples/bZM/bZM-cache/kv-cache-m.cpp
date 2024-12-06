@@ -625,7 +625,7 @@ int main(int argc, char** argv) {
         // build the full prompt
         if (xbparams.pfc_mode && !xbparams.pfx_shared.empty()) {
             // for pfc mode the prompt is the part that keeps changing
-            printf("%s: custom prompt [%s]\n", __func__, custom_prompt.c_str());
+            // printf("%s: custom prompt [%s]\n", __func__, custom_prompt.c_str());
             xbparams.prompt = custom_prompt;
         } else {
             GGML_ASSERT(setting_index != std::string::npos);

@@ -35,71 +35,50 @@ Combat and Interaction with Creatures
 
 Task:
 Your role is to translate the input message from the user to a most appropriate command from the above list.
-Generate ONLY ONE answer and format it in ONE SINGLE JSON format with these two fields:
-* answer: <the new command using the game command vocabulary>
-* justification: a brief explanation of why you chose the option in this scenario
-
-Note: Only generate one json response each time and then STOP right after the json response.
+Generate ONLY ONE answer in the Markdown format with the following items:
+   <answer> "the new command using the game command vocabulary" </answer>
+   <justification> "a brief explanation of why you chose the option in this scenario" </justification>
 
 Here are some examples:
 
 User: 
-{ Front of house: You are facing the north side of a white house. " Where am I? " }
-You: 
-{ "answer": "LOOK around",
-  "Justification": "the user wants to find out where they are so the command 'Look' is best to locate whee the user is."
-}
+"Where am I?"
+You: <answer> "LOOK around" </answer> 
+     <justification> "the user wants to find out where they are so the command 'Look' is best to locate where the user is." </justification>
 
 User: 
-{ Clearing in forest. " What do I have right now? " }
-You:
-{ "answer": "INVENTORY",
-  "justification": "the users wants to know what they currently have or carry right now so the command 'Inventory' is best to list out all the objects the user currently has."
-}
+"What do I have right now?"
+You: <answer> "INVENTORY" </answer>
+     <justification> "the users wants to know what they currently have or carry right now so the command 'Inventory' is best to list out all the objects the user currently has." </justification>
 
 User: 
-{ Forest Path: This is a path winding through a dimly lit forest. " Go straight " }
-You:
-{
-    "answer": "NORTH",
-    "justification": "the user wants to go straight so the best command is 'NORTH'."
-}
+"go straight"
+You: <answer> "NORTH" </answer>
+     <justification>  "the user wants to go straight so the best command is 'NORTH'." </justification>
 
 User: 
-{ "South of house: you are behind a house. A path to the forest is at on the west side of the house. " Go left " }
-You:
-{
-    "answer": "WEST",
-    "justification": "the user wants to go left so 'WEST' would be the correct command since it points to the left direction."
-}
+"go left"
+You: <answer> "WEST" </answer>
+     <justification> "the user wants to go left so 'WEST' would be the correct command since it points to the left direction." </justification>
 
 User: 
-{  Forest Path: There is one particularly large tree with some low branches. " Climb the tree " }
-You:
-{
-    "answer": "UP the tree",
-    "justification": "the user wants to climb up the tree so the best command is 'UP'."
-}
+"Climb the tree"
+You: <answer> "UP the tree" </answer>
+     <justification> "the user wants to climb up the tree so the best command is 'UP'." </justification>
 
 User: 
-{ Front of house. The house has a small windows ajar. " Get in the house. " }
-You:
-{
-    "answer": "PUSH window",
-    "justification": "the user wants to go into the house so we need to 'PUSH' the window open."
-}
+"Open the window"
+You: <answer> "PUSH window" </answer>
+     <justification> "the user wants to go North so the best command is to 'PUSH' the window open." </justification>
 
 <|end|>
 Conversation:
 <|user|>
-User: { {CURRENT_SETTING} } { {USER_INPUT} }
-
+User: 
+" {CURRENT_SETTING} - {message}"
 <|end|>
 <|assistant|>
-
-# Your response
 You:
-
 END_SECTION
 CUSTOM_SETTING
 1. West of House: You are standing in an open field west of a white house, with a boarded front door. There is a small mailbox here.
