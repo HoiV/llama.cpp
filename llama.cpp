@@ -17355,6 +17355,10 @@ int32_t llama_n_layer(const struct llama_model * model) {
     return model->hparams.n_layer;
 }
 
+int32_t llama_n_gpu_layers(const struct llama_model * model) { // Xbox-B612
+    return model->n_gpu_layers;
+}
+
 float llama_rope_freq_scale_train(const struct llama_model * model) {
     return model->hparams.rope_freq_scale_train;
 }
@@ -19031,6 +19035,10 @@ llama_token llama_token_sep(const struct llama_model * model) {
 
 llama_token llama_token_nl(const struct llama_model * model) {
     return model->vocab.linefeed_id;
+}
+
+llama_token llama_token_pad(const struct llama_model * model) {
+    return model->vocab.special_pad_id;
 }
 
 int32_t llama_add_bos_token(const struct llama_model * model) {
