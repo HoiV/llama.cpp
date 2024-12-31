@@ -274,7 +274,7 @@ void on_stack(const std::vector<std::string> &args) {
 void on_dump(const std::vector<std::string> &args) {
     int fd = 1;
     if (args.size() >= 2) {
-        if ((fd = open(args[1].c_str(), 0644)) == -1) {
+        if ((fd = _open(args[1].c_str(), 0644)) == -1) {
             perror(args[1].c_str());
             return;
         }
@@ -284,7 +284,7 @@ void on_dump(const std::vector<std::string> &args) {
         s += token_to_piece(g_ctx, id, RENDER_SPECIAL_TOKENS);
     if (!s.empty() && s[s.size() - 1] != '\n')
         s += '\n';
-    write(fd, s.data(), s.size());
+    _write(fd, s.data(), s.size());
     if (args.size() >= 2)
-        close(fd);
+        _close(fd);
 }
