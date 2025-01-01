@@ -107,6 +107,7 @@ void on_push(const std::vector<std::string> &);
 void on_stack(const std::vector<std::string> &);
 void on_undo(const std::vector<std::string> &);
 void on_upload(const std::vector<std::string> &);
+void on_quit(const std::vector<std::string> &);
 void print(const std::string_view &);
 void print_ephemeral(const std::string_view &);
 void record_undo(void);

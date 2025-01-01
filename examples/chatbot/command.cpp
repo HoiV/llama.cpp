@@ -139,6 +139,11 @@ excludes the original system prompt, with is preserved. this command may\n\
 be run multiple times to erase multiple messages. there's also the /undo\n\
 command which deletes the most recent chat message instead.\n\
 ");
+    } else if (args[1] == "quit") {
+        fprintf(stderr, "\
+usage: /quit\n\
+quit the chatbot and exit.\n\
+");
     } else {
         fprintf(stderr, BRIGHT_RED "%s: unknown command" RESET "\n", args[1].c_str());
     }
@@ -203,6 +208,8 @@ bool handle_command(const char *command) {
         on_stack(args);
     } else if (args[0] == "upload") {
         on_upload(args);
+    } else if (args[0] == "quit") {
+        on_quit(args);
     } else {
         err("%s: unrecognized command", args[0].c_str());
     }

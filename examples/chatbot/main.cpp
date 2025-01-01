@@ -303,6 +303,25 @@ bool eval_token(int id) {
     return eval_tokens({id});
 }
 
+void on_quit(const std::vector<std::string> &args) {
+    print_ephemeral("quitting chatbot...");
+    clear_ephemeral();
+
+    print_ephemeral("freeing context...");
+    llama_free(g_ctx);
+    clear_ephemeral();
+
+    print_ephemeral("freeing model...");
+    llama_free_model(g_model);
+    clear_ephemeral();
+
+    print_ephemeral("freeing backend...");
+    llama_backend_free();
+    clear_ephemeral();
+
+    exit(0);
+}
+
 void chat_loop() {
     // setup conversation
     if (llama_should_add_bos_token(g_model)) {
