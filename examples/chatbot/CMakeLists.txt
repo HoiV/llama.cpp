@@ -1,0 +1,6 @@
+set(TARGET chatbot)
+add_executable(${TARGET} main.cpp command.cpp hist.cpp)
+target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/chatbot/ ${CMAKE_SOURCE_DIR}/examples/chatbot/chatbot.inc/)
+install(TARGETS ${TARGET} RUNTIME)
+target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_11)
