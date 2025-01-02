@@ -415,7 +415,8 @@ bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b) {
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 
-static int64_t timer_freq = 0, timer_start = 0;
+static uint64_t timer_freq = 0, timer_start = 0;
+static uint64_t tsc_freq = 0;
 
 #define __USE_TIME_RECIP__
 
@@ -503,11 +504,52 @@ Return Value:
 
 #endif // defined(__USE_TIME_RECIP__)
 
+void
+ggml_compute_tsc_frequency (
+    void
+    )
+
+{
+
+    uint64_t period = timer_freq / 8;
+    uint64_t start_qpc_cycles;
+    uint64_t total_qpc_cycles;
+    uint64_t start_tsc_cycles;
+    uint64_t total_tsc_cycles;
+
+    //
+    // Poll elapsed time until the computed period has elapsed.
+    //
+
+    start_qpc_cycles = ggml_cycles();
+    start_tsc_cycles = ReadTimeStampCounter();
+    do {
+        total_qpc_cycles = ggml_cycles() - start_qpc_cycles;
+        total_tsc_cycles = ReadTimeStampCounter() - start_tsc_cycles;
+    } while (total_qpc_cycles < period);
+
+    //
+    // Compute the number of seconds that have elapsed.
+    //
+
+    double qpc_seconds = (double)total_qpc_cycles / (double)timer_freq;
+
+    //
+    // Compute the number of tsc cycles per second.
+    //
+
+    double tsc_per_second = (double)total_tsc_cycles / qpc_seconds;
+    tsc_freq = (uint64_t)tsc_per_second;
+    printf("TSC frequency in counts per second %zd\n", tsc_freq);
+    return;
+}
+
 void ggml_time_init(void) {
     if (!timer_freq) {
         LARGE_INTEGER t;
         QueryPerformanceFrequency(&t);
         timer_freq = t.QuadPart;
+//        printf("QPC frequency in counts per second %zd\n", timer_freq);
 
 #if defined(__USE_TIME_RECIP__)
 
@@ -525,6 +567,12 @@ void ggml_time_init(void) {
         // We subtract the program start time to reduce the likelihood of that happening.
         QueryPerformanceCounter(&t);
         timer_start = t.QuadPart;
+
+        //
+        // Compute the approximate frequency of TSC.
+        //
+
+        ggml_compute_tsc_frequency();
     }
 }
 
@@ -603,7 +651,7 @@ int64_t ggml_cycles_per_ms(void) {
     return CLOCKS_PER_SEC/1000;
 }
 
-#endif defined(_MSC_VER) || defined(__MINGW32__)
+#endif // defined(_MSC_VER) || defined(__MINGW32__)
 
 #ifdef GGML_PERF
 #define ggml_perf_time_ms()       ggml_time_ms()
@@ -817,11 +865,10 @@ ggml_set_process_affinity (
 
     }
 
-    printf("mxcsr 0x%08lx, default rounding mode - %s\n", mxcsr, default_mode);
+    printf("mxcsr 0x%08x, default rounding mode - %s\n", mxcsr, default_mode);
 
     //
-    // Get number of logical processors per physical core and the maximum number of logical
-    // processsors.
+    // Get cpuid information.
     //
 
     struct {
@@ -830,6 +877,107 @@ ggml_set_process_affinity (
         uint32_t ecx;
         uint32_t edx;
     } cpu_info;
+
+    //
+    // Get avx features for the current system.
+    //
+
+    printf("host system AVX capabilities:\n");
+    __cpuid((int *)&cpu_info, 0x00000001);
+    printf("  cpuid function 0x00000001\n");  
+    if (cpu_info.ecx & (1 << 28)) {
+        printf("    Avx\n");
+    }
+
+    __cpuidex((int *)&cpu_info, 0x00000007, 0);
+    printf("  cpuidex function 0x00000007, subleaf 0\n");
+    if (cpu_info.ebx & (1 << 5)) {
+        printf("    Avx2\n");
+    }
+
+    if (cpu_info.ebx & (1 << 16)) {
+        printf("    Avx512F\n");
+    }
+
+    if (cpu_info.ebx & (1 << 17)) {
+        printf("    Avx512DQ\n");
+    }
+
+    if (cpu_info.ebx & (1 << 21)) {
+        printf("    Avx512Ifma\n");
+    }
+
+    if (cpu_info.ebx & (1 << 27)) {
+        printf("    Avx512CD\n");
+    }
+
+    if (cpu_info.ebx & (1 << 29)) {
+        printf("    Avx512BW\n");
+    }
+
+    if (cpu_info.ebx & (1 << 30)) {
+        printf("    Avx512VL\n");
+    }
+
+    if (cpu_info.ecx & (1 << 1)) {
+        printf("    Avx512Vbmi\n");
+    }
+
+    if (cpu_info.ecx & (1 << 6)) {
+        printf("    Avx512Vbmi2\n");
+    }
+
+    if (cpu_info.ecx & (1 << 11)) {
+        printf("    Avx512Vnni\n");
+    }
+
+    if (cpu_info.ecx & (1 << 12)) {
+        printf("    Avx512Bitalg\n");
+    }
+
+    if (cpu_info.ecx & (1 << 14)) {
+        printf("    Avx512Vpopcntdq\n");
+    }
+
+    if (cpu_info.edx & (1 << 8)) {
+        printf("    Avx512Vp2Intersect\n");
+    }
+
+    if (cpu_info.edx & (1 << 23)) {
+        printf("    Avx512FP16\n");
+    }
+
+    __cpuidex((int *)&cpu_info, 0x00000007, 1);
+    printf("  cpuidex function 0x00000007, subleaf 1\n");
+    if (cpu_info.eax & (1 << 4)) {
+        printf("    AvxVnni\n");
+    }
+
+    if (cpu_info.eax & (1 << 5)) {
+        printf("    Avx512Bfloat16\n");
+    }
+
+    if (cpu_info.eax & (1 << 23)) {
+        printf("    AvxIfma\n");
+    }
+
+    if (cpu_info.edx & (1 << 4)) {
+        printf("    AvxVnniInt8\n");
+    }
+
+    if (cpu_info.edx & (1 << 5)) {
+        printf("    AvxNeConvert\n");
+    }
+
+    if (cpu_info.edx & (1 << 9)) {
+        printf("    AvxVnniInt16\n");
+    }
+
+    if (cpu_info.edx & (1 << 19)) {
+        printf("    Avx10\n");
+    }
+
+    printf("\n");
 
     //
     // Get L1 instruction and data cache attributes.
@@ -962,7 +1110,7 @@ ggml_set_process_affinity (
         //
 
         BitScanForward64(&master_index, affinity_mask);
-        printf("processor index of master thread %d\n", master_index);
+        printf("processor index of master thread %lu\n", master_index);
 
 #if 0
         //
@@ -5115,13 +5263,14 @@ static_assert(GGML_UNARY_OP_COUNT == 13, "GGML_UNARY_OP_COUNT != 13");
 #define GGML_TENSOR_NODE_COUNT 4096
 atomic_int thread_create_count = 0;
 atomic_int64 thread_create_time = 0;
-atomic_int compute_op_counts[GGML_OP_COUNT] = {0};
-atomic_int compute_one_task_count = 0;
-atomic_int64 compute_op_time[GGML_OP_COUNT] = {0};
+int mul_mat_nr0_ge_count = 0;
+int compute_op_counts[GGML_OP_COUNT] = {0};
+int compute_one_task_count = 0;
+int64_t compute_op_time[GGML_OP_COUNT] = {0};
 atomic_int graph_tensor_counts[GGML_TENSOR_NODE_COUNT] = {0};
 atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
-atomic_int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
-atomic_int64 unary_op_time[GGML_UNARY_OP_COUNT] = {0};
+int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
+int64_t unary_op_time[GGML_UNARY_OP_COUNT] = {0};
 int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
 
 #define ROW_SIZE_BUCKETS 16385
@@ -5133,28 +5282,28 @@ typedef struct {
 
 DECLSPEC_CACHEALIGN guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
 
-#define SPIN_WAIT_BUCKET 250
-#define SPIN_WAIT_BUCKETS 16385
+//
+// Spin wait statistics.
+//
 
-typedef struct {
-    atomic_int64 total_spin;
-    atomic_int total_count;
-    atomic_int counts[SPIN_WAIT_BUCKETS]; 
-} spin_type_info;
+int64_t init_wait_cycles = 0;
+int64_t tensor_wait_cycles = 0;
+int init_wait_count = 0;
+int tensor_wait_count = 0;
 
-DECLSPEC_CACHEALIGN spin_type_info spin_wait_count = {0};
+//
+// Block factor statistics.
+//
 
-#define MAX_BLOCK_FACTOR 512
+#define MAX_BLOCK_FACTOR 1024
 int32_t vec_blk_factor_counts[MAX_BLOCK_FACTOR] = {0};
 
 void
 print_tensor_op_perf_data (
-    void
+    int64_t elapsed_time_us
     )
 {
-    int32_t other_count;
     int32_t total_count = 0;
-    int64_t total_spin;
     int32_t total_op_count = 0;
     double total_percent = 0.;
     int32_t total_tensors = 0;
@@ -5165,7 +5314,7 @@ print_tensor_op_perf_data (
     printf("Tensor ops are executed in parallel by a specified set of threads\n");
     printf("Tensor execution time is the total time by the parallel set of threads\n");
     printf("Total time is the seconds to execute all tensors of the specified type\n");
-    printf("Tensor time is the average milliseconds to execute a single tensor of the specified type\n\n");
+    printf("Tensor time is the average ms to execute a tensor of the specified type\n\n");
 
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
@@ -5181,7 +5330,7 @@ print_tensor_op_perf_data (
         if (compute_op_counts[i]) {
             percent = (double)compute_op_time[i] * 100.f / (double)total_time;
             total_percent += percent;
-            printf("%8d %8.2f  %5.2f %8.2f GGML_OP_%s\n",
+            printf("%8ld %8.2f  %5.2f %8.2f GGML_OP_%s\n",
                    compute_op_counts[i],
                    (double)(compute_op_time[i]) / (1000. * 1000.),
                    percent,
@@ -5195,34 +5344,43 @@ print_tensor_op_perf_data (
            (double)(total_time) / (1000. * 1000.),
            total_percent);
 
-    printf("Tensor op dispatch spin wait histogram\n");
-    printf("Spin counts less than 0.05%% listed under others\n");
-    printf("   Spin    Count      %%\n\n");
-    other_count = 0;
-    total_count = spin_wait_count.total_count;
-    total_spin = spin_wait_count.total_spin;
-    total_percent = 0.;
-    for (int64_t i = 0; i < ARRAYSIZE(spin_wait_count.counts); i += 1) {
-        if (spin_wait_count.counts[i]) {
-            percent = (double)spin_wait_count.counts[i] * 100.f / (double)total_count;
-            total_percent += percent;
-            if (percent >= 0.05f) {
-                printf("% 7d  %7d    %5.2f\n",
-                       (uint32_t)((i + 1) * SPIN_WAIT_BUCKET),
-                       spin_wait_count.counts[i],
-                       percent);
+    printf("Tensor op dispatch spin wait information\n\n");
+    printf("Threads dispatch tensor ops by scanning the graph node list in parallel,\n");
+    printf("selecting an elligible tensor (i.e., one that is not nop'ed and not empty),\n");
+    printf("executing their slice of the tensor computation, and then waiting until all\n");
+    printf("threads are finished with the tensor. At this point the scan of the node list\n");
+    printf("continues to select the the next elligible tensor. Statistics are gathered for\n");
+    printf("the synchronization wait at the end of each loop iteration\n\n");
 
-            } else {
-                other_count += spin_wait_count.counts[i];
-            }
-        }
-    }
+    //
+    // Tensor wait statistics.
+    //
 
-    percent = (double)other_count * 100.f / (double)total_count;
-    printf(" others  %7d    %5.2f\n\n", other_count, percent);
-    printf("         %7d   %5.2f\n\n", total_count, total_percent);
-    printf("  total spin count %zd\n\n", total_spin);
-    printf("average spin count %zd\n\n", (total_spin + (total_count - 1)) / total_count);
+    int64_t tensor_wait_us = ((double)tensor_wait_cycles * 1000. * 1000.) / (double)tsc_freq;;
+
+    printf("total number of tensor waits %d\n", tensor_wait_count);
+    printf("total elapsed tensor wait time %5.2fsec\n", (float)tensor_wait_us / (1000. * 1000.));
+    printf("average wait time per tensor wait %5.2fus\n",
+           (float)tensor_wait_us / (float)tensor_wait_count);
+
+    printf("total overall elapsed time %6.2fsec\n", (double)elapsed_time_us / (1000. * 1000.));
+    printf("tensor wait time as percent of total elapsed time %5.2f%%\n\n",
+           (float)(tensor_wait_us * 100.) / (float)elapsed_time_us);
+
+    //
+    // Init wait statistics.
+    //
+
+    int64_t init_wait_us = ((double)init_wait_cycles * 1000. * 1000.) / (double)tsc_freq;
+
+    printf("total number of init waits %d\n", init_wait_count);
+    printf("total elapsed init time %5.2fsec\n", (float)init_wait_us / (1000. * 1000.));
+    printf("average wait time per init wait %5.2fus\n",
+           (float)init_wait_us / (float)init_wait_count);
+
+    printf("total overall elapsed time %6.2fsec\n", (double)elapsed_time_us / (1000. * 1000.));
+    printf("init wait time as percent of total elapsed time %5.2f%%\n\n",
+           (float)(init_wait_us * 100.) / (float)elapsed_time_us);
 
     printf("vector dot matrix multiply type frequency\n\n");
     printf("   Count     %%\n\n");
@@ -5262,7 +5420,7 @@ print_tensor_op_perf_data (
         if (unary_op_counts[i]) {
             percent = (double)unary_op_time[i] * 100.f / (double)total_time;
             total_percent += percent;
-            printf("%8d %8.2f  %5.2f %7.2f  GGML_UNARY_OP_%s\n",
+            printf("%8ld %8.2f  %5.2f %7.2f  GGML_UNARY_OP_%s\n",
                    unary_op_counts[i],
                    (double)(unary_op_time[i]) / (1000. * 1000.),
                    percent,
@@ -5305,8 +5463,17 @@ print_tensor_op_perf_data (
         }
     }
 
-    printf("mul_mat loop block factor histogram\n\n");
-    printf("Factor   Count    %%\n\n");
+    printf("mul_mat loop block factor histogram\n");
+
+    total_count = compute_op_counts[GGML_OP_MUL_MAT];
+
+    printf("src0-nr0 ge src1-nr1 %5.2f%%\n",
+           ((float)mul_mat_nr0_ge_count * 100.) / (float)total_count);
+
+    printf("src0-nr0 lt src1-nr1 %5.2f%%\n\n",
+           ((float)(total_count - mul_mat_nr0_ge_count) * 100.) / (float)total_count);
+
+    puts("Computed block factor based on l1 dcache size\n");
 
     total_count = 0;
     total_percent = 0;
@@ -5314,14 +5481,16 @@ print_tensor_op_perf_data (
         total_count += vec_blk_factor_counts[i];
     }
 
+    printf("Factor   Count    %%    Cum %%\n\n");
     for (int64_t i = 0; i < ARRAYSIZE(vec_blk_factor_counts); i += 1) {
         if (vec_blk_factor_counts[i]) {
             percent = (double)vec_blk_factor_counts[i] * 100.f / (double)total_count;
             total_percent += percent;
-            printf("%6zd  %6d %6.2f\n",
+            printf("%6zd  %6d %6.2f %6.2f\n",
                    i + 1,
                    vec_blk_factor_counts[i],
-                   percent);
+                   percent,
+                   total_percent);
         }
     }
 
@@ -5332,7 +5501,7 @@ print_tensor_op_perf_data (
     printf("The graph size zero bucket is the overflowed number of tensors\n");
     printf("Graph count is the graphs with the respective graph size\n");
     printf("Total time is the seconds to execute all graphs with the respective size\n");
-    printf("Graph time is the average milliseconds to execute a single graph with the respective size\n\n");
+    printf("Graph time is the average ms to execute a graph with the respective size\n\n");
 
     printf("Graph Graph   Total    Total     Graph\n");
     printf(" Size Count  Tensors Time(sec)  Time(ms)\n\n");
@@ -5344,7 +5513,7 @@ print_tensor_op_perf_data (
             total_count += graph_tensor_counts[i];
             total_tensors += graph_tensor_counts[i] * i;
             total_time += graph_tensor_time[i];
-            printf("%5d %5d %8d   %7.2f  %8.2f\n",
+            printf("%5d %5ld %8ld   %7.2f  %8.2f\n",
                    i,
                    graph_tensor_counts[i],
                    graph_tensor_counts[i] * i,
@@ -5359,16 +5528,17 @@ print_tensor_op_perf_data (
            (double)total_time / (1000. * 1000.));
 
     printf("Total NOP Tensors %d\n", total_tensors - total_op_count);
-    printf("Total one task Tensors %d\n\n", compute_one_task_count);
+    printf("Total one task Tensors %ld\n\n", compute_one_task_count);
 
     printf(" Tensor Thread Creation Performance\n\n");
-    printf("Creation count: %d\n", thread_create_count);
+    printf("Creation count: %ld\n", thread_create_count);
     printf("Total creation Time(ms): %6.2f\n", (double)thread_create_time / 1000.);
     printf("Thread creation time(us): %6.2f\n\n",
            (double)thread_create_time / (double)thread_create_count);
 
     printf("\n");
 }
+
 #endif // GGML_TENSOR_OP_PERF
 
 static_assert(sizeof(struct ggml_object)%GGML_MEM_ALIGN == 0, "ggml_object size must be a multiple of GGML_MEM_ALIGN");
@@ -5390,7 +5560,8 @@ static_assert(sizeof(struct ggml_tensor)%GGML_MEM_ALIGN == 0, "ggml_tensor size 
 //      are now controlled and synchronized in the tensor computation code itself. Appropriate
 //      barriers are set up by the compute dispatcher for synchronizing this computation.
 //
-static bool GGML_OP_IS_SKIPPED[GGML_OP_COUNT] = { 0 };
+
+static int8_t GGML_OP_IS_SKIPPED[GGML_OP_COUNT] = { 0 };
 
 static void ggml_setup_op_has_task_pass(void) {
 /*
@@ -5422,7 +5593,7 @@ static void ggml_setup_op_has_task_pass(void) {
 */
 
     {   // SKIPPED
-        bool * p = GGML_OP_IS_SKIPPED;
+        int8_t * p = GGML_OP_IS_SKIPPED;
 
         p[GGML_OP_NONE] = true;
         p[GGML_OP_RESHAPE] = true;
@@ -5468,17 +5639,12 @@ struct ggml_state {
 
 // global state
 static struct ggml_state g_state;
-static atomic_flag g_state_barrier = 0;
+static atomic_flag g_state_barrier = ATOMIC_FLAG_INIT;
 
 // barrier via spin lock
 inline static void ggml_critical_section_start(void) {
-    int processing = atomic_fetch_add(&g_state_barrier, 1);
-
-    while (processing > 0) {
-        // wait for other threads to finish
-        atomic_fetch_sub(&g_state_barrier, 1);
-        // sched_yield(); // TODO: reconsider this
-        processing = atomic_fetch_add(&g_state_barrier, 1);
+    while (atomic_flag_test_and_set(&g_state_barrier)) {
+        YieldProcessor();
     }
 }
 
@@ -5774,6 +5940,9 @@ enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype) {
         case GGML_FTYPE_MOSTLY_IQ4_XS:        wtype = GGML_TYPE_IQ4_XS;   break;
         case GGML_FTYPE_MOSTLY_IQ3_S:         wtype = GGML_TYPE_IQ3_S;    break;
         case GGML_FTYPE_MOSTLY_IQ2_S:         wtype = GGML_TYPE_IQ2_S;    break;
+        case GGML_FTYPE_MOSTLY_Q4_0_4_4:      wtype = GGML_TYPE_Q4_0_4_4; break;
+        case GGML_FTYPE_MOSTLY_Q4_0_4_8:      wtype = GGML_TYPE_Q4_0_4_8; break;
+        case GGML_FTYPE_MOSTLY_Q4_0_8_8:      wtype = GGML_TYPE_Q4_0_8_8; break;
         case GGML_FTYPE_UNKNOWN:              wtype = GGML_TYPE_COUNT; break;
         case GGML_FTYPE_MOSTLY_Q4_1_SOME_F16: wtype = GGML_TYPE_COUNT; break;
     }
@@ -10420,23 +10589,112 @@ void ggml_set_param(
     ggml_format_name(tensor->grad, "%s (grad)", tensor->name);
 }
 
-inline void ggml_wait_for_done(
-    volatile long * barrier
+struct DECLSPEC_CACHEALIGN ggml_compute_state_shared {
+    DECLSPEC_CACHEALIGN atomic_int barrier_tb; // tensor barrier
+    DECLSPEC_CACHEALIGN atomic_int generation_tb; // tensor generation
+    DECLSPEC_CACHEALIGN atomic_int barrier_db; // dispatch barrier
+    DECLSPEC_CACHEALIGN atomic_int generation_db; // dispatch generation
+    DECLSPEC_CACHEALIGN struct ggml_tensor * const * cgraph_nodes;
+    size_t cplan_work_size;             // cplan work size
+    uint8_t * cplan_work_data;          // cplan work data
+    ggml_abort_callback abort_callback; // abort ggml_graph_compute when true
+    void * abort_data;
+    const int n_threads;                // number of threads
+    const uint32_t graph_n_nodes;       // number of graph tensor nodes
+};
+
+struct ggml_compute_state {
+    ggml_thread_t thrd;
+    int ith;
+    struct ggml_compute_state_shared * shared;
+};
+
+void ggml_wait_for_done(
+    const struct ggml_compute_params * params
     )
 {
-    atomic_fetch_sub(barrier, 1);
-    do {
-        YieldProcessor();
-    } while (*barrier);
+
+    //
+    // If the number of tasks is not one, then wait for all tasks to arrive.
+    //
+
+    int n_tasks = params->nth;
+    if (n_tasks != 1) {
+
+        atomic_int * barrier = params->barrier;
+        atomic_int * generation = params->generation;
+    
+        //
+        // Add one to the barrier value and check if this is the last task to
+        // arrive.
+        //
+    
+        int generation_old = *generation;
+        int pn_threads = atomic_fetch_add(barrier, 1);
+        if (pn_threads == (n_tasks - 1)) {
+    
+            //
+            // This is the last task - reset barrier and increment the generation.
+            //
+    
+            *barrier = 0;
+            atomic_fetch_add(generation, 1);
+    
+        } else {
+    
+            //
+            // Wait for other tasks, i.e., the generation number to change.
+            //
+
+#ifdef GGML_TENSOR_OP_PERF
+    
+            int64_t wait_cycles = 0;
+            if (!pn_threads) {
+                wait_cycles = ReadTimeStampCounter();
+            }
+    
+#endif // GGML_TENSOR_OP_PERF
+    
+            do {
+                YieldProcessor();
+            } while (*generation == generation_old);
+
+#ifdef GGML_TENSOR_OP_PERF
+    
+            if (!pn_threads) {
+                wait_cycles = ReadTimeStampCounter() - wait_cycles;
+                init_wait_cycles += wait_cycles;
+                init_wait_count += 1;
+            }
+    
+#endif // GGML_TENSOR_OP_PERF
+
+        }
+    }
 }
 
-inline void ggml_wait_to_finalize(
-    volatile long * barrier
+void ggml_wait_to_finalize(
+    const struct ggml_compute_params * params
     )
 {
-    do {
-        YieldProcessor();
-    } while (*barrier != 1);
+    //
+    // If the number of tasks is not one, then wait for other tasks to arrive.
+    //
+
+    int n_tasks = params->nth;
+    if (n_tasks != 1) {
+
+        atomic_int * barrier = params->barrier;
+    
+        //
+        // Wait until there is only one task left, i.e., the one executing this
+        // code.
+        //
+    
+        do {
+            YieldProcessor();
+        } while (*barrier != (n_tasks - 1));
+    }
 }
 
 // ggml_compute_forward_dup
@@ -12496,7 +12754,7 @@ void ggml_compute_forward_acc_f32(
         }
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int nr = ggml_nrows(src1);
     const int nc = src1->ne[0];
@@ -14967,7 +15225,16 @@ IQK_MulMat_Not_Available1:;
     int64_t ir110;
     int64_t ir111;
 
-    if (nr0 > nr1) {
+    if (nr0 >= nr1) {
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith) {
+            mul_mat_nr0_ge_count += 1;
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
         const int64_t rpc = (nr0 + nth - 1) / nth;
         ir010 = rpc * ith;
         ir011 = MIN(ir010 + rpc, nr0);
@@ -15036,7 +15303,7 @@ IQK_MulMat_Not_Available1:;
         // Wait until all threads are finished with the src1 conversion before proceeding.
         //
 
-        ggml_wait_for_done(params->barrier0); 
+        ggml_wait_for_done(params);
 
     } else if (vec_dot_type != src1_type) {
         row_size = ggml_row_size(src1_type, ne10);
@@ -15076,13 +15343,13 @@ IQK_MulMat_Not_Available2:;
 #endif
 
     //
-    // Compute the dot matrix multiply using tiling.
+    // Compute the dot matric multiply using tiling.
     //
     // The general algorithm is to perform the dot product on one column from src1
     // on all the rows in src0, then move on to the next src1 column. This is not,
     // however, very cache friendly. The strategy used to make this more efficient
     // is to break up the dot product into tiles. Basically a tile is sized to fit
-    // a contiguous set of src0 rows in the l1d-cache.
+    // a contigupus set of src0 rows in the l1d-cache.
     //
     // Always compute the block factor based on the src0 row size. This is the data
     // that is repeated referenced for one tile block iteration of the src1 loop.
@@ -15092,26 +15359,25 @@ IQK_MulMat_Not_Available2:;
     //      sequences through scr0 tile blocks.
     //
 
-    int64_t blck0_factor;
-
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
-    blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
+    int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
+#if 0 // too noisy
     if (blck0_factor <= 1) {
         printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
                l1d_cache_size,
                src0_row_size,
                row_size);
     }
+#endif
 
     //
     // The block factor must have a value of at least one.
     //
     // N.B. The computed block factor is zero if the size of the space available in the
-    //      l1 cache is less that the outer loop row size.
+    //      l1d_cache is less that the outer loop row size.
     //
     
-
-    blck0_factor = max(1, blck0_factor);
+    blck0_factor = MAX(1, blck0_factor);
 
 #if 0
     printf("blck0_factor %d row size %d\n",
@@ -15143,7 +15409,7 @@ IQK_MulMat_Not_Available2:;
 
     //
     // This loop breaks up src0 rows into tile blocks that fit in the l1d-cache.
-    // The number of rows in a tile is the size of the blocking factor.
+    // The number of rows in a tile is the blocking factor.
     //
 
     void * dst_data = dst->data;
@@ -15181,7 +15447,7 @@ IQK_MulMat_Not_Available2:;
             // src0 rows.
             //
 
-            const int64_t limit0 = min(iir0 + blck0_factor, ir011);
+            const int64_t limit0 = MIN(iir0 + blck0_factor, ir011);
             for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
                 vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
             }
@@ -15284,7 +15550,7 @@ void ggml_compute_forward_mul_mat_id(
         }
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     // compute each matrix multiplication in sequence
     for (int cur_a = 0; cur_a < n_as; ++cur_a) {
@@ -15418,7 +15684,7 @@ void ggml_compute_forward_out_prod_f32(
         ggml_vec_set_f32(ne0*ne1*ne2*ne3, dst->data, 0);
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     // dst[:,:,:,:] = 0
     // for i2,i3:
@@ -15557,7 +15823,7 @@ void ggml_compute_forward_out_prod_q_f32(
         ggml_vec_set_f32(ne0*ne1*ne2*ne3, dst->data, 0);
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     // parallelize by last three dimensions
 
@@ -15758,7 +16024,7 @@ void ggml_compute_forward_set_f32(
         }
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int nr = ggml_nrows(src1);
     const int nc = src1->ne[0];
@@ -16187,7 +16453,7 @@ void ggml_compute_forward_get_rows_back_f32_f16(
         memset(dst->data, 0, ggml_nbytes(dst));
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int nc = src0->ne[0];
     const int nr = ggml_nelements(src1);
@@ -16223,7 +16489,7 @@ void ggml_compute_forward_get_rows_back_f32(
         memset(dst->data, 0, ggml_nbytes(dst));
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int nc = src0->ne[0];
     const int nr = ggml_nelements(src1);
@@ -16371,7 +16637,7 @@ void ggml_compute_forward_diag_mask_f32(
         }
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     // TODO: handle transposed/permuted matrices
 
@@ -16717,6 +16983,9 @@ void ggml_compute_forward_clamp(
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
         case GGML_TYPE_Q8_K:
+        case GGML_TYPE_Q4_0_4_4:
+        case GGML_TYPE_Q4_0_4_8:
+        case GGML_TYPE_Q4_0_8_8:
         case GGML_TYPE_I8:
         case GGML_TYPE_I16:
         case GGML_TYPE_I32:
@@ -17148,7 +17417,7 @@ void ggml_compute_forward_conv_transpose_1d_f16_f32(
         memset(dst->data, 0, ggml_nbytes(dst));
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int32_t s0 = ((const int32_t*)(dst->op_params))[0];
 
@@ -17244,7 +17513,7 @@ void ggml_compute_forward_conv_transpose_1d_f32(
         memset(dst->data, 0, ggml_nbytes(dst));
     }
 
-    ggml_wait_for_done(params->barrier0); 
+    ggml_wait_for_done(params); 
 
     const int32_t s0 = ((const int32_t*)(dst->op_params))[0];
 
@@ -17551,7 +17820,7 @@ void ggml_compute_forward_conv_transpose_2d(
         memset(dst->data, 0, ggml_nbytes(dst));
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int32_t stride = ggml_get_op_params_i32(dst, 0);
 
@@ -17650,6 +17919,7 @@ void ggml_compute_forward_pool_1d(
     const int k0 = opts[1];
     const int s0 = opts[2];
     const int p0 = opts[3];
+
     GGML_ASSERT(p0 == 0); // padding not supported
     GGML_ASSERT(k0 == s0); // only s = k supported
 
@@ -18297,7 +18567,7 @@ void ggml_compute_forward_flash_attn_back_f32(
         memset(dst->data, 0, nb0*ne0*ne1*ne2*ne3);
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const int64_t elem_q = ggml_nelements(q);
     const int64_t elem_k = ggml_nelements(k);
@@ -19115,7 +19385,7 @@ void ggml_compute_forward_add_rel_pos_f32(
         }
     }
 
-    ggml_wait_for_done(params->barrier0); 
+    ggml_wait_for_done(params); 
 
 #if 0
     int64_t t0 = ggml_perf_time_us();
@@ -19405,7 +19675,7 @@ void ggml_compute_forward_cross_entropy_loss_f32(
         memset(sums, 0, sizeof(float) * (nth + nth * nc));
     }
 
-    ggml_wait_for_done(params->barrier0);
+    ggml_wait_for_done(params);
 
     const double eps = 1e-9;
 
@@ -19459,13 +19729,13 @@ void ggml_compute_forward_cross_entropy_loss_f32(
     //
 
     if (!ith) {
-        ggml_wait_to_finalize(params->barrier1);
+        ggml_wait_to_finalize(params);
         float * dp = (float *) dst->data;
         ggml_vec_sum_f32(nth, dp, sums);
         dp[0] *= -1.0f / (float) nr;
     }
 
-    ggml_wait_for_done(params->barrier1);
+    ggml_wait_for_done(params);
 }
 
 void ggml_compute_forward_cross_entropy_loss(
@@ -19651,7 +19921,7 @@ const op_func ggml_compute_op_dispatch[] = {
     [GGML_OP_MAP_BINARY] = &ggml_compute_forward_map_binary,
     [GGML_OP_MAP_CUSTOM1_F32] = &ggml_compute_forward_map_custom1_f32,
     [GGML_OP_MAP_CUSTOM2_F32] = &ggml_compute_forward_map_custom2_f32,
-    [GGML_OP_MAP_CUSTOM2_F32] = &ggml_compute_forward_map_custom3_f32,
+    [GGML_OP_MAP_CUSTOM3_F32] = &ggml_compute_forward_map_custom3_f32,
     [GGML_OP_MAP_CUSTOM1] = &ggml_compute_forward_map_custom1,
     [GGML_OP_MAP_CUSTOM2] = &ggml_compute_forward_map_custom2,
     [GGML_OP_MAP_CUSTOM3] = &ggml_compute_forward_map_custom3,
@@ -21446,29 +21716,6 @@ static void set_numa_thread_affinity(int thread_n) { UNUSED(thread_n);  }
 static void clear_numa_thread_affinity(void) {}
 #endif
 
-struct DECLSPEC_CACHEALIGN ggml_compute_state_shared {
-    DECLSPEC_CACHEALIGN atomic_int n_active; // number active threads
-    int n_tasks;
-    void * node;                        // active graph tensor node
-    uint64_t t0;
-    atomic_int b0;                      // init barrier
-    atomic_int b1;                      // finalize barrier
-    DECLSPEC_CACHEALIGN struct ggml_tensor ** cgraph_nodes;
-    size_t cplan_work_size;             // cplan work size
-    uint8_t * cplan_work_data;          // cplan work data
-    ggml_abort_callback abort_callback; // abort ggml_graph_compute when true
-    void * abort_data;
-    const int n_threads;
-    const int graph_n_nodes;            // number of graph tensor nodes
-    DECLSPEC_CACHEALIGN atomic_int node_n; // active graph tensor node index
-};
-
-struct ggml_compute_state {
-    ggml_thread_t thrd;
-    int ith;
-    struct ggml_compute_state_shared * shared;
-};
-
 int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
 
     switch (node->op) {
@@ -21617,27 +21864,26 @@ int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
     }
 }
 
-#define wait_for_idle() \
-    do { \
-        YieldProcessor(); \
-    } while (shared->n_active != 0);
-
 thread_ret_t ggml_graph_compute_thread(void * data) {
-    struct ggml_compute_state * state = (struct ggml_compute_state *) data;
-    struct ggml_compute_state_shared  * shared = state->shared;
+    struct ggml_compute_state * const state = data;
+    struct ggml_compute_state_shared * const shared = state->shared;
 
-    struct ggml_tensor * node = NULL;
+    struct ggml_tensor * const * cgraph_nodes = shared->cgraph_nodes;
+    const uint32_t graph_n_nodes = shared->graph_n_nodes;
+
+    const int ith = state->ith;
+    const int n_threads = shared->n_threads;
 
     struct ggml_compute_params params = {
-        .ith = 0,
+        .ith = ith,
         .nth = 0,
         .wsize = shared->cplan_work_size,
         .wdata = shared->cplan_work_data,
-        .barrier0 = &shared->b0,
-        .barrier1 = &shared->b1
+        .barrier = (void *)&shared->barrier_tb,
+        .generation = (void *)&shared->generation_tb
     };
 
-    #if 0
+#if 0
     //
     // Attempt to set thread affinity.
     //
@@ -21646,156 +21892,164 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 
     uint64_t affinity;
 
-    if (!state->ith && ggml_set_thread_affinity(state->ith, &affinity)) {
-//        printf("work thread %d affinity set to 0x%016llx\n", state->ith, affinity);
+    if (!ith && ggml_set_thread_affinity(ith, &affinity)) {
+//        printf("work thread %d affinity set to 0x%016llx\n", ith, affinity);
     }
 #endif // #if 0
 
-do {
+    for (uint32_t node_n = 0; node_n < graph_n_nodes; node_n++) {
 
         //
         // Check if compute should be aborted.
         //
 
         if (shared->abort_callback && shared->abort_callback(shared->abort_data)) {
-            shared->node_n += 1;
             return GGML_EXIT_ABORTED;
         }
 
+        struct ggml_tensor * node = cgraph_nodes[node_n];
+        const uint32_t op = node->op;
+
+        GGML_ASSERT(op < GGML_OP_COUNT);
+
         //
-        // Collect threads for next iteration.
+        // If the operation is nop'ed or empty, then skip it now.
         //
-        // N.B. The first thread to arrive is allowed to proceed until it reaches a point
-        //      where it must synchronize with all other CPUs being idle (in the wait for
-        //      work loop).
+        // N.B. All nop'ed tensors have no side effects.
         //
 
-        int last_n = shared->node_n;
-        if (atomic_fetch_sub(&shared->n_active, 1) == shared->n_threads) {
-
-#ifdef GGML_TENSOR_OP_PERF
-            if (last_n != -1) {
-                node = shared->node;
-                int64_t t0 = ggml_time_us() - shared->t0;
-                atomic_fetch_add64(&compute_op_time[node->op], t0);
-                if (node->op == GGML_OP_UNARY) {
-                    atomic_fetch_add64(&unary_op_time[ggml_get_unary_op(node)], t0);
-                }
-            }
-#endif // GGML_TENSOR_OP_PERF
-
-            //
-            // Distribute the execution of new work.
-            //
-
-            int node_n = last_n + 1;
-            for (; node_n < shared->graph_n_nodes; node_n += 1) {
-                node = shared->cgraph_nodes[node_n];
-                const enum ggml_op op = node->op;
-
-                GGML_ASSERT(op < GGML_OP_COUNT);
-
-                //
-                // If the operation is nop'ed or empty, then skip it now.
-                //
-                // N.B. All nop'ed tensors have no side effects.
-                //
-
-                if (GGML_OP_IS_SKIPPED[op] | node->is_empty) {
-                    continue;
-                }
-
-#ifdef GGML_TENSOR_OP_PERF
-                atomic_fetch_add(&compute_op_counts[op], 1);
-                if (node->n_tasks == 1) {
-                    atomic_fetch_add(&compute_one_task_count, 1);
-                }
-
-                shared->t0 = ggml_time_us();
-                if (node->op == GGML_OP_UNARY) {
-                    atomic_fetch_add(&unary_op_counts[ggml_get_unary_op(node)], 1);
-                }
-#endif // GGML_TENSOR_OP_PERF
-
-                break;
-            }
-
-            //
-            // Wait for all other CPUs to enter the wait loop.
-            //
-
-            if (shared->n_active != 0) {
-                wait_for_idle();
-            }
-
-            //
-            // Write shared data which will release waiting threads to start next
-            // computation.
-            //
-
-            shared->node = node;
-
-            const int n_tasks = node->n_tasks;
-            shared->n_tasks = n_tasks;
-            shared->b0 = n_tasks; 
-            shared->b1 = n_tasks;
-
-            atomic_store(&shared->n_active, shared->n_threads);
-            shared->node_n = node_n;
-
-        } else {
-
-            //
-            // Wait for a new set of work to arrive.
-            //
-
-#ifdef GGML_TENSOR_OP_PERF
-            uint32_t spin_count = 0;
-            do {
-                spin_count += 1;
-                YieldProcessor();
-            } while (shared->node_n == last_n);
-
-            atomic_fetch_add64(&spin_wait_count.total_spin, spin_count);
-
-            spin_count /= SPIN_WAIT_BUCKET;
-            if (spin_count >= ARRAYSIZE(spin_wait_count.counts)) {
-                spin_count = ARRAYSIZE(spin_wait_count.counts) - 1;
-            }
-
-            atomic_fetch_add(&spin_wait_count.total_count, 1);
-            atomic_fetch_add(&spin_wait_count.counts[spin_count], 1);
-
-#else
-
-            do {
-                YieldProcessor();
-            } while (shared->node_n == last_n);
-#endif // GGML_TENSOR_OP_PERF
-
+        if (GGML_OP_IS_SKIPPED[op] | node->is_empty) {
+            continue;
         }
 
         //
-        // If there no work to perform, then return success.
+        // Perform the parallel tensor computation.
         //
 
-        if (shared->node_n >= shared->graph_n_nodes) {
-            return GGML_EXIT_SUCCESS;
+        int n_tasks = node->n_tasks;
+        if (ith < n_tasks) {
+
+            //
+            // Compute tensor start time.
+            //
+            // N.B. The tensor time computation is not perfectly synchronized, but it
+            //      is close and provides meaningful data. The computation is performed
+            //      by the zeroth thread which is always involved in the computation of
+            //      the tensor and does maximum work.
+            //
+    
+#ifdef GGML_TENSOR_OP_PERF
+
+            int64_t tensor_t0 = 0;
+            if (!ith) {
+                tensor_t0 = ggml_time_us();
+            }
+    
+#endif // GGML_TENSOR_OP_PERF
+    
+            params.nth = n_tasks;
+            ggml_compute_op_dispatch[op](&params, node);
+
+            //
+            // Compute the performance information for the tensor just processed.
+            //
+    
+#ifdef GGML_TENSOR_OP_PERF
+    
+            if (!ith) {
+    
+                //
+                // Update op counts.
+                //
+    
+                compute_op_counts[op] += 1;
+                if (n_tasks == 1) {
+                    compute_one_task_count += 1;
+                }
+    
+                if (op == GGML_OP_UNARY) {
+                    unary_op_counts[ggml_get_unary_op(node)] += 1;
+                }
+    
+                //
+                // Update op time.
+                //
+    
+                tensor_t0 = ggml_time_us() - tensor_t0;
+                compute_op_time[op] += tensor_t0;
+                if (op == GGML_OP_UNARY) {
+                    unary_op_time[ggml_get_unary_op(node)] += tensor_t0;
+                }
+            }
+    
+#endif // GGML_TENSOR_OP_PERF
+    
         }
 
         //
-        // Perform the parallel computation.
+        // Wait for all threads to complete before continuing to the next tensor.
         //
 
-        node = shared->node;
-        if (state->ith < shared->n_tasks) {
-            params.ith = state->ith;
-            params.nth = shared->n_tasks;
-            // printf("--> %s: dispatching // %s-(%s)\n", __func__, node->name, ggml_op_name(node->op));fflush(stdout);
-            ggml_compute_op_dispatch[node->op](&params, node);
-        }
+        if (n_threads != 1) {
 
-    } while(true);
+            atomic_int * barrier = &shared->barrier_db;
+            atomic_int * generation = &shared->generation_db;
+
+            //
+            // Add one to the barrier value and check if this is the last thread to
+            // arrive.
+            //
+
+            int generation_old = *generation;
+            int pn_threads = atomic_fetch_add(barrier, 1);
+            if (pn_threads == (n_threads - 1)) {
+
+                //
+                // This is the last thread - reset barrier and increment the generation.
+                //
+
+                *barrier = 0;
+                atomic_fetch_add(generation, 1);
+
+            } else {
+
+                //
+                // Wait for all threads to arrive.
+                //
+                // N.B. The first thread to arrive computes the wait time since it will
+                //      start waiting before all other threads and its wait will complete
+                //      when the wait is completed for all threads, i.e., it waits the
+                //      longest and determines the total wait time.
+                // 
+    
+#ifdef GGML_TENSOR_OP_PERF
+    
+                int64_t wait_cycles = 0;
+                if (!pn_threads) {
+                    wait_cycles = ReadTimeStampCounter();
+                }
+    
+#endif // GGML_TENSOR_OP_PERF
+    
+                do {
+                    YieldProcessor();
+                } while (*generation == generation_old);
+    
+#ifdef GGML_TENSOR_OP_PERF
+    
+                if (!pn_threads) {
+                    wait_cycles = ReadTimeStampCounter() - wait_cycles;
+                    tensor_wait_cycles += wait_cycles;
+                    tensor_wait_count += 1;
+                }
+    
+#endif // GGML_TENSOR_OP_PERF
+
+            }
+        }
+    }
+
+    return GGML_EXIT_SUCCESS;
 }
 
 struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threads) {
@@ -22076,20 +22330,17 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #endif
 
     struct ggml_compute_state_shared state_shared = {
-        .n_active = n_threads,
-        .n_tasks = 0,
-        .node = NULL,
-        .t0 = 0,
-        .b0 = 0,
-        .b1 = 0,
+        .barrier_tb = 0,
+        .generation_tb = 0,
+        .barrier_db = 0,
+        .generation_db = 0,
         .cgraph_nodes = cgraph->nodes,
         .cplan_work_size = cplan->work_size,
         .cplan_work_data = cplan->work_data,
         .abort_callback = cplan->abort_callback,
         .abort_data = cplan->abort_callback_data,
         .n_threads = n_threads,
-        .graph_n_nodes = cgraph->n_nodes,
-        .node_n = -1
+        .graph_n_nodes = cgraph->n_nodes
     };
 
     DECLSPEC_CACHEALIGN struct ggml_compute_state * workers = alloca(sizeof(struct ggml_compute_state)*n_threads);
@@ -22132,16 +22383,18 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #endif
 
     } else {
-        for (int j = n_threads; j > 1; j -= 1) {
+        for (int j = 1; j < n_threads; j += 1) {
 
 #ifdef GGML_TENSOR_OP_PERF
+
             int64_t t1 = ggml_time_us();
+
 #endif // GGML_TENSOR_OP_PERF
 
-            const int rc = ggml_thread_create(&workers[j - 1].thrd,
+            const int rc = ggml_thread_create(&workers[j].thrd,
                                               NULL,
                                               ggml_graph_compute_thread,
-                                              &workers[j - 1]);
+                                              &workers[j]);
 
             GGML_ASSERT(rc == 0);
 
@@ -22150,8 +22403,6 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
             atomic_fetch_add64(&thread_create_time, t1);
 #endif // GGML_TENSOR_OP_PERF
 
-            GGML_ASSERT(rc == 0);
-            UNUSED(rc);
         }
 
         // this is a work thread too
@@ -22161,8 +22412,8 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
         // wait for thread pool threads to finish.
 
-        for (int j = n_threads; j > 1; j -= 1) {
-            const int rc = ggml_thread_join(workers[j - 1].thrd, NULL);
+        for (int j = 1; j < n_threads; j += 1) {
+            const int rc = ggml_thread_join(workers[j].thrd, NULL);
             GGML_ASSERT(rc == 0);
         }
     }

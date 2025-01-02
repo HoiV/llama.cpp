@@ -1,4 +1,11 @@
 #pragma once
+#pragma warning (disable:4201) // nameless struct/union
+
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wunused-function"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#endif // __clang__
 
 //
 // GGML Tensor Library
@@ -295,9 +302,6 @@
 //
 
 #define GGML_TENSOR_OP_PERF 1
-#ifdef GGML_TENSOR_OP_PERF
-//#define GGML_VECTOR_DOT_PERF 1
-#endif // GGML_TENSOR_OP_PERF
 
 #ifdef  __cplusplus
 extern "C" {
@@ -305,7 +309,7 @@ extern "C" {
 
 void
 print_tensor_op_perf_data (
-    void
+    int64_t elapsed_time_us
     );
 
 void
@@ -444,7 +448,7 @@ extern "C" {
         GGML_TYPE_IQ5_K   = 40,
         GGML_TYPE_IQ6_K   = 41,
         GGML_TYPE_IQ2_TN  = 42,
-         GGML_TYPE_COUNT,
+        GGML_TYPE_COUNT,
     };
 
     // precision
@@ -485,6 +489,9 @@ extern "C" {
         GGML_FTYPE_MOSTLY_IQ4_XS  = 22, // except 1d tensors
         GGML_FTYPE_MOSTLY_IQ1_M   = 23, // except 1d tensors
         GGML_FTYPE_MOSTLY_BF16    = 24, // except 1d tensors
+        GGML_FTYPE_MOSTLY_Q4_0_4_4 = 25, // except 1d tensors
+        GGML_FTYPE_MOSTLY_Q4_0_4_8 = 26, // except 1d tensors
+        GGML_FTYPE_MOSTLY_Q4_0_8_8 = 27, // except 1d tensors
     };
 
     // available tensor operations:
@@ -750,8 +757,8 @@ extern "C" {
         // work buffer for all threads
         size_t wsize;
         void * wdata;
-        volatile long * barrier0;
-        volatile long * barrier1;
+        void * barrier;
+        void * generation;
     };
 
     // numa strategies

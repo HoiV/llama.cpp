@@ -1782,6 +1782,8 @@ int main(int argc, char ** argv) {
         }
     }
 
+    const int64_t t_main_start = ggml_time_us();
+
     // initialize llama.cpp
     if (!params.verbose) {
         llama_log_set(llama_null_log_callback, NULL);
@@ -1995,7 +1997,8 @@ int main(int argc, char ** argv) {
     llama_backend_free();
 
 #ifdef GGML_TENSOR_OP_PERF
-    print_tensor_op_perf_data();
+    const int64_t t_main_end = ggml_time_us() - t_main_start;
+    print_tensor_op_perf_data(t_main_end);
 #endif // GGML_TENSOR_OP_PERF
 
     return 0;

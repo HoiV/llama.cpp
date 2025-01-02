@@ -615,7 +615,7 @@ int main(int argc, char** argv) {
     t0 = ggml_time_us() - t0;
     printf("\n\n total elapsed time %7.2fsec\n", (double)t0 / (1000. * 1000.));
 #ifdef GGML_TENSOR_OP_PERF
-    print_tensor_op_perf_data();
+    print_tensor_op_perf_data(t0);
 #endif // GGML_TENSOR_OP_PERF
 
     console::cleanup();
