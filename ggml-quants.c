@@ -45,20 +45,20 @@ static inline __m128i mul_sum_i8_pairs(const __m128i x, const __m128i y) {
 #if __AVX__ || __AVX2__ || __AVX512F__
 // horizontally add 8 floats
 static inline float hsum_float_8(const __m256 x) {
-    __m128 res = _mm256_extractf128_ps(x, 1);
-    res = _mm_add_ps(res, _mm256_castps256_ps128(x));
-    res = _mm_add_ps(res, _mm_movehl_ps(res, res));
-    res = _mm_add_ss(res, _mm_movehdup_ps(res));
-    return _mm_cvtss_f32(res);
+    const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(x),
+                                 _mm256_extractf128_ps(x, 1));
+
+    const __m128 t1 = _mm_hadd_ps(t0, t0);
+    return _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
 }
 
 // horizontally add 8 int32_t
 static inline int hsum_i32_8(const __m256i a) {
-    const __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extractf128_si256(a, 1));
-    const __m128i hi64 = _mm_unpackhi_epi64(sum128, sum128);
-    const __m128i sum64 = _mm_add_epi32(hi64, sum128);
-    const __m128i hi32  = _mm_shuffle_epi32(sum64, _MM_SHUFFLE(2, 3, 0, 1));
-    return _mm_cvtsi128_si32(_mm_add_epi32(sum64, hi32));
+    const __m128i t0 = _mm_add_epi32(_mm256_castsi256_si128(a),
+                                     _mm256_extractf128_si256(a, 1));
+
+    const __m128i t1 = _mm_hadd_epi32(t0, t0);
+    return _mm_cvtsi128_si32(_mm_hadd_epi32(t1, t1));
 }
 
 // horizontally add 4 int32_t
@@ -657,43 +657,45 @@ static inline __m128i packNibbles( __m256i bytes ) {
 }
 #endif  //__loongarch_asx
 
-// reference implementation for deterministic creation of model files
 void quantize_row_q4_0(const float * restrict x, void * restrict vy, int64_t k) {
-    static const int qk = QK4_0;
+    const uint64_t qk = QK4_0;
 
+    assert(qk == 32);
     assert(k % qk == 0);
 
-    const int nb = k / qk;
+    const uint64_t nb = k / qk;
 
-    block_q4_0 *y = (block_q4_0 *)vy;
+    block_q4_0 * restrict y = vy;
 
-    for (int i = 0; i < nb; i++) {
-        float amax = 0.0f; // absolute max
-        float max  = 0.0f;
+    for (uint64_t i = 0; i < nb; i++) {
+        float amax = fabsf(x[0]); // absolute max
+        float max  = x[0];        // signed max
 
-        for (int j = 0; j < qk; j++) {
-            const float v = x[i*qk + j];
-            if (amax < fabsf(v)) {
-                amax = fabsf(v);
-                max  = v;
+        for (uint64_t j = 1; j < qk; j++) {
+            const float tmax = fabsf(x[j]);
+            if (amax < tmax) {
+                amax = tmax;
+                max  = x[j];
             }
         }
 
         const float d  = max / -8;
-        const float id = d ? 1.0f/d : 0.0f;
+        const float id = d ? 1.0f / d : 0.0f;
 
         y[i].d = GGML_FP32_TO_FP16(d);
 
-        for (int j = 0; j < qk/2; ++j) {
-            const float x0 = x[i*qk + 0    + j]*id;
-            const float x1 = x[i*qk + qk/2 + j]*id;
+        for (uint64_t j = 0; j < qk / 2; ++j) {
+            const float x0 = x[j] * id;
+            const float x1 = x[qk / 2 + j] * id;
 
             const uint8_t xi0 = MIN(15, (int8_t)(x0 + 8.5f));
             const uint8_t xi1 = MIN(15, (int8_t)(x1 + 8.5f));
 
-            y[i].qs[j]  = xi0;
+            y[i].qs[j] = xi0;
             y[i].qs[j] |= xi1 << 4;
         }
+
+        x += qk;
     }
 }
 
@@ -868,7 +870,7 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
     const uint64_t nb = k / qk;
 
-    block_q8_0 *y = (block_q8_0 *)vy;
+    block_q8_0 * restrict y = vy;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
@@ -2364,13 +2366,18 @@ size_t quantize_q2_K(const float * restrict src, void * restrict dst, int64_t nr
 //========================= 3-bit (de)-quantization
 
 void quantize_row_q3_K(const float * restrict x, block_q3_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
+    // block_q3_K * restrict y = vy;
 
     int8_t L[QK_K];
     float scales[QK_K / 16];
 
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
 
         float max_scale = 0;
         float amax = 0;
@@ -3455,13 +3462,18 @@ size_t quantize_q5_K(const float * restrict src, void * restrict dst, int64_t nr
 // ====================== 6-bit (de)-quantization
 
 void quantize_row_q6_K_reference(const float * restrict x, block_q6_K * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const int64_t nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
+    // block_q6_K * restrict y = vy;
 
     int8_t L[QK_K];
     float   scales[QK_K/16];
 
-    for (int i = 0; i < nb; i++) {
+    for (uint64_t i = 0; i < nb; i++) {
 
         float max_scale = 0;
         float max_abs_scale = 0;
@@ -3525,8 +3537,11 @@ void quantize_row_q6_K_reference(const float * restrict x, block_q6_K * restrict
 }
 
 void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int64_t k) {
-    assert(k % QK_K == 0);
-    const uint64_t nb = k / QK_K;
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
 
 #if defined(__AVX512F__)
 
@@ -3884,7 +3899,9 @@ static void quantize_row_q4_0_impl(const float * restrict x, block_q4_0 * restri
     }
 }
 
-size_t quantize_q4_0(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
+size_t quantize_q4_0(const float * restrict src, void * restrict vdst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
+    block_q4_0 * restrict dst = vdst;
+
     if (!quant_weights) {
         quantize_row_q4_0(src, dst, (int64_t)nrow*n_per_row);
         return nrow * ggml_row_size(GGML_TYPE_Q4_0, n_per_row);
@@ -4766,7 +4783,7 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         //
         // mul (ax * sy) + 0 directly to epi32.
         //
-        // N.B. __AVXVNNI__ is always defined.
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
         //
 
         const __m256i summed_pairs = _mm256_dpbusd_epi32(zero256, ax, sy);
@@ -5896,8 +5913,8 @@ void ggml_vec_dot_q5_1_q8_1(int n, float * restrict s, size_t bs, const void * r
 }
 
 void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
-    const uint32_t qk = QK8_0;
-    const int nb = n / qk;
+    const uint64_t qk = QK8_0;
+    const uint64_t nb = n / qk;
 
     assert(n % qk == 0);
     assert(nrc == 1);
@@ -5917,7 +5934,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     __m256i zero256 = _mm256_setzero_si256();
 
     // Main loop
-    for (int i = 0; i < nb; ++i) {
+    for (uint64_t i = 0; i < nb; ++i) {
 
         //
         // Compute combined scale for the entire 32 block_q8_K quant values in one
@@ -5930,7 +5947,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
 
         //
-        // Get absolute values of qx
+        // Get the absolute values of qx
         //
 
         const __m256i ax = _mm256_sign_epi8(qx, qx);
@@ -5944,7 +5961,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         //
         // mul (ax * sy) + 0 directly to epi32
         //
-        // N.B. __AVXVNNI__ is always defined.
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
         //
 
         const __m256i summed_pairs = _mm256_dpbusd_epi32(zero256, ax, sy);
@@ -6135,7 +6152,7 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
     *s = hsum_float_8(res);
 
 #elif defined(__AVX2__) 
-// _mm256_permutexvar_epi16() may not be supported - condider _mm256_permutevar_ps()
+// _mm256_permutexvar_epi16() may not be supported - consider _mm256_permutevar_ps()
 
     static const uint16_t k_perm[8][16] = {
         0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -6677,14 +6694,13 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
     UNUSED(by);
     UNUSED(bs);
 
+    const int nb = n / QK_K;
+
     const block_q4_K * restrict x = vx;
     const block_q8_K * restrict y = vy;
 
-    const int nb = n / QK_K;
-
     static const uint32_t kmask1 = 0x3f3f3f3f;
     static const uint32_t kmask2 = 0x0f0f0f0f;
-    static const uint32_t kmask3 = 0x03030303;
 
     uint32_t utmp[4];
 
@@ -6824,6 +6840,8 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
     *s = hsum_float_8(acc);
 
 #else
+
+    static const uint32_t kmask3 = 0x03030303;
 
     const uint8_t * scales = (const uint8_t*)&utmp[0];
     const uint8_t * mins   = (const uint8_t*)&utmp[2];

@@ -386,7 +386,6 @@ int main(int argc, char ** argv) {
     printf("\n\ntotal elapsed time %7.2fsec\n\n", (double)(t_main_end - t_main_start) / (1000. * 1000.)); 
 
 #ifdef GGML_TENSOR_OP_PERF
-//    print_tensor_op_perf_data(t_main_end - t_main_start);
-    print_tensor_op_perf_data();
+    print_tensor_op_perf_data(t_main_end - t_main_start);
 #endif // GGML_TENSOR_OP_PERF
 }

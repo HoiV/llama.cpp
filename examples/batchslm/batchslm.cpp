@@ -713,7 +713,7 @@ int main(int argc, char ** argv) {
     llama_backend_free();
 
 #ifdef GGML_TENSOR_OP_PERF
-    print_tensor_op_perf_data();
+    print_tensor_op_perf_data(t_main_end - t_main_start);
 #endif // GGML_TENSOR_OP_PERF
 
     fprintf(stderr, "\n\n");
