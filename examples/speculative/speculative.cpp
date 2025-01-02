@@ -24,6 +24,19 @@ struct seq_draft {
     struct llama_sampling_context * ctx_sampling;
 };
 
+void log_callback(ggml_log_level level, const char * text, void * user_data) {
+    GGML_UNUSED(text);
+
+    ggml_log_level llindex_log_level = (ggml_log_level)0 /* GGML_LOG_LEVEL_NONE */;
+    if (user_data != nullptr) {
+        llindex_log_level = *(ggml_log_level *)user_data;
+    }
+
+    if (level == llindex_log_level) {
+        fputs(text, stdout);
+    }
+}
+
 int main(int argc, char ** argv) {
     gpt_params params;
 
@@ -31,6 +44,8 @@ int main(int argc, char ** argv) {
         gpt_params_print_usage(argc, argv, params);
         return 1;
     }
+
+    llama_log_set(log_callback, &(params.verbosity));
 
     if (params.model_draft.empty()) {
         fprintf(stderr, "%s: error: --model-draft is required\n", __func__);
@@ -44,7 +59,7 @@ int main(int argc, char ** argv) {
     const float p_split  = params.p_split;
 
     if (params.seed == LLAMA_DEFAULT_SEED) {
-        params.seed = time(NULL);
+        params.seed = (int)time(NULL);
     }
     std::default_random_engine rng(params.seed);
     std::uniform_real_distribution<> u_dist;
@@ -54,6 +69,8 @@ int main(int argc, char ** argv) {
     LOG_TEE("Log start\n");
     log_dump_cmdline(argc, argv);
 #endif // LOG_DISABLE_LOGS
+
+    const auto t_main_start = ggml_time_us();
 
     // init llama.cpp
     llama_backend_init();
@@ -147,7 +164,7 @@ int main(int argc, char ** argv) {
 
     fflush(stderr);
 
-    const int n_input = inp.size();
+    const int32_t n_input = (int32_t) inp.size();
 
     const auto t_enc_start = ggml_time_us();
 
@@ -168,8 +185,8 @@ int main(int argc, char ** argv) {
     int n_drafted = 0;
     int n_accept  = 0;
 
-    int n_past_tgt = inp.size();
-    int n_past_dft = inp.size();
+    int n_past_tgt = (int) inp.size();
+    int n_past_dft = (int) inp.size();
 
     // used to determine end of generation
     bool has_eos = false;
@@ -209,6 +226,7 @@ int main(int argc, char ** argv) {
 
             active_seqs.insert(s);
             const auto & tokens = drafts[s].tokens;
+            GGML_UNUSED(tokens);
 
             LOG("draft %d: %s\n", s, LOG_TOKENS_TOSTR_PRETTY(ctx_dft, tokens).c_str());
         }
@@ -216,7 +234,7 @@ int main(int argc, char ** argv) {
         int i_dft  = 0;
         int s_keep = 0;
 
-        llama_token token_id;
+        llama_token token_id = 0;
         std::string token_str;
 
         // loop until we fail to accept a drafted token or we run out of drafted tokens
@@ -237,7 +255,7 @@ int main(int argc, char ** argv) {
 
                     while (active_seqs.size() > 0) {
                         // randomly select a sequence to verify from active sequences
-                        std::uniform_int_distribution<unsigned int> u_int_dist(0, active_seqs.size() - 1);
+                        std::uniform_int_distribution<unsigned int> u_int_dist(0, (int32_t) active_seqs.size() - 1);
                         int s = *std::next(active_seqs.begin(), u_int_dist(rng));
                         if (i_dft >= (int) drafts[s].tokens.size()) {
                             drafts[s].active = false;
@@ -253,7 +271,7 @@ int main(int argc, char ** argv) {
                             continue;
                         }
                         LOG("verifying sequence #%d at pos #%d from %d active sequence(s)\n", s, i_dft, (int) active_seqs.size());
-                        float r = u_dist(rng);
+                        double ratio = u_dist(rng);
                         llama_token_data_array dist_dft = { drafts[s].dists[i_dft].data() , drafts[s].dists[i_dft].size(), true };
                         // acquire the token probabilities assigned by the draft and target models
                         for (size_t i = 0; i < dist_tgt.size; i++) {
@@ -267,8 +285,8 @@ int main(int argc, char ** argv) {
                                 break;
                             }
                         }
-                        LOG("r = %f, p_dft = %f, p_tgt = %f\n", r, p_dft, p_tgt);
-                        if (r <= p_tgt / p_dft) {
+                        LOG("ratio = %f, p_dft = %f, p_tgt = %f\n", ratio, p_dft, p_tgt);
+                        if (ratio <= p_tgt / p_dft) {
                             s_keep = s;
                             accept = true;
                             token_id = drafts[s].tokens[i_dft];
@@ -588,10 +606,13 @@ int main(int argc, char ** argv) {
     LOG_TEE("n_accept  = %d\n", n_accept);
     LOG_TEE("accept    = %.3f%%\n", 100.0f * n_accept / n_drafted);
 
-    LOG_TEE("\ndraft:\n");
+    params.verbosity = GGML_LOG_LEVEL_INFO;
+    llama_log_set(log_callback, &(params.verbosity));
+
+    LOG_TEE("\n== draft Model:\n");
     llama_print_timings(ctx_dft);
 
-    LOG_TEE("\ntarget:\n");
+    LOG_TEE("\n== target Model:\n");
     llama_print_timings(ctx_tgt);
 
     llama_sampling_free(ctx_sampling);
@@ -610,6 +631,13 @@ int main(int argc, char ** argv) {
     llama_backend_free();
 
     fprintf(stderr, "\n\n");
+
+    const auto t_main_end = ggml_time_us();
+    printf("\n\ntotal elapsed time %7.2fsec\n\n", (double)(t_main_end - t_main_start) / (1000. * 1000.)); 
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data(t_main_end - t_main_start);
+#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }
