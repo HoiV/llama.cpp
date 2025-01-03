@@ -83,6 +83,141 @@ static bool gguf_ex_write(const std::string & fname) {
     return true;
 }
 
+std::string ggml_type_str_from_ggml_type(const ggml_type ggml_t) {
+    std::string type_str;
+
+    switch (ggml_t) {
+        case GGML_TYPE_F32: 
+            type_str = "GGML_TYPE_F32";
+            break;
+        case GGML_TYPE_F16:
+            type_str = "GGML_TYPE_F16";
+            break;
+        case GGML_TYPE_Q4_0:
+            type_str = "GGML_TYPE_Q4_0";
+            break;
+        case GGML_TYPE_Q4_1:
+            type_str = "GGML_TYPE_Q4_1";
+            break;
+        case GGML_TYPE_Q5_0:
+            type_str = "GGML_TYPE_Q5_0";
+            break;
+        case GGML_TYPE_Q5_1:
+            type_str = "GGML_TYPE_Q5_1";
+            break;
+        case GGML_TYPE_Q8_0:
+            type_str = "GGML_TYPE_Q8_0";
+            break;
+        case GGML_TYPE_Q8_1:
+            type_str = "GGML_TYPE_Q8_1";
+            break;
+        case GGML_TYPE_Q2_K:
+            type_str = "GGML_TYPE_Q2_K";
+            break;
+        case GGML_TYPE_Q3_K:
+            type_str = "GGML_TYPE_Q3_K";
+            break;
+        case GGML_TYPE_Q4_K:
+            type_str = "GGML_TYPE_Q4_K";
+            break;
+        case GGML_TYPE_Q5_K:
+            type_str = "GGML_TYPE_Q5_K";
+            break;
+        case GGML_TYPE_Q6_K:
+            type_str = "GGML_TYPE_Q6_K";
+            break;
+        case GGML_TYPE_Q8_K:
+            type_str = "GGML_TYPE_Q8_K";
+            break;
+        case GGML_TYPE_IQ2_XXS:
+            type_str = "GGML_TYPE_IQ2_XXS";
+            break;
+        case GGML_TYPE_IQ2_XS:
+            type_str = "GGML_TYPE_IQ2_XS";
+            break;
+        case GGML_TYPE_IQ3_XXS:
+            type_str = "GGML_TYPE_IQ3_XXS";
+            break;
+        case GGML_TYPE_IQ1_S:
+            type_str = "GGML_TYPE_IQ1_S";
+            break;
+        case GGML_TYPE_IQ4_NL:
+            type_str = "GGML_TYPE_IQ4_NL";
+            break;
+        case GGML_TYPE_IQ3_S:
+            type_str = "GGML_TYPE_IQ3_S";
+            break;
+        case GGML_TYPE_IQ2_S:
+            type_str = "GGML_TYPE_IQ2_S";
+            break;
+        case GGML_TYPE_IQ4_XS:
+            type_str = "GGML_TYPE_IQ4_XS";
+            break;
+        case GGML_TYPE_I8:
+            type_str = "GGML_TYPE_I8";
+            break;
+        case GGML_TYPE_I16:
+            type_str = "GGML_TYPE_I16";
+            break;
+        case GGML_TYPE_I32:
+            type_str = "GGML_TYPE_I32";
+            break;
+        case GGML_TYPE_I64:
+            type_str = "GGML_TYPE_I64";
+            break;
+        case GGML_TYPE_F64:
+            type_str = "GGML_TYPE_F64";
+            break;
+        case GGML_TYPE_IQ1_M:
+            type_str = "GGML_TYPE_IQ1_M";
+            break;
+        case GGML_TYPE_BF16:
+            type_str = "GGML_TYPE_BF16";
+            break;
+        case GGML_TYPE_Q4_0_4_4:
+            type_str = "GGML_TYPE_Q4_0_4_4";
+            break;
+        case GGML_TYPE_Q4_0_4_8:
+            type_str = "GGML_TYPE_Q4_0_4_8";
+            break;
+        case GGML_TYPE_Q4_0_8_8:
+            type_str = "GGML_TYPE_Q4_0_8_8";
+            break;
+        case GGML_TYPE_IQ1_BN:
+            type_str = "GGML_TYPE_IQ1_BN";
+            break;
+        case GGML_TYPE_IQ2_BN:
+            type_str = "GGML_TYPE_IQ2_BN";
+            break;
+        case GGML_TYPE_Q8_K64:
+            type_str = "GGML_TYPE_Q8_K64";
+            break;
+        case GGML_TYPE_IQ2_K:
+            type_str = "GGML_TYPE_IQ2_K";
+            break;
+        case GGML_TYPE_IQ3_K:
+            type_str = "GGML_TYPE_IQ3_K";
+            break;
+        case GGML_TYPE_IQ4_K:
+            type_str = "GGML_TYPE_IQ4_K";
+            break;
+        case GGML_TYPE_IQ5_K:
+            type_str = "GGML_TYPE_IQ5_K";
+            break;
+        case GGML_TYPE_IQ6_K:
+            type_str = "GGML_TYPE_IQ6_K";
+            break;
+        case GGML_TYPE_IQ2_TN:
+            type_str = "GGML_TYPE_IQ2_TN";
+            break;
+        default: 
+            type_str = "UNKNOWN";
+            break;
+    }
+
+    return type_str;
+}
+
 // just read tensor info
 static bool gguf_ex_read_0(const std::string & fname) {
     struct gguf_init_params params = {
@@ -105,7 +240,7 @@ static bool gguf_ex_read_0(const std::string & fname) {
         for (int i = 0; i < n_kv; ++i) {
             const char * key = gguf_get_key(ctx, i);
 
-            printf("%s: kv[%d]: key = %s\n", __func__, i, key);
+            printf("%s: kv[%3d]: key = %s\n", __func__, i, key);
         }
     }
 
@@ -118,7 +253,7 @@ static bool gguf_ex_read_0(const std::string & fname) {
             printf("%s: find key: %s not found.\n", __func__, findkey);
         } else {
             const char * key_value = gguf_get_val_str(ctx, keyidx);
-            printf("%s: find key: %s found, kv[%d] value = %s\n", __func__, findkey, keyidx, key_value);
+            printf("%s: find key: %s found, kv[%3d] value = %s\n", __func__, findkey, keyidx, key_value);
         }
     }
 
@@ -130,9 +265,10 @@ static bool gguf_ex_read_0(const std::string & fname) {
 
         for (int i = 0; i < n_tensors; ++i) {
             const char * name   = gguf_get_tensor_name  (ctx, i);
-            const size_t offset = gguf_get_tensor_offset(ctx, i);
+            const ggml_type ggml_t = gguf_get_tensor_type(ctx, i);
 
-            printf("%s: tensor[%d]: name = %s, offset = %zu\n", __func__, i, name, offset);
+            printf("%s: tensor[%3d]: name = %30s, type = %-16s\n", 
+                __func__, i, name, ggml_type_str_from_ggml_type(ggml_t).c_str());
         }
     }
 
@@ -165,7 +301,7 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
         for (int i = 0; i < n_kv; ++i) {
             const char * key = gguf_get_key(ctx, i);
 
-            printf("%s: kv[%d]: key = %s\n", __func__, i, key);
+            printf("%s: kv[%3d]: key = %s\n", __func__, i, key);
         }
     }
 
@@ -178,8 +314,10 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
         for (int i = 0; i < n_tensors; ++i) {
             const char * name   = gguf_get_tensor_name  (ctx, i);
             const size_t offset = gguf_get_tensor_offset(ctx, i);
+            const ggml_type ggml_t = gguf_get_tensor_type(ctx, i);
 
-            printf("%s: tensor[%d]: name = %s, offset = %zu\n", __func__, i, name, offset);
+            printf("%s: tensor[%3d]: name = %30s, type = %-16s, offset = %12zu\n", 
+                __func__, i, name, ggml_type_str_from_ggml_type(ggml_t).c_str(), offset);
         }
     }
 
@@ -188,17 +326,18 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
         const int n_tensors = gguf_get_n_tensors(ctx);
 
         for (int i = 0; i < n_tensors; ++i) {
-            printf("%s: reading tensor %d data\n", __func__, i);
+            // printf("%s: reading tensor %d data\n", __func__, i);
 
             const char * name = gguf_get_tensor_name(ctx, i);
 
             struct ggml_tensor * cur = ggml_get_tensor(ctx_data, name);
 
-            printf("%s: tensor[%d]: n_dims = %d, name = %s, data = %p\n", __func__, i, ggml_n_dims(cur), cur->name, cur->data);
+            printf("%s: tensor[%3d]: n_dims = %d, name = %30s, data = %p\n", __func__, i, ggml_n_dims(cur), cur->name, cur->data);
 
             // print first 10 elements
             const float * data = (const float *) cur->data;
 
+#if 0
             printf("%s data[:10] : ", name);
             for (int j = 0; j < MIN(10, ggml_nelements(cur)); ++j) {
                 printf("%f ", data[j]);
@@ -216,6 +355,7 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
                     }
                 }
             }
+#endif
         }
     }
 
@@ -228,28 +368,48 @@ static bool gguf_ex_read_1(const std::string & fname, bool check_data) {
 }
 
 int main(int argc, char ** argv) {
-    if (argc < 3) {
-        printf("usage: %s data.gguf r|w [n]\n", argv[0]);
+    if (argc < 2) {
+        printf("usage: %s data.gguf r|w [c]\n", argv[0]);
         printf("r: read data.gguf file\n");
         printf("w: write data.gguf file\n");
-        printf("n: no check of tensor data\n");
+        printf("c: check tensor data\n");
         return -1;
     }
-    bool check_data = true;
+    bool check_data = false;
     if (argc == 4) {
-        check_data = false;
+        check_data = true;
     }
 
     const std::string fname(argv[1]);
-    const std::string mode (argv[2]);
 
-    GGML_ASSERT((mode == "r" || mode == "w") && "mode must be r or w");
+    if (argc == 2) {
+        if (!gguf_ex_read_0(fname)) {
+            printf("failed to check gguf file\n");
+        };
+        return 0;
+    }
+    
+    const std::string mode (argv[2]);
+    bool default_mode = false;
+
+    if ((mode != "r") && (mode != "w")) {
+        default_mode = true;
+        printf("no mode specified - default to 'r'\n");
+    }
 
     if (mode == "w") {
-        GGML_ASSERT(gguf_ex_write(fname) && "failed to write gguf file");
-    } else if (mode == "r") {
-        GGML_ASSERT(gguf_ex_read_0(fname) && "failed to read gguf file");
-        GGML_ASSERT(gguf_ex_read_1(fname, check_data) && "failed to read gguf file");
+        if (!gguf_ex_write(fname)) {
+            printf("failed to write gguf file\n");
+        }
+    } else if (default_mode || (mode == "r")) {
+#if 0
+        if (!gguf_ex_read_0(fname)) {
+            printf("failed to read gguf file\n");
+        }
+#endif
+        if (!gguf_ex_read_1(fname, check_data)) {
+            printf("failed to check gguf file\n");
+        };
     }
 
     return 0;
