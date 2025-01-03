@@ -4,7 +4,13 @@
 #include <algorithm>
 #include <fstream>
 
+#ifdef GGML_USE_OPENMP
+#include "omp.h"
+#endif
+
 /* Retrieval */
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 void llindex_log_callback(ggml_log_level level, const char * text, void * user_data) {
     GGML_UNUSED(text);
@@ -143,7 +149,23 @@ int main(int argc, char ** argv) {
 
     llama_log_set(llindex_log_callback, &(params.verbosity));
 
-    // For BERT models, batch size must be equal to ubatch size
+    // prepare CPU related configurations
+
+#ifdef GGML_USE_OPENMP
+    params.n_threads = MIN(params.n_threads, omp_get_max_threads());
+    if (params.use_omp) {
+        printf("%s: OpenMP selected\n", __func__);
+        ggml_select_omp();
+    }
+#endif
+
+    printf("%s: Actual using: %d threads\n", __func__, params.n_threads);
+
+    if (params.use_proc_affinity) {
+        common::xb_set_optimal_process_affinity(params.n_threads);
+    }
+
+   // For BERT models, batch size must be equal to ubatch size
     params.n_ubatch = params.n_batch;
     params.embedding = true;
 
