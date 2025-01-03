@@ -34,11 +34,11 @@
 #include <stdint.h>
 #endif
 
-typedef volatile LONG atomic_int;
-inline void atomic_store(atomic_int * ptr, LONG val) {
+typedef volatile unsigned long atomic_int64;
+inline void atomic_store(atomic_int64 * ptr, LONG val) {
     InterlockedExchange(ptr, val);
 }
-inline LONG atomic_load(atomic_int * ptr) {
+inline LONG atomic_load(atomic_int64 * ptr) {
     return InterlockedCompareExchange(ptr, 0, 0);
 }
 
@@ -73,7 +73,7 @@ extern int g_system_prompt_tokens;
 extern llama_context *g_ctx;
 extern llama_model *g_model;
 extern std::vector<int> g_history;
-extern atomic_int g_got_sigint;
+extern atomic_int64 g_got_sigint;
 
 int main(int, char **);
 

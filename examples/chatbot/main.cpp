@@ -28,7 +28,7 @@ llama_context *g_ctx;
 bool g_has_ephemeral;
 bool g_said_something;
 char g_last_printed_char;
-volatile atomic_int g_got_sigint;
+volatile atomic_int64 g_got_sigint;
 
 void on_sigint(int sig) {
     g_got_sigint = 1;
