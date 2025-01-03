@@ -7,6 +7,12 @@
 #include <vector>
 #include <set>
 
+#ifdef GGML_USE_OPENMP
+#include "omp.h"
+#endif
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 #define SPEC_VOCAB_MAX_SIZE_DIFFERENCE  100
 #define SPEC_VOCAB_CHECK_START_TOKEN_ID 5
 
@@ -46,6 +52,22 @@ int main(int argc, char ** argv) {
     }
 
     llama_log_set(log_callback, &(params.verbosity));
+
+    // prepare CPU related configurations
+
+#ifdef GGML_USE_OPENMP
+    params.n_threads = MIN(params.n_threads, omp_get_max_threads());
+    if (params.use_omp) {
+        printf("%s: OpenMP selected\n", __func__);
+        ggml_select_omp();
+    }
+#endif
+
+    printf("%s: Actual using: %d threads\n", __func__, params.n_threads);
+
+    if (params.use_proc_affinity) {
+        common::xb_set_optimal_process_affinity(params.n_threads);
+    }
 
     if (params.model_draft.empty()) {
         fprintf(stderr, "%s: error: --model-draft is required\n", __func__);
