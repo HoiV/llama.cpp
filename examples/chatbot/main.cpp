@@ -17,6 +17,12 @@
 
 #include "chatbot.h"
 
+#ifdef GGML_USE_OPENMP
+#include "omp.h"
+#endif
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 gpt_params g_params;
 //clip_ctx *g_clip;
 llama_model *g_model;
@@ -464,6 +470,18 @@ int main(int argc, char **argv) {
         exit(1);
     }
     clear_ephemeral();
+
+#ifdef GGML_USE_OPENMP
+    g_params.n_threads = MIN(g_params.n_threads, omp_get_max_threads());
+    if (g_params.use_omp) {
+        printf("%s: OpenMP selected\n", __func__);
+        ggml_select_omp();
+    }
+#endif
+
+    if (g_params.use_proc_affinity) {
+        common::xb_set_optimal_process_affinity(g_params.n_threads);
+    }
 
     // setup logging
     // FLAG_log_disable = false;
