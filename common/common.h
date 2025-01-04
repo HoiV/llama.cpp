@@ -227,7 +227,7 @@ CPUInfo::CPUInfo() {
 void
 xb_set_process_affinity (
     uint32_t n_threads,
-    int64_t affinity_mask_requested = 0
+    uint64_t affinity_mask_requested = 0
     );
 
 void
