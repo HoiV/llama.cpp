@@ -56,6 +56,10 @@
 #pragma warning(disable: 4996)
 #endif
 
+#ifndef __AVX512BF16__
+#define __AVX512BF16__
+#endif // __AVX512BF16__
+
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
@@ -355,49 +359,6 @@ float ggml_bf16_to_fp32(ggml_bf16_t x) {
 ggml_bf16_t ggml_fp32_to_bf16(float x) {
 #define ggml_fp32_to_bf16 do_not_use__ggml_fp32_to_bf16__in_ggml
     return GGML_FP32_TO_BF16(x);
-}
-
-void ggml_bf16_to_fp32_row(const ggml_bf16_t * x, float * y, int64_t n) {
-    int64_t i = 0;
-#if defined(__AVX512F__)
-    for (; i + 16 <= n; i += 16) {
-        _mm512_storeu_ps(y + i,
-                         _mm512_castsi512_ps(
-                             _mm512_slli_epi32(
-                                 _mm512_cvtepu16_epi32(
-                                     _mm256_loadu_si256(
-                                         (const __m256i *)(x + i))),
-                                 16)));
-    }
-#elif defined(__AVX2__)
-    for (; i + 8 <= n; i += 8) {
-        _mm256_storeu_ps(y + i,
-                         _mm256_castsi256_ps(
-                             _mm256_slli_epi32(
-                                 _mm256_cvtepu16_epi32(
-                                     _mm_loadu_si128(
-                                         (const __m128i *)(x + i))),
-                                 16)));
-    }
-#endif
-    for (; i < n; i++) {
-        y[i] = GGML_BF16_TO_FP32(x[i]);
-    }
-}
-
-void ggml_fp32_to_bf16_row(const float * x, ggml_bf16_t * y, int64_t n) {
-  int i = 0;
-#if defined(__AVX512BF16__)
-  for (; i + 32 <= n; i += 32) {
-        _mm512_storeu_si512(
-            (__m512i *)(y + i),
-            m512i(_mm512_cvtne2ps_pbh(_mm512_loadu_ps(x + i + 16),
-                                _mm512_loadu_ps(x + i))));
-  }
-#endif
-    for (; i < n; i++) {
-        y[i] = GGML_FP32_TO_BF16(x[i]);
-    }
 }
 
 bool ggml_guid_matches(ggml_guid_t guid_a, ggml_guid_t guid_b) {
@@ -1924,12 +1885,174 @@ struct ggml_context_container {
 // fundamental operations
 //
 
-void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
-
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+void ggml_bf16_to_fp32_row(const ggml_bf16_t * x, float * y, int64_t n) {
 
     const uint64_t nc = n;
     uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m256i ax[GGML_F16_ARR];
+    __m512i ay[GGML_F16_ARR];
+
+    const uint64_t np = (nc & ~(GGML_F16_STEP16 - 1));
+
+    for (; i < np; i += GGML_F16_STEP16) {
+        for (uint64_t j = 0; j < GGML_F16_ARR; j++) {
+            ax[j] = _mm256_loadu_si256((__m256i *)(x + i + j * GGML_F16_EPR16));
+            ay[j] = _mm512_cvtepu16_epi32(ax[j]);
+            ay[j] = _mm512_slli_epi32(ay[j], 16);
+            _mm512_storeu_si512((y + i + j * GGML_F16_EPR16), ay[j]); 
+        }
+    }
+
+    const uint64_t xn = (nc & ~(GGML_F16_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F16_EPR16) {
+        ax[0] = _mm256_loadu_si256((__m256i *)(x + i));
+        ay[0] = _mm512_cvtepu16_epi32(ax[0]);
+        ay[0] = _mm512_slli_epi32(ay[0], 16);
+        _mm512_storeu_si512((y + i), ay[0]); 
+    }
+
+    // leftovers
+
+    if (nc & (GGML_F16_EPR16 - 1)) {
+        do {
+            y[i] = GGML_BF16_TO_FP32(x[i]);
+            i += 1;
+        } while (i < nc);
+    }
+
+#elif defined(__AVX2__)
+
+    __m128i ax[GGML_F16_ARR];
+    __m256i ay[GGML_F16_ARR];
+
+    const uint64_t np = (nc & ~(GGML_F16_STEP - 1));
+
+    for (; i < np; i += GGML_F16_STEP) {
+        for (uint64_t j = 0; j < GGML_F16_ARR; j++) {
+            ax[j] = _mm_loadu_si128((__m128i *)(x + i + j * GGML_F16_EPR));
+            ay[j] = _mm256_cvtepu16_epi32(ax[j]);
+            ay[j] = _mm256_slli_epi32(ay[j], 16);
+            _mm256_storeu_si256((__m256i *)(y + i + j * GGML_F16_EPR), ay[j]); 
+        }
+    }
+
+    const uint64_t xn = (nc & ~(GGML_F16_EPR - 1));
+
+    for (; i < xn; i += GGML_F16_EPR) {
+        ax[0] = _mm_loadu_si128((__m128i *)(x + i));
+        ay[0] = _mm256_cvtepu16_epi32(ax[0]);
+        ay[0] = _mm256_slli_epi32(ay[0], 16);
+        _mm256_storeu_si256((__m256i *)(y + i), ay[0]); 
+    }
+
+    // leftovers
+
+    if (nc & (GGML_F16_EPR - 1)) {
+        do {
+            y[i] = GGML_BF16_TO_FP32(x[i]);
+            i += 1;
+        } while (i < nc);
+    }
+
+#else
+
+    for (; i < nc; i++) {
+        y[i] = GGML_BF16_TO_FP32(x[i]);
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+}
+
+void ggml_fp32_to_bf16_row(const float * x, ggml_bf16_t * y, int64_t n) {
+
+    const uint64_t nc = n;
+    uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m512 ax[GGML_F32_ARR];
+    __m256bh ay[GGML_F32_ARR];
+
+    const uint64_t np = (nc & ~(GGML_F32_STEP16 - 1));
+
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ay[j] = _mm512_cvtneps_pbh(ax[j]);
+            _mm256_storeu_si256((__m256i *)(y + i + j * GGML_F32_EPR16), ay[j]); 
+        }
+    }
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ay[0] = _mm512_cvtneps_pbh(ax[0]);
+        _mm256_storeu_si256((__m256i *)(y + i), ay[0]); 
+    }
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
+        do {
+            y[i] = GGML_FP32_TO_BF16(x[i]);
+            i += 1;
+        } while (i < nc);
+    }
+
+#elif defined(__AVX2__)
+
+    __m256 ax[GGML_F32_ARR];
+    __m128bh ay[GGML_F32_ARR];
+
+    const uint64_t np = (nc & ~(GGML_F32_STEP - 1));
+
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
+            ay[j] = _mm256_cvtneps_pbh(ax[j]);
+            _mm_storeu_si128((__m128i *)(y + i + j * GGML_F32_EPR), ay[j]); 
+        }
+    }
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = _mm256_loadu_ps(x + i);
+        ay[0] = _mm256_cvtneps_pbh(ax[0]);
+        _mm_storeu_si128((__m128i *)(y + i), ay[0]); 
+    }
+
+    // leftovers
+
+    if (nc& (GGML_F32_EPR - 1)) {
+        do {
+            y[i] = GGML_FP32_TO_BF16(x[i]);
+            i += 1;
+        } while (i < nc);
+    }
+
+#else
+
+    for (; i < nc; i++) {
+        y[i] = GGML_FP32_TO_BF16(x[i]);
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+}
+
+void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
+
+    const uint64_t nc = n;
+    uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     __m256i ax[GGML_F16_ARR];
     __m512 ay[GGML_F16_ARR];
@@ -1963,9 +2086,6 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
 
 #elif defined(__AVX2__)
 
-    uint64_t nc = n;
-    uint64_t i = 0;
-
     __m128i ax[GGML_F16_ARR];
     __m256 ay[GGML_F16_ARR];
 
@@ -1998,7 +2118,7 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
 
 #else
 
-    for (int i = 0; i < n; i++) {
+    for (; i < nc; i++) {
         y[i] = GGML_FP16_TO_FP32(x[i]);
     }
 
@@ -2008,10 +2128,10 @@ void ggml_fp16_to_fp32_row(const ggml_fp16_t * x, float * y, int64_t n) {
 
 void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
 
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
-
     const uint64_t nc = n;
     uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     __m512 ax[GGML_F32_ARR];
     __m256i ay[GGML_F32_ARR];
@@ -2045,9 +2165,6 @@ void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
 
 #elif defined(__AVX2__)
 
-    const uint64_t nc = n;
-    uint64_t i = 0;
-
     __m256 ax[GGML_F32_ARR];
     __m128i ay[GGML_F32_ARR];
 
@@ -2080,9 +2197,7 @@ void ggml_fp32_to_fp16_row(const float * x, ggml_fp16_t * y, int64_t n) {
 
 #else
 
-    int64_t i = 0;
-
-    for (int64_t i = 0; i < n; i++) {
+    for (; i < nc; i++) {
         y[i] = GGML_FP32_TO_FP16(x[i]);
     }
 
@@ -3367,6 +3482,7 @@ void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restr
     UNUSED(bx);
     UNUSED(by);
     UNUSED(bs);
+
     int i = 0;
     ggml_float sumf = 0;
 
