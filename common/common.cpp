@@ -1109,11 +1109,19 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         return true;
     }
     if (arg == "-ctk" || arg == "--cache-type-k") {
-        params.cache_type_k = argv[++i];
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.cache_type_k = argv[i];
         return true;
     }
     if (arg == "-ctv" || arg == "--cache-type-v") {
-        params.cache_type_v = argv[++i];
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.cache_type_v = argv[i];
         return true;
     }
     if (arg == "--multiline-input") {
@@ -2630,6 +2638,9 @@ static ggml_type kv_cache_type_from_str(const std::string & s) {
     }
     if (s == "f16") {
         return GGML_TYPE_F16;
+    }
+    if (s == "bf16") {
+        return GGML_TYPE_BF16;
     }
     if (s == "q8_0") {
         return GGML_TYPE_Q8_0;
