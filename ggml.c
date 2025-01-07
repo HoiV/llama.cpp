@@ -15173,9 +15173,7 @@ IQK_MulMat_Not_Available1:;
     int64_t t1 = ggml_time_us();    
 #endif
     const enum ggml_type src1_type = src1->type;
-    const bool init_mat = ((vec_dot_type != src1_type) &&
-                          ((vec_dot_type != GGML_TYPE_F16) && 
-                           (vec_dot_type != GGML_TYPE_BF16)));
+    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
     char * wdata = src1->data;
@@ -15219,11 +15217,6 @@ IQK_MulMat_Not_Available1:;
         row_size = ggml_row_size(src1_type, ne10);
         if (vec_dot_type == GGML_TYPE_F16) {
             vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
-
-        } else {
-            GGML_ASSERT(vec_dot_type == GGML_TYPE_BF16);
-
-            vec_dot = (ggml_vec_dot_t)ggml_vec_dot_bf16_f32;
         }
     }
 
