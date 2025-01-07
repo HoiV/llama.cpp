@@ -15065,9 +15065,7 @@ void ggml_compute_forward_mul_mat(
     assert(ne13 % ne03 == 0);
 
     const enum ggml_type src1_type = src1->type;
-    const bool init_mat = ((vec_dot_type != src1_type) &&
-                          ((vec_dot_type != GGML_TYPE_F16) && 
-                           (vec_dot_type != GGML_TYPE_BF16)));
+    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
     char * wdata = src1->data;
@@ -15111,11 +15109,6 @@ void ggml_compute_forward_mul_mat(
         row_size = ggml_row_size(src1_type, ne10);
         if (vec_dot_type == GGML_TYPE_F16) {
             vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
-
-        } else {
-            GGML_ASSERT(vec_dot_type == GGML_TYPE_BF16);
-
-            vec_dot = (ggml_vec_dot_t)ggml_vec_dot_bf16_f32;
         }
     }
 
