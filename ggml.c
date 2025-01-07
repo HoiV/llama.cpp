@@ -691,9 +691,10 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
 void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
-void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
 void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc);
-void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_bf16_f32(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 
 static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     [GGML_TYPE_I8] = {
@@ -3727,26 +3728,29 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
     *s = sumf;
 }
 
-void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_bf16_f32(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
     UNUSED(by);
     UNUSED(bs);
 
+    const uint64_t nc = n;
     float sumf = 0.0;
-    int64_t i = 0;
+    uint64_t i = 0;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
+        __m256i au[GGML_F32_ARR];
+        __m512i av[GGML_F32_ARR];
         __m512 sum[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
         __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (nc & ~(GGML_F32_STEP16 - 1));
 
         sum[0] = _mm512_setzero_ps();
         sum[1] = _mm512_setzero_ps();
@@ -3755,7 +3759,145 @@ void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const 
 
         if (np) {
             do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                    au[j] = _mm256_loadu_si256((__m256i *)(x + i + j * GGML_F16_EPR16));
+                    ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
+                    av[j] = _mm512_cvtepu16_epi32(au[j]);
+                    av[j] = _mm512_slli_epi32(av[j], 16);
+                    ax[j] = _mm512_castsi512_ps(av[j]);
+                    sum[j] = _mm512_fmadd_ps(ax[j], ay[j], sum[j]);
+                }
+    
+                i += GGML_F32_STEP16;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                au[0] = _mm256_loadu_si256((__m256i *)(x + i));
+                ay[0] = _mm512_loadu_ps(y + i);
+                av[0] = _mm512_cvtepu16_epi32(au[0]);
+                av[0] = _mm512_slli_epi32(av[0], 16);
+                ax[0] = _mm512_castsi512_ps(av[0]);
+                sum[0] = _mm512_fmadd_ps(ax[0], ay[0], sum[0]);
+                i += GGML_F32_EPR16;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sumf
+
+        GGML_F32_VEC_REDUCE512(sumf, sum);
+    }
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
+        do {
+            sumf += GGML_BF16_TO_FP32(x[i]) * y[i];
+            i += 1;
+        } while (i < nc);
+    }
+
+#elif defined(__AVX2__)
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1));
+
+    if (xn) {
+        __m128i au[GGML_F32_ARR];
+        __m256i av[GGML_F32_ARR];
+        __m256 sum[GGML_F32_ARR];
+        __m256 ax[GGML_F32_ARR];
+        __m256 ay[GGML_F32_ARR];
+
+        const uint64_t np = (nc & ~(GGML_F32_STEP - 1));
+
+        sum[0] = _mm256_setzero_ps();
+        sum[1] = _mm256_setzero_ps();
+        sum[2] = _mm256_setzero_ps();
+        sum[3] = _mm256_setzero_ps();
+
+        if (np) {
+            do {
+                for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                    au[j] = _mm_loadu_si128((__m128i *)(x + i + j * GGML_F32_EPR));
+                    ay[j] = _mm256_loadu_ps(y + i + j * GGML_F32_EPR);
+                    av[j] = _mm256_cvtepu16_epi32(au[j]);
+                    av[j] = _mm256_slli_epi32(av[j], 16);
+                    ax[j] = _mm256_castsi256_ps(av[j]);
+                    sum[j] = _mm256_fmadd_ps(ax[j], ay[j], sum[j]);
+                }
+    
+                i += GGML_F32_STEP;
+            } while (i < np);
+        }
+
+        if (xn > np) {
+            do {
+                au[0] = _mm_loadu_si128((__m128i *)(x + i));
+                ay[0] = _mm256_loadu_ps(y + i);
+                av[0] = _mm256_cvtepu16_epi32(au[0]);
+                av[0] = _mm256_slli_epi32(av[0], 16);
+                ax[0] = _mm256_castsi256_ps(av[0]);
+                sum[0] = _mm256_fmadd_ps(ax[0], ay[0], sum[0]);
+                i += GGML_F32_EPR;
+            } while (i < xn);
+        }
+
+        // reduce sum0..sum3 to sumf
+
+        GGML_F32_VEC_REDUCE(sumf, sum);
+    }
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR - 1)) {
+        do {
+            sumf += GGML_BF16_TO_FP32(x[i]) * y[i];
+            i += 1;
+        } while (i < nc);
+    }
+
+#else
+
+    for (; i < nc; ++i) {
+        sumf += GGML_BF16_TO_FP32(x[i]) * y[i];
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
+
+    *s = sumf;
+}
+
+void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+
+    const uint64_t nc = n;
+    float sumf = 0.0;
+    uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        __m512 sum[GGML_F32_ARR];
+        __m512 ax[GGML_F32_ARR];
+        __m512 ay[GGML_F32_ARR];
+
+        const uint64_t np = (nc & ~(GGML_F32_STEP16 - 1));
+
+        sum[0] = _mm512_setzero_ps();
+        sum[1] = _mm512_setzero_ps();
+        sum[2] = _mm512_setzero_ps();
+        sum[3] = _mm512_setzero_ps();
+
+        if (np) {
+            do {
+                for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
                     ax[j] = _mm512_cvtph_ps(_mm256_loadu_si256((__m256i *)(x + i + j * GGML_F32_EPR16)));
                     ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
                     sum[j] = _mm512_fmadd_ps(ax[j], ay[j], sum[j]);
@@ -3779,23 +3921,24 @@ void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const 
     }
 
     // leftovers
-    if (n & (GGML_F32_EPR16 - 1)) {
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
         do {
             sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #elif defined(__AVX2__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1));
 
     if (xn) {
         __m256 sum[GGML_F32_ARR];
         __m256 ax[GGML_F32_ARR];
         __m256 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP - 1));
+        const uint64_t np = (nc & ~(GGML_F32_STEP - 1));
 
         sum[0] = _mm256_setzero_ps();
         sum[1] = _mm256_setzero_ps();
@@ -3804,7 +3947,7 @@ void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const 
 
         if (np) {
             do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
                     ax[j] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i *)(x + i + j * GGML_F32_EPR)));
                     ay[j] = _mm256_loadu_ps(y + i + j * GGML_F32_EPR);
                     sum[j] = _mm256_fmadd_ps(ax[j], ay[j], sum[j]);
@@ -3824,20 +3967,22 @@ void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const 
         }
 
         // reduce sum0..sum3 to sumf
+
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
 
     // leftovers
-    if (n & (GGML_F32_EPR - 1)) {
+
+    if (nc & (GGML_F32_EPR - 1)) {
         do {
             sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (; i < nc; ++i) {
         sumf += GGML_FP16_TO_FP32(x[i]) * y[i];
     }
 
@@ -14920,7 +15065,9 @@ void ggml_compute_forward_mul_mat(
     assert(ne13 % ne03 == 0);
 
     const enum ggml_type src1_type = src1->type;
-    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
+    const bool init_mat = ((vec_dot_type != src1_type) &&
+                          ((vec_dot_type != GGML_TYPE_F16) && 
+                           (vec_dot_type != GGML_TYPE_BF16)));
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
     char * wdata = src1->data;
@@ -14962,7 +15109,14 @@ void ggml_compute_forward_mul_mat(
 
     } else if (vec_dot_type != src1_type) {
         row_size = ggml_row_size(src1_type, ne10);
-        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+        if (vec_dot_type == GGML_TYPE_F16) {
+            vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+
+        } else {
+            GGML_ASSERT(vec_dot_type == GGML_TYPE_BF16);
+
+            vec_dot = (ggml_vec_dot_t)ggml_vec_dot_bf16_f32;
+        }
     }
 
     //

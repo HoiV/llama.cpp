@@ -3589,24 +3589,16 @@ void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int6
     
             const __m256i q4bits1 = _mm256_loadu_si256((const __m256i*)(ql + (j * 64) + 0));
             const __m256i q4bits2 = _mm256_loadu_si256((const __m256i*)(ql + (j * 64) + 32));
-            __m256i q2bitsH = _mm256_loadu_si256((const __m256i*)(qh + (j * 32)));
+            const __m256i q2bitsH = _mm256_loadu_si256((const __m256i*)(qh + (j * 32)));
     
     	    //
-    	    // Pre-shift the first high 2-bit value into position such that it can be unpacked directly
-    	    // without additional shifting.
+    	    // Unpack the high 2-bit values.
     	    //
     
-    	    q2bitsH = _mm256_rol_epi64(q2bitsH, 4);
-                __m256i q6_0 = _mm256_and_si256(q2bitsH, m2);
-    
-    	    q2bitsH = _mm256_ror_epi64(q2bitsH, 2);
-                __m256i q6_1 = _mm256_and_si256(q2bitsH, m2);
-    
-    	    q2bitsH = _mm256_ror_epi64(q2bitsH, 2);
-                __m256i q6_2 = _mm256_and_si256(q2bitsH, m2);
-    
-    	    q2bitsH = _mm256_ror_epi64(q2bitsH, 2);
-                __m256i q6_3 = _mm256_and_si256(q2bitsH, m2);
+            __m256i q6_0 = _mm256_and_si256(_mm256_rol_epi64(q2bitsH, 4), m2);
+            __m256i q6_1 = _mm256_and_si256(_mm256_rol_epi64(q2bitsH, 2), m2);
+            __m256i q6_2 = _mm256_and_si256(q2bitsH, m2);
+            __m256i q6_3 = _mm256_and_si256(_mm256_ror_epi64(q2bitsH, 2), m2);
     	
     	    //
     	    // Unpack the low 4-bit values and combine with the high 2-bit values to form the 6-bit quant value.
@@ -3656,7 +3648,8 @@ void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int6
     	    //
     	    // Multiply the 16-bit quant values by the 16-bit scale values.
     	    //
-    	    // N.B. This product cannot overflow 16-bits, and thus, only the low 16-bits are retained.
+    	    // N.B. This product cannot overflow 16-bits, and thus, only the low 16-bits
+            //      are retained.
     	    //
     
     	    q6_0_16 = _mm512_mullo_epi16(q6_0_16, v_scale0);
@@ -6066,13 +6059,13 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
     __m512 acc = _mm512_setzero_ps();
 
-    __m512 zero512 = _mm512_setzero_ps();
-    __m512i zero512i = _mm512_setzero_si512();
+    const __m512 zero512 = _mm512_setzero_ps();
+    const __m512i zero512i = _mm512_setzero_si512();
 
-    __m512i idx0 = _mm512_loadu_si512((__m512i *)&perm0);
-    __m512i idx1 = _mm512_loadu_si512((__m512i *)&perm1);
-    __m512i idx2 = _mm512_loadu_si512((__m512i *)&perm2);
-    __m512i idx3 = _mm512_loadu_si512((__m512i *)&perm3);
+    const __m512i idx0 = _mm512_loadu_si512((__m512i *)&perm0);
+    const __m512i idx1 = _mm512_loadu_si512((__m512i *)&perm1);
+    const __m512i idx2 = _mm512_loadu_si512((__m512i *)&perm2);
+    const __m512i idx3 = _mm512_loadu_si512((__m512i *)&perm3);
 
     for (uint64_t i = 0; i < nb; ++i) {
 
@@ -6099,39 +6092,43 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         const __m512i q2bits = _mm512_loadu_si512((const __m512i*)q2);
 
         const __m256i q8_0_low = _mm256_loadu_si256((const __m256i*)(q8 + 0));
-        __m512i q8_0 = _mm512_inserti64x4(zero512i, q8_0_low, 0);
         const __m256i q8_0_high = _mm256_loadu_si256((const __m256i*)(q8 + 128));
-        q8_0 = _mm512_inserti64x4(q8_0, q8_0_high, 1);
 
         const __m256i q8_1_low = _mm256_loadu_si256((const __m256i*)(q8 + 32));
-        __m512i q8_1 = _mm512_inserti64x4(zero512i, q8_1_low, 0);
         const __m256i q8_1_high = _mm256_loadu_si256((const __m256i*)(q8 + 160));
-        q8_1 = _mm512_inserti64x4(q8_1, q8_1_high, 1);
 
         const __m256i q8_2_low = _mm256_loadu_si256((const __m256i*)(q8 + 64));
-        __m512i q8_2 = _mm512_inserti64x4(zero512i, q8_2_low, 0);
         const __m256i q8_2_high = _mm256_loadu_si256((const __m256i*)(q8 + 192));
-        q8_2 = _mm512_inserti64x4(q8_2, q8_2_high, 1);
 
         const __m256i q8_3_low = _mm256_loadu_si256((const __m256i*)(q8 + 96));
-        __m512i q8_3 = _mm512_inserti64x4(zero512i, q8_3_low, 0);
         const __m256i q8_3_high = _mm256_loadu_si256((const __m256i*)(q8 + 224));
-        q8_3 = _mm512_inserti64x4(q8_3, q8_3_high, 1);
 
         const __m512i q2_0 = _mm512_and_si512(q2bits, m3);
         const __m512i q2_1 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 2), m3);
         const __m512i q2_2 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 4), m3);
         const __m512i q2_3 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 6), m3);
 
+        __m512i q8_0 = _mm512_inserti64x4(zero512i, q8_0_low, 0);
+        q8_0 = _mm512_inserti64x4(q8_0, q8_0_high, 1);
+
+        __m512i q8_1 = _mm512_inserti64x4(zero512i, q8_1_low, 0);
+        q8_1 = _mm512_inserti64x4(q8_1, q8_1_high, 1);
+
+        __m512i q8_2 = _mm512_inserti64x4(zero512i, q8_2_low, 0);
+        q8_2 = _mm512_inserti64x4(q8_2, q8_2_high, 1);
+
+        __m512i q8_3 = _mm512_inserti64x4(zero512i, q8_3_low, 0);
+        q8_3 = _mm512_inserti64x4(q8_3, q8_3_high, 1);
+
         __m512i p0 = _mm512_maddubs_epi16(q2_0, q8_0);
         __m512i p1 = _mm512_maddubs_epi16(q2_1, q8_1);
         __m512i p2 = _mm512_maddubs_epi16(q2_2, q8_2);
         __m512i p3 = _mm512_maddubs_epi16(q2_3, q8_3);
 
-        __m512i v_scale0 = _mm512_permutexvar_epi16(idx0, scales_all);
-        __m512i v_scale1 = _mm512_permutexvar_epi16(idx1, scales_all);
-        __m512i v_scale2 = _mm512_permutexvar_epi16(idx2, scales_all);
-        __m512i v_scale3 = _mm512_permutexvar_epi16(idx3, scales_all);
+        const __m512i v_scale0 = _mm512_permutexvar_epi16(idx0, scales_all);
+        const __m512i v_scale1 = _mm512_permutexvar_epi16(idx1, scales_all);
+        const __m512i v_scale2 = _mm512_permutexvar_epi16(idx2, scales_all);
+        const __m512i v_scale3 = _mm512_permutexvar_epi16(idx3, scales_all);
 
         p0 = _mm512_madd_epi16(v_scale0, p0);
         p1 = _mm512_madd_epi16(v_scale1, p1);
@@ -6209,15 +6206,15 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
             __m256i p2 = _mm256_maddubs_epi16(q2_2, q8_2);
             __m256i p3 = _mm256_maddubs_epi16(q2_3, q8_3);
 
-            __m256i idx0 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 0][0]));
-            __m256i idx1 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 1][0]));
-            __m256i idx2 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 2][0]));
-            __m256i idx3 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 3][0]));
+            const __m256i idx0 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 0][0]));
+            const __m256i idx1 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 1][0]));
+            const __m256i idx2 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 2][0]));
+            const __m256i idx3 = _mm256_loadu_si256((__m256i *)(&k_perm[(j * 4) + 3][0]));
 
-            __m256i v_scale0 = _mm256_permutexvar_epi16(idx0, scales_all);
-            __m256i v_scale1 = _mm256_permutexvar_epi16(idx1, scales_all);
-            __m256i v_scale2 = _mm256_permutexvar_epi16(idx2, scales_all);
-            __m256i v_scale3 = _mm256_permutexvar_epi16(idx3, scales_all);
+            const __m256i v_scale0 = _mm256_permutexvar_epi16(idx0, scales_all);
+            const __m256i v_scale1 = _mm256_permutexvar_epi16(idx1, scales_all);
+            const __m256i v_scale2 = _mm256_permutexvar_epi16(idx2, scales_all);
+            const __m256i v_scale3 = _mm256_permutexvar_epi16(idx3, scales_all);
 
             p0 = _mm256_madd_epi16(v_scale0, p0);
             p1 = _mm256_madd_epi16(v_scale1, p1);
@@ -6404,11 +6401,10 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
         const __m256i scales_all = _mm256_cvtepi8_epi16(scales8);
 
         //
-        // high bits - preshift bits into position.
+        // high bits.
         //
 
         __m256i hbits = _mm256_loadu_si256((const __m256i*)x[i].hmask);
-        hbits = _mm256_rol_epi32(hbits, 2);
 
         //
         // integer accumulator
@@ -6429,20 +6425,18 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
             //
 
             const __m256i q3l_0 = _mm256_and_si256(q3bits, m3);
-            const __m256i q3h_0 = _mm256_andnot_si256(hbits, m4);
-            hbits = _mm256_ror_epi32(hbits, 1);
+            const __m256i q3h_0 = _mm256_andnot_si256(_mm256_rol_epi32(hbits, 2), m4);
 
             const __m256i q3l_1 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 2), m3);
-            const __m256i q3h_1 = _mm256_andnot_si256(hbits, m4);
-            hbits = _mm256_ror_epi32(hbits, 1);
+            const __m256i q3h_1 = _mm256_andnot_si256(_mm256_rol_epi32(hbits, 1), m4);
 
             const __m256i q3l_2 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 4), m3);
             const __m256i q3h_2 = _mm256_andnot_si256(hbits, m4);
-            hbits = _mm256_ror_epi32(hbits, 1);
 
             const __m256i q3l_3 = _mm256_and_si256(_mm256_srli_epi16(q3bits, 6), m3);
-            const __m256i q3h_3 = _mm256_andnot_si256(hbits, m4);
-            hbits = _mm256_ror_epi32(hbits, 1);
+            const __m256i q3h_3 = _mm256_andnot_si256(_mm256_ror_epi32(hbits, 1), m4);
+
+            hbits = _mm256_ror_epi32(hbits, 4);
 
             //
             // load Q8 quants
