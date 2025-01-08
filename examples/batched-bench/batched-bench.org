@@ -7,17 +7,25 @@
 #include <string>
 #include <vector>
 
-void llbench_log_callback(ggml_log_level level, const char * text, void * user_data) {
-    GGML_UNUSED(text);
+// mutates the input string
+static std::vector<int> parse_list(char * p) {
+    std::vector<int> ret;
 
-    ggml_log_level llbench_log_level = (ggml_log_level)0 /* GGML_LOG_LEVEL_NONE */;
-    if (user_data != nullptr) {
-        llbench_log_level = *(ggml_log_level *)user_data;
+    char * q = p;
+
+    while (*p) {
+        if (*p == ',') {
+            *p = '\0';
+            ret.push_back(std::atoi(q));
+            q = p + 1;
+        }
+
+        ++p;
     }
 
-    if (level == llbench_log_level) {
-        fputs(text, stdout);
-    }
+    ret.push_back(std::atoi(q));
+
+    return ret;
 }
 
 static void print_usage(int argc, char ** argv, const gpt_params & params) {
@@ -36,16 +44,6 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    llama_log_set(llbench_log_callback, &(params.verbosity));
-
-    if (params.use_proc_affinity) {
-        common::xb_set_optimal_process_affinity(params.n_threads);
-    }
-
-    if (params.use_omp) {
-        ggml_select_omp();
-    }
-
     int is_pp_shared = params.is_pp_shared;
 
     std::vector<int> n_pp = params.n_pp;
@@ -56,9 +54,6 @@ int main(int argc, char ** argv) {
 
     llama_backend_init();
     llama_numa_init(params.numa);
-
-    ggml_time_init();
-    const auto t_main_start = ggml_time_us();
 
     // initialize the model
 
@@ -128,9 +123,7 @@ int main(int argc, char ** argv) {
     }
 
     LOG_TEE("\n");
-    LOG_TEE("%s: n_kv_max = %d, n_batch = %d, n_ubatch = %d, flash_attn = %d, is_pp_shared = %d, n_gpu_layers = %d, n_threads = %u, n_threads_batch = %u\n", 
-            __func__, n_kv_max, params.n_batch, params.n_ubatch, params.flash_attn, params.is_pp_shared, params.n_gpu_layers, ctx_params.n_threads, ctx_params.n_threads_batch);
-
+    LOG_TEE("%s: n_kv_max = %d, n_batch = %d, n_ubatch = %d, flash_attn = %d, is_pp_shared = %d, n_gpu_layers = %d, n_threads = %u, n_threads_batch = %u\n", __func__, n_kv_max, params.n_batch, params.n_ubatch, params.flash_attn, params.is_pp_shared, params.n_gpu_layers, ctx_params.n_threads, ctx_params.n_threads_batch);
     LOG_TEE("\n");
 
     LOG_TEE("|%6s | %6s | %4s | %6s | %8s | %8s | %8s | %8s | %8s | %8s |\n", "PP",     "TG",     "B",    "N_KV",     "T_PP s",   "S_PP t/s", "T_TG s",   "S_TG t/s", "T s",      "S t/s");
@@ -207,7 +200,6 @@ int main(int argc, char ** argv) {
         }
     }
 
-    llama_log_set(llbench_log_callback, &(params.verbosity));
     llama_print_timings(ctx);
 
     llama_batch_free(batch);
@@ -218,13 +210,6 @@ int main(int argc, char ** argv) {
     llama_backend_free();
 
     fprintf(stderr, "\n\n");
-
-    const auto t_main_end = ggml_time_us();
-    printf("total elapsed time %7.2fsec\n\n", (double)(t_main_end - t_main_start) / (1000. * 1000.)); 
-
-#ifdef GGML_TENSOR_OP_PERF
-    print_tensor_op_perf_data(t_main_end - t_main_start);
-#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }

@@ -15065,6 +15065,11 @@ void ggml_compute_forward_mul_mat(
     assert(ne13 % ne03 == 0);
 
     const enum ggml_type src1_type = src1->type;
+
+    // This check for init_mat does not include BF16 for a reason. It is not a bug.
+    // See commit c26d7004a15ab5c134a2ebc66d04b545a45c01bb. We do want init_mat to 
+    // be true for BF16 so the conversion to BF16 occurs. The vec_dot for BF16 takes
+    // care of the rest.
     const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
@@ -15107,6 +15112,12 @@ void ggml_compute_forward_mul_mat(
 
     } else if (vec_dot_type != src1_type) {
         row_size = ggml_row_size(src1_type, ne10);
+    
+        //
+        // Same comment as above for BF16. We favor vec_dot_bf16() 
+        // See commit c26d7004a15ab5c134a2ebc66d04b545a45c01bb.
+        //
+     
         if (vec_dot_type == GGML_TYPE_F16) {
             vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
         }
@@ -15119,7 +15130,7 @@ void ggml_compute_forward_mul_mat(
     // on all the rows in src0, then move on to the next src1 column. This is not,
     // however, very cache friendly. The strategy used to make this more efficient
     // is to break up the dot product into tiles. Basically a tile is sized to fit
-    // a contigupus set of src0 rows in the l1d-cache.
+    // a contiguous set of src0 rows in the l1d-cache.
     //
     // Always compute the block factor based on the src0 row size. This is the data
     // that is repeated referenced for one tile block iteration of the src1 loop.
@@ -15131,7 +15142,8 @@ void ggml_compute_forward_mul_mat(
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
-#if 0 // too noisy
+
+#if 0 // too noisy for BF16
     if (blck0_factor <= 1) {
         printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
                l1d_cache_size,
