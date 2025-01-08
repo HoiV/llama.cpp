@@ -6071,53 +6071,52 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
         const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
         const float dmin = -y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+        const __m512 bd_ss = _mm512_set1_ps(d);
+        const __m256 bdmin_ss = _mm256_set1_ps(dmin);
 
         const uint8_t * restrict q2 = x[i].qs;
         const int8_t  * restrict q8 = y[i].qs;
 
         const __m128i mins_and_scales = _mm_loadu_si128((const __m128i*)x[i].scales);
-        const __m128i scales8 = _mm_and_si128(mins_and_scales, m4);
-        const __m256i scales16 = _mm256_cvtepi8_epi16(scales8);
-        const __m512i scales_all = _mm512_inserti32x8(zero512i, scales16, 0);
-
-        const __m128i mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
-        const __m256i mins = _mm256_cvtepi8_epi16(mins8);
-        const __m256i prod = _mm256_madd_epi16(mins, _mm256_loadu_si256((const __m256i*)y[i].bsums));
-
-        const __m256 bdmin_ss = _mm256_broadcastss_ps(_mm_load_ss(&dmin));
-        const __m256 acc_mins = _mm256_mul_ps(bdmin_ss, _mm256_cvtepi32_ps(prod));
-
-        acc = _mm512_add_ps(acc, _mm512_insertf32x8(zero512, acc_mins, 0));
-
+        const __m256i bsums = _mm256_loadu_si256((const __m256i*)y[i].bsums);
         const __m512i q2bits = _mm512_loadu_si512((const __m512i*)q2);
 
+        const __m128i scales8 = _mm_and_si128(mins_and_scales, m4);
+        const __m128i mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
+
+        const __m256i scales16 = _mm256_cvtepi8_epi16(scales8);
+        const __m256i mins = _mm256_cvtepi8_epi16(mins8);
+
+        const __m512i scales_all = _mm512_inserti32x8(zero512i, scales16, 0);
+
+        const __m256i prod = _mm256_madd_epi16(mins, bsums);
+
+        const __m256 acc_mins = _mm256_mul_ps(bdmin_ss, _mm256_cvtepi32_ps(prod));
+        acc = _mm512_add_ps(acc, _mm512_insertf32x8(zero512, acc_mins, 0));
+
         const __m256i q8_0_low = _mm256_loadu_si256((const __m256i*)(q8 + 0));
-        const __m256i q8_0_high = _mm256_loadu_si256((const __m256i*)(q8 + 128));
-
         const __m256i q8_1_low = _mm256_loadu_si256((const __m256i*)(q8 + 32));
-        const __m256i q8_1_high = _mm256_loadu_si256((const __m256i*)(q8 + 160));
-
         const __m256i q8_2_low = _mm256_loadu_si256((const __m256i*)(q8 + 64));
-        const __m256i q8_2_high = _mm256_loadu_si256((const __m256i*)(q8 + 192));
-
         const __m256i q8_3_low = _mm256_loadu_si256((const __m256i*)(q8 + 96));
-        const __m256i q8_3_high = _mm256_loadu_si256((const __m256i*)(q8 + 224));
 
         const __m512i q2_0 = _mm512_and_si512(q2bits, m3);
         const __m512i q2_1 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 2), m3);
         const __m512i q2_2 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 4), m3);
         const __m512i q2_3 = _mm512_and_si512(_mm512_srli_epi16(q2bits, 6), m3);
 
+        const __m256i q8_0_high = _mm256_loadu_si256((const __m256i*)(q8 + 128));
+        const __m256i q8_1_high = _mm256_loadu_si256((const __m256i*)(q8 + 160));
+        const __m256i q8_2_high = _mm256_loadu_si256((const __m256i*)(q8 + 192));
+        const __m256i q8_3_high = _mm256_loadu_si256((const __m256i*)(q8 + 224));
+
         __m512i q8_0 = _mm512_inserti64x4(zero512i, q8_0_low, 0);
-        q8_0 = _mm512_inserti64x4(q8_0, q8_0_high, 1);
-
         __m512i q8_1 = _mm512_inserti64x4(zero512i, q8_1_low, 0);
-        q8_1 = _mm512_inserti64x4(q8_1, q8_1_high, 1);
-
         __m512i q8_2 = _mm512_inserti64x4(zero512i, q8_2_low, 0);
-        q8_2 = _mm512_inserti64x4(q8_2, q8_2_high, 1);
-
         __m512i q8_3 = _mm512_inserti64x4(zero512i, q8_3_low, 0);
+
+        q8_0 = _mm512_inserti64x4(q8_0, q8_0_high, 1);
+        q8_1 = _mm512_inserti64x4(q8_1, q8_1_high, 1);
+        q8_2 = _mm512_inserti64x4(q8_2, q8_2_high, 1);
         q8_3 = _mm512_inserti64x4(q8_3, q8_3_high, 1);
 
         __m512i p0 = _mm512_maddubs_epi16(q2_0, q8_0);
@@ -6139,7 +6138,6 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         p2 = _mm512_add_epi32(p2, p3);
         p0 = _mm512_add_epi32(p0, p2);
 
-        const __m512 bd_ss = _mm512_broadcastss_ps(_mm_load_ss(&d));
         acc = _mm512_fmadd_ps(bd_ss, _mm512_cvtepi32_ps(p0), acc);
     }
 
