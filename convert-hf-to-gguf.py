@@ -483,6 +483,9 @@ class Model:
         if chkhsh == "7967bfa498ade6b757b064f31e964dddbb80f8f9a4d68d4ba7998fcf281c531a":
             # ref: https://huggingface.co/jinaai/jina-embeddings-v2-base-code
             res = "jina-v2-code"
+        if chkhsh == "fcace8b9cac38ce847670c970cd5892031a753a1ef381abd1d9af00f713da085":
+            # ref: https://huggingface.co/microsoft/phi-2
+            res = "phi-2"
 
         if res is None:
             logger.warning("\n")
@@ -1735,7 +1738,7 @@ class Phi2Model(Model):
         n_embd = self.find_hparam(["hidden_size", "n_embd"])
         n_head = self.find_hparam(["num_attention_heads", "n_head"])
 
-        self.gguf_writer.add_name("Phi2")
+        # XBOX-B612 self.gguf_writer.add_name("Phi2")
         self.gguf_writer.add_context_length(self.find_hparam(["n_positions", "max_position_embeddings"]))
 
         self.gguf_writer.add_embedding_length(n_embd)

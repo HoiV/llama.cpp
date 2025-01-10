@@ -4918,6 +4918,7 @@ static void llm_load_vocab(
                 vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_STARCODER;
             } else if (
                     tokenizer_pre == "gpt-2"   ||
+                    tokenizer_pre == "phi-2"   ||
                     tokenizer_pre == "jina-es" ||
                     tokenizer_pre == "jina-de" ||
                     tokenizer_pre == "jina-v2-es" ||
