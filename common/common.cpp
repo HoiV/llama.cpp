@@ -118,8 +118,8 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
     switch (n_threads) {
         case 2:
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
-                affinity_mask = 0x0000A0ul;
+                // use perf cores as available
+                affinity_mask = 0x00000Aul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
                 affinity_mask = 0x00018000uL;
@@ -127,7 +127,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 4: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0x0000AAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
@@ -136,7 +136,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 6: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0x000AAAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
@@ -145,7 +145,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 8: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0x00AAAAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
@@ -154,7 +154,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 10: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0x0AAAAAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
@@ -163,7 +163,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 12: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0xAAAAAAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU
@@ -172,7 +172,7 @@ xb_set_optimal_process_affinity(uint32_t n_threads) {
             break;
         case 16: 
             if (AMD_Ryzen_HX_370) {
-                // use dense cores
+                // use perf cores as available
                 affinity_mask = 0xAAAAAAul;
             } else if (AMD_Ryzen_PRO_395) {
                 // use the middle cores spannning across the CPU

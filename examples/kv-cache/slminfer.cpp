@@ -88,6 +88,7 @@ int slm_init(xbapp_params& params) {
 
     // initialize the model
     model_params = llama_model_default_params();
+    model_params.n_gpu_layers = params.n_ngl;
 
     model = llama_load_model_from_file(params.model_path.c_str(), model_params);
     if (model == NULL) {
@@ -100,7 +101,7 @@ int slm_init(xbapp_params& params) {
 
     ctx_params.seed  = params.seed;
     ctx_params.n_ctx = params.n_ctx;
-    ctx_params.n_batch = params.n_ctx;
+    ctx_params.n_batch = params.n_batch;
     ctx_params.n_threads = params.n_threads;
     ctx_params.n_threads_batch = params.n_threads;
 
@@ -306,7 +307,7 @@ int slm_inference(xbapp_params& params) {
                     affinity_mask = 0xAAA000ul;
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
-                    affinity_mask = 0x004AA400uL;
+                    affinity_mask = 0x004AA800uL;
                 }
                 break;
             case 8: 
@@ -316,6 +317,33 @@ int slm_inference(xbapp_params& params) {
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x00AAAA00uL;
+                }
+                break;
+            case 10: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAAAAA0ul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x02AAAA80uL;
+                }
+                break;
+            case 12: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAAAAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x0AAAAAA0uL;
+                }
+                break;
+            case 16: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use dense cores
+                    affinity_mask = 0xAAAAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0xAAAAAAAAuL;
                 }
                 break;
             default: 
@@ -391,8 +419,8 @@ int slm_inference(xbapp_params& params) {
         switch (params.n_threads) {
             case 2:
                 if (params.is_AMD_Ryzen_HX_370) {
-                    // use dense cores
-                    affinity_mask = 0x0000A0ul;
+                    // use perf cores as available
+                    affinity_mask = 0x00000Aul;
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x00018000uL;
@@ -400,7 +428,7 @@ int slm_inference(xbapp_params& params) {
                 break;
             case 4: 
                 if (params.is_AMD_Ryzen_HX_370) {
-                    // use dense cores
+                    // use perf cores as available
                     affinity_mask = 0x0000AAul;
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
@@ -409,7 +437,7 @@ int slm_inference(xbapp_params& params) {
                 break;
             case 6: 
                 if (params.is_AMD_Ryzen_HX_370) {
-                    // use dense cores
+                    // use perf cores as available
                     affinity_mask = 0x000AAAul;
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
@@ -418,11 +446,38 @@ int slm_inference(xbapp_params& params) {
                 break;
             case 8: 
                 if (params.is_AMD_Ryzen_HX_370) {
-                    // use dense cores
+                    // use perf cores as available
                     affinity_mask = 0x00AAAAul;
                 } else if (params.is_AMD_Ryzen_PRO_395) {
                     // use the middle cores spannning across the CPU
                     affinity_mask = 0x00AAAA00uL;
+                }
+                break;
+            case 10: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use perf cores as available
+                    affinity_mask = 0x0AAAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x02AAAA80uL;
+                }
+                break;
+            case 12: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use perf cores as available
+                    affinity_mask = 0xAAAAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0x0AAAAAA0uL;
+                }
+                break;
+            case 16: 
+                if (params.is_AMD_Ryzen_HX_370) {
+                    // use perf cores as available
+                    affinity_mask = 0xAAAAAAul;
+                } else if (params.is_AMD_Ryzen_PRO_395) {
+                    // use the middle cores spannning across the CPU
+                    affinity_mask = 0xAAAAAAAAuL;
                 }
                 break;
             default: 
