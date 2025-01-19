@@ -837,6 +837,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .to_float                 = (ggml_to_float_t) dequantize_row_q8_0,
         .from_float               = quantize_row_q8_0,
         .from_float_reference     = quantize_row_q8_0,
+//        .from_float_to_mat        = quantize_mat_q8_0,
         .vec_dot                  = ggml_vec_dot_q8_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
 #if defined (__ARM_FEATURE_MATMUL_INT8)
@@ -14962,6 +14963,63 @@ void ggml_compute_forward_mul_mat(
 
 #endif
 
+#if 0
+    // special case for Q4_0_x_x
+    if ((gemm != NULL) && (gemv != NULL)) {
+        if (src1->type != vec_dot_type) {
+            char * wdata = params->wdata;
+    
+            const size_t nbw1 = ggml_row_size(vec_dot_type, ne10);
+            const size_t nbw2 = nbw1*ne11;
+            const size_t nbw3 = nbw2*ne12;
+    
+            assert(params->wsize >= ne13*nbw3);
+            GGML_ASSERT(src1->type == GGML_TYPE_F32);
+    
+            for (int64_t i13 = 0; i13 < ne13; ++i13) {
+                for (int64_t i12 = 0; i12 < ne12; ++i12) {
+                    int64_t i11_processed = 0;
+                    if ((ggml_n_dims(src1) == 2) && from_float_to_mat && gemm) {
+                        for (int64_t i11 = ith * 4; i11 < ne11 - ne11 % 4; i11 += nth * 4) {
+                            from_float_to_mat((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11),
+                                              (void *)               (wdata + i13*nbw3 + i12*nbw2 + i11*nbw1),
+                                              4, ne10, blck_size_interleave);
+                        }
+                        i11_processed = ne11 - ne11 % 4;
+                    }
+                    for (int64_t i11 = i11_processed + ith; i11 < ne11; i11 += nth) {
+                        from_float((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11),
+                               (void *)               (wdata + i13*nbw3 + i12*nbw2 + i11*nbw1),
+                               ne10);
+                    }
+                }
+            }
+        }
+
+        if (ggml_n_dims(src0) == 2) {
+            const void *src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+            const size_t src1_col_stride = ggml_is_contiguous(src1) || src1->type != vec_dot_type ? ggml_row_size(vec_dot_type, ne10) : nb11;
+            int64_t src0_start = (ith * ne01) / nth;
+            int64_t src0_end   = ((ith + 1) * ne01) / nth;
+            src0_start = (src0_start % matmul_num_cols) ? src0_start + matmul_num_cols - (src0_start % matmul_num_cols): src0_start;
+            src0_end   = (src0_end   % matmul_num_cols) ? src0_end   + matmul_num_cols - (src0_end   % matmul_num_cols): src0_end;
+            if (src0_start >= src0_end) return;
+
+            // If there are more than three rows in src1, use gemm; otherwise, use gemv.
+            if (gemm && (ne11 > 3)) {
+                gemm(ne00, (float *)((char *) dst->data) + src0_start, ne01, (const char *) src0->data + src0_start * nb01,
+                     (const char *) src1_wdata, ne11 - ne11 % 4, src0_end - src0_start);
+            }
+            for (int iter = gemm ? ne11 - ne11 % 4 : 0; iter < ne11; iter++) {
+                gemv(ne00, (float *)((char *) dst->data + (iter * nb1)) + src0_start, ne01,
+                     (const char *) src0->data + src0_start * nb01, (const char *) src1_wdata + (src1_col_stride * iter), 1,
+                     src0_end - src0_start);
+            }
+            return;
+        }
+    }
+#endif
+
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
 
@@ -15082,7 +15140,7 @@ void ggml_compute_forward_mul_mat(
         GGML_ASSERT(src1_type == GGML_TYPE_F32);
 
         //
-        // Distribute the src1 converion over all threads.
+        // Distribute the src1 conversion over all threads.
         //
 
         const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
@@ -15112,15 +15170,7 @@ void ggml_compute_forward_mul_mat(
 
     } else if (vec_dot_type != src1_type) {
         row_size = ggml_row_size(src1_type, ne10);
-    
-        //
-        // Same comment as above for BF16. We favor vec_dot_bf16() 
-        // See commit c26d7004a15ab5c134a2ebc66d04b545a45c01bb.
-        //
-     
-        if (vec_dot_type == GGML_TYPE_F16) {
-            vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
-        }
+        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
 
     //
@@ -15139,6 +15189,32 @@ void ggml_compute_forward_mul_mat(
     //      src0 loop is the data that gets continually referenced as the src1 loop
     //      sequences through scr0 tile blocks.
     //
+
+    if ((gemm != NULL) && (gemv != NULL)) {
+        if (ggml_n_dims(src0) == 2) {
+            const void *src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+            const size_t src1_col_stride = ggml_is_contiguous(src1) || src1->type != vec_dot_type ? ggml_row_size(vec_dot_type, ne10) : nb11;
+            int64_t src0_start = (ith * ne01) / nth;
+            int64_t src0_end   = ((ith + 1) * ne01) / nth;
+            src0_start = (src0_start % matmul_num_cols) ? src0_start + matmul_num_cols - (src0_start % matmul_num_cols): src0_start;
+            src0_end   = (src0_end   % matmul_num_cols) ? src0_end   + matmul_num_cols - (src0_end   % matmul_num_cols): src0_end;
+            if (src0_start >= src0_end) return;
+
+            // If there are more than three rows in src1, use gemm; otherwise, use gemv.
+            if (gemm && (ne11 > 3)) {
+                // printf("%s: GEMM ith=%d - src0_start=%zd src_end=%zd\n", __func__, ith, src0_start, src0_end);
+                gemm(ne00, (float *)((char *) dst->data) + src0_start, ne01, (const char *) src0->data + src0_start * nb01,
+                     (const char *) src1_wdata, ne11 - ne11 % 4, src0_end - src0_start);
+            }
+            for (int iter = gemm ? ne11 - ne11 % 4 : 0; iter < ne11; iter++) {
+                // printf("%s: GEMV ith=%d - iter=%d src1_col_stride=%zd\n", __func__, ith, iter, src1_col_stride);
+                gemv(ne00, (float *)((char *) dst->data + (iter * nb1)) + src0_start, ne01,
+                     (const char *) src0->data + src0_start * nb01, (const char *) src1_wdata + (src1_col_stride * iter), 1,
+                     src0_end - src0_start);
+            }
+            return;
+        }
+    }
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
