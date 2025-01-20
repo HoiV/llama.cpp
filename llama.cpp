@@ -3788,6 +3788,9 @@ struct llama_model_loader {
                 case GGML_TYPE_IQ4_NL:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_NL;  break;
                 case GGML_TYPE_IQ4_XS:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_XS;  break;
                 case GGML_TYPE_IQ3_S:   ftype = LLAMA_FTYPE_MOSTLY_IQ3_S;   break;
+                case GGML_TYPE_Q4_0_4_4: ftype = LLAMA_FTYPE_MOSTLY_Q4_0_4_4; break;
+                case GGML_TYPE_Q4_0_4_8: ftype = LLAMA_FTYPE_MOSTLY_Q4_0_4_8; break;
+                case GGML_TYPE_Q4_0_8_8: ftype = LLAMA_FTYPE_MOSTLY_Q4_0_8_8; break;
                 default:
                     {
                         LLAMA_LOG_WARN("%s: unknown type %s\n", __func__, ggml_type_name(type_max));
@@ -4481,6 +4484,9 @@ static std::string llama_model_ftype_name(llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_IQ4_XS: return "IQ4_XS - 4.25 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ3_S:  return "IQ3_S - 3.4375 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ3_M:  return "IQ3_S mix - 3.66 bpw";
+        case LLAMA_FTYPE_MOSTLY_Q4_0_4_4: return "Q4_0_4_4";
+        case LLAMA_FTYPE_MOSTLY_Q4_0_4_8: return "Q4_0_4_8";
+        case LLAMA_FTYPE_MOSTLY_Q4_0_8_8: return "Q4_0_8_8";
 
         default: return "unknown, may not work";
     }
@@ -17768,6 +17774,10 @@ static ggml_type llama_tensor_get_type(quantize_state_internal & qs, ggml_type n
             else if (ftype == LLAMA_FTYPE_MOSTLY_IQ3_XXS) {
                 new_type = GGML_TYPE_IQ3_S;
             }
+            else if (new_type == GGML_TYPE_Q4_0_4_4 || new_type == GGML_TYPE_Q4_0_4_8 ||
+                     new_type == GGML_TYPE_Q4_0_8_8) {
+                new_type = GGML_TYPE_Q4_0;
+            }
         }
     } else if (ftype == LLAMA_FTYPE_MOSTLY_IQ2_XXS || ftype == LLAMA_FTYPE_MOSTLY_IQ2_XS || ftype == LLAMA_FTYPE_MOSTLY_IQ1_S ||
                ftype == LLAMA_FTYPE_MOSTLY_IQ2_S || ftype == LLAMA_FTYPE_MOSTLY_IQ2_M    || ftype == LLAMA_FTYPE_MOSTLY_IQ1_M) {
@@ -18080,6 +18090,9 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
         case LLAMA_FTYPE_MOSTLY_IQ4_XS:  default_type = GGML_TYPE_IQ4_XS;  break;
         case LLAMA_FTYPE_MOSTLY_IQ3_S:   default_type = GGML_TYPE_IQ3_S;   break;
         case LLAMA_FTYPE_MOSTLY_IQ3_M:   default_type = GGML_TYPE_IQ3_S;   break;
+        case LLAMA_FTYPE_MOSTLY_Q4_0_4_4: default_type = GGML_TYPE_Q4_0_4_4; break;
+        case LLAMA_FTYPE_MOSTLY_Q4_0_4_8: default_type = GGML_TYPE_Q4_0_4_8; break;
+        case LLAMA_FTYPE_MOSTLY_Q4_0_8_8: default_type = GGML_TYPE_Q4_0_8_8; break;
 
         default: throw std::runtime_error(format("invalid output file type %d\n", ftype));
     }
@@ -18390,6 +18403,14 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
                 f32_data = (float *) f32_conv_buf.data();
             }
 
+            int chunk_size_multiplier = 1;
+            if (new_type == GGML_TYPE_Q4_0_4_4 || new_type == GGML_TYPE_Q4_0_4_8 || new_type == GGML_TYPE_Q4_0_8_8) {
+                if ((new_type == GGML_TYPE_Q4_0_8_8) && (tensor->ne[1] % 8 != 0)) new_type = GGML_TYPE_Q4_0;
+                else if (tensor->ne[1] % 4 != 0) new_type = GGML_TYPE_Q4_0;
+                if (new_type == GGML_TYPE_Q4_0_8_8) chunk_size_multiplier = 8;
+                else if (new_type == GGML_TYPE_Q4_0_4_4 || new_type == GGML_TYPE_Q4_0_4_8) chunk_size_multiplier = 4;
+            }
+
             LLAMA_LOG_INFO("converting to %s .. ", ggml_type_name(new_type));
             fflush(stdout);
 
@@ -18402,7 +18423,8 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
             const int64_t nrows = tensor->ne[1];
 
             static const int64_t min_chunk_size = 32 * 512;
-            const int64_t chunk_size = n_per_row >= min_chunk_size ? n_per_row : n_per_row * ((min_chunk_size + n_per_row - 1)/n_per_row);
+            const int64_t chunk_size = (n_per_row >= min_chunk_size ? n_per_row : n_per_row * ((min_chunk_size + n_per_row - 1)/n_per_row)) *
+                                       chunk_size_multiplier;
 
             const int64_t nelements_matrix = tensor->ne[0] * tensor->ne[1];
             const int64_t nchunk = (nelements_matrix + chunk_size - 1)/chunk_size;
@@ -18914,6 +18936,207 @@ void llama_free_model(struct llama_model * model) {
     delete model;
 }
 
+void print_ctx_cpu_buffer(llama_context* ctx, std::string prefix="") {
+    ggml_backend_t backend = ctx->backends[0];
+    size_t size = ggml_backend_sched_get_buffer_size(ctx->sched, backend);
+    printf("%s: -%s- buffer size = %8.2f MiB\n", __func__,
+        prefix.c_str(),
+        size / 1024.0 / 1024.0);
+    return;
+}
+
+// check if node is part of the graph
+static bool llama_graph_find(const struct ggml_cgraph * cgraph, const struct ggml_tensor * node) {
+    if (cgraph == NULL) {
+        return true;
+    }
+
+    for (int i = 0; i < cgraph->n_nodes; i++) {
+        if (cgraph->nodes[i] == node) {
+            return true;
+        }
+    }
+
+    return false;
+}
+static struct ggml_tensor * llama_graph_get_parent(const struct ggml_cgraph * cgraph, const struct ggml_tensor * node) {
+    for (int i = 0; i < cgraph->n_nodes; i++) {
+        struct ggml_tensor * parent = cgraph->nodes[i];
+
+        if (parent->grad == node) {
+            return parent;
+        }
+    }
+
+    return NULL;
+}
+
+static void llama_graph_dump_dot_node_edge(FILE * fp, const struct ggml_cgraph * gb, struct ggml_tensor * node, struct ggml_tensor * parent, const char * label)  {
+    struct ggml_tensor * gparent = llama_graph_get_parent(gb, node);
+    struct ggml_tensor * gparent0 = llama_graph_get_parent(gb, parent);
+    fprintf(fp, "  \"%p\":%s -> \"%p\":%s [ arrowhead = %s; style = %s; label = \"%s\"; ]\n",
+            gparent0 ? (void *) gparent0 : (void *) parent,
+            gparent0 ? "g" : "x",
+            gparent ? (void *) gparent : (void *) node,
+            gparent ? "g" : "x",
+            gparent ? "empty" : "vee",
+            gparent ? "dashed" : "solid",
+            label);
+}
+
+static void llama_graph_dump_dot_leaf_edge(FILE * fp, struct ggml_tensor * node, struct ggml_tensor * parent, const char * label)  {
+    fprintf(fp, "  \"%p\":%s -> \"%p\":%s [ label = \"%s\"; ]\n",
+            (void *) parent, "x",
+            (void *) node, "x",
+            label);
+}
+
+#include <vector>
+void llama_graph_dump_dot(const struct ggml_cgraph * gb, const struct ggml_cgraph * gf, const char * filename) {
+    char color[16];
+    std::vector<struct ggml_tensor *> nodes_visited;
+
+    FILE * fp = ggml_fopen(filename, "w");
+    GGML_ASSERT(fp);
+
+    fprintf(fp, "digraph G {\n");
+    fprintf(fp, "  newrank = true;\n");
+    fprintf(fp, "  rankdir = LR;\n");
+
+    for (int i = 0; i < gb->n_nodes; i++) {
+        struct ggml_tensor * node = gb->nodes[i];
+
+        if (llama_graph_get_parent(gb, node) != NULL) {
+            continue;
+        }
+
+        if (node->flags & GGML_TENSOR_FLAG_PARAM) {
+            snprintf(color, sizeof(color), "yellow");
+        } else if (node->grad) {
+            if (llama_graph_find(gf, node)) {
+                snprintf(color, sizeof(color), "green");
+            } else {
+                snprintf(color, sizeof(color), "lightblue");
+            }
+        } else {
+            snprintf(color, sizeof(color), "white");
+        }
+
+        fprintf(fp, "  \"%p\" [ "
+                    "style = filled; fillcolor = %s; shape = record; "
+                    "label=\"",
+                (void *) node, color);
+
+        if (strlen(node->name) > 0) {
+            fprintf(fp, "%s (%s)|", node->name, ggml_type_name(node->type));
+        } else {
+            fprintf(fp, "(%s)|", ggml_type_name(node->type));
+        }
+
+        if (ggml_is_matrix(node)) {
+            fprintf(fp, "%d [%" PRId64 ", %" PRId64 "] | <x>%s", i, node->ne[0], node->ne[1], ggml_op_symbol(node->op));
+        } else {
+            fprintf(fp, "%d [%" PRId64 ", %" PRId64 ", %" PRId64 "] | <x>%s", i, node->ne[0], node->ne[1], node->ne[2], ggml_op_symbol(node->op));
+        }
+
+        if (node->grad) {
+            fprintf(fp, " | <g>%s\"; ]\n", ggml_op_symbol(node->grad->op));
+        } else {
+            fprintf(fp, "\"; ]\n");
+        }
+
+        nodes_visited.push_back(node);
+        // stop once this node is hit (after one pass through all 32 layers)
+        if (strstr(node->name, "norm-1")) { printf("%s: Found the break\n", __func__); break; }
+
+    }
+
+    for (int i = 0; i < gb->n_leafs; i++) {
+        struct ggml_tensor * node = gb->leafs[i];
+
+        if ((strstr(node->name, "blk.0.attn_qkv.weight") == NULL) &&
+            (strstr(node->name, "blk.0.attn_output.weight") == NULL) &&
+            (strstr(node->name, "blk.0.attn_norm.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_norm.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_up.weight") == NULL) &&
+            (strstr(node->name, "blk.0.ffn_down.weight") == NULL)) { 
+            // limit to just the number of leaf nodes that mattered
+            continue; 
+        }
+        nodes_visited.push_back(node);
+
+        snprintf(color, sizeof(color), "pink");
+
+        fprintf(fp, "  \"%p\" [ "
+                    "style = filled; fillcolor = %s; shape = record; "
+                    "label=\"<x>",
+                (void *) node, color);
+
+        if (strlen(node->name) > 0) {
+            fprintf(fp, "%s (%s)|", node->name, ggml_type_name(node->type));
+        } else {
+            fprintf(fp, "(%s)|", ggml_type_name(node->type));
+        }
+
+        fprintf(fp, "CONST %d [%" PRId64 ", %" PRId64 "]", i, node->ne[0], node->ne[1]);
+        if (ggml_nelements(node) < 5) {
+            fprintf(fp, " | (");
+            for (int j = 0; j < ggml_nelements(node); j++) {
+                if (node->type == GGML_TYPE_I8 || node->type == GGML_TYPE_I16 || node->type == GGML_TYPE_I32) {
+                    fprintf(fp, "%d", ggml_get_i32_1d(node, j));
+                }
+                else if (node->type == GGML_TYPE_F32 ||
+                         node->type == GGML_TYPE_F16 ||
+                         node->type == GGML_TYPE_BF16) {
+                    fprintf(fp, "%.1e", (double)ggml_get_f32_1d(node, j));
+                }
+                else {
+                    fprintf(fp, "#");
+                }
+                if (j < ggml_nelements(node) - 1) {
+                    fprintf(fp, ", ");
+                }
+            }
+            fprintf(fp, ")");
+        }
+        fprintf(fp, "\"; ]\n");
+    }
+
+    for (int i = 0; i < gb->n_nodes; i++) {
+        struct ggml_tensor * node = gb->nodes[i];
+
+        for (int j = 0; j < GGML_MAX_SRC; j++) {
+            if (node->src[j]) {
+                char label[16];
+                snprintf(label, sizeof(label), "src %d", j);
+                if ((std::find(nodes_visited.begin(), nodes_visited.end(), node) != nodes_visited.end()) &&
+                    (std::find(nodes_visited.begin(), nodes_visited.end(), node->src[j]) != nodes_visited.end())) {
+                    llama_graph_dump_dot_node_edge(fp, gb, node, node->src[j], label);
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < gb->n_leafs; i++) {
+        struct ggml_tensor * node = gb->leafs[i];
+
+        for (int j = 0; j < GGML_MAX_SRC; j++) {
+            if (node->src[j]) {
+                char label[16];
+                snprintf(label, sizeof(label), "src %d", j);
+                if ((std::find(nodes_visited.begin(), nodes_visited.end(), node) != nodes_visited.end()) &&
+                    (std::find(nodes_visited.begin(), nodes_visited.end(), node->src[j]) != nodes_visited.end())) {
+                    llama_graph_dump_dot_leaf_edge(fp, node, node->src[j], label);
+                }
+            }
+        }
+    }
+
+    fprintf(fp, "}\n");
+
+    fclose(fp);
+}
+
 struct llama_context * llama_new_context_with_model(
                  struct llama_model * model,
         struct llama_context_params   params) {
@@ -19263,6 +19486,34 @@ struct llama_context * llama_new_context_with_model(
             llama_token token = llama_token_bos(&ctx->model); // not actually used by llama_build_graph, but required to choose between token and embedding inputs graph
             ggml_cgraph * gf = llama_build_graph(*ctx, llama_batch_get_one(&token, n_tokens, n_past, 0), true);
 
+#if 0 // Xbox Investigate
+            printf("==== Worst-case graph (%s) ====", __func__);
+            size_t mem_total = 0;
+            size_t mem_max = 0;
+            for (size_t i = 0; i < gf->n_nodes; i++) {
+                ggml_tensor* node = gf->nodes[i];
+                size_t cur = 0;
+                if (!(node->view_src || node->data)) {
+                    cur = ggml_nbytes(node);
+                    mem_total += cur;
+                    if (cur > 0) {
+                        printf("222Node: name=%s, op=%s, type=%s, mem=%.2f MiB\n", node->name, ggml_op_name(node->op), ggml_type_name(node->type), float(cur) / 1024 / 1024);
+                        mem_max = std::max(mem_max, cur);
+                        if (node->op == GGML_OP_MUL_MAT) {
+                            printf("A(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[0]->type), node->src[0]->ne[3], node->src[0]->ne[2], node->src[0]->ne[1], node->src[0]->ne[0]);
+                            printf("B(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->src[1]->type), node->src[1]->ne[3], node->src[1]->ne[2], node->src[1]->ne[1], node->src[1]->ne[0]);
+                            printf("C(%s): [%llu, %llu, %llu, %llu]\n", ggml_type_name(node->type), node->ne[3], node->ne[2], node->ne[1], node->ne[0]);
+                        }
+                    }
+                }
+                else {
+                    printf("111Node: name=%s, op=%s\n", node->name, ggml_op_name(node->op));
+                }
+            }
+            printf("Total: mem=%8.2f MiB\n", mem_total / 1024.0 / 1024.0);
+            printf("Max: mem=%8.2f MiB\n", mem_max / 1024.0 / 1024.0);
+#endif
+
             // initialize scheduler with the worst-case graph
             if (!ggml_backend_sched_reserve(ctx->sched, gf)) {
                 LLAMA_LOG_ERROR("%s: failed to allocate compute buffers\n", __func__);
@@ -19285,6 +19536,11 @@ struct llama_context * llama_new_context_with_model(
             int n_splits = ggml_backend_sched_get_n_splits(ctx->sched);
             LLAMA_LOG_INFO("%s: graph nodes  = %d\n", __func__, gf->n_nodes);
             LLAMA_LOG_INFO("%s: graph splits = %d\n", __func__, n_splits);
+
+#if 0
+            printf("%s: Plot compute graph\n", __func__);
+            llama_graph_dump_dot(gf, NULL, "phi3.dot");
+#endif
         }
     }
 
