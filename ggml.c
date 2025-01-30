@@ -1299,25 +1299,6 @@ do {                                                              \
     max = _mm_cvtss_f32(t2);                                      \
 } while (0)
 
-#define GGML_F32x8_REDUCE512_MAX(max, x)                          \
-do {                                                              \
-    int offset = GGML_F32_ARR >> 1;                               \
-    for (int64_t i = 0; i < offset; ++i) {                        \
-        x[i] = _mm512_max_ps(x[i], x[offset+i]);                  \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int64_t i = 0; i < offset; ++i) {                        \
-        x[i] = _mm512_max_ps(x[i], x[offset+i]);                  \
-    }                                                             \
-    const __m256 tx = _mm256_max_ps(_mm512_castps512_ps256(x[0]), \
-                                    _mm512_extractf32x8_ps(x[0], 1)); \
-    const __m128 t0 = _mm_max_ps(_mm256_castps256_ps128(tx),     \
-                                 _mm256_extractf128_ps(tx, 1));  \
-    const __m128 t1 = _mm_max_ps(t0, _mm_movehl_ps(t0, t0));     \
-    const __m128 t2 = _mm_max_ss(t1, _mm_movehdup_ps(t1));       \
-    max = _mm_cvtss_f32(t2);                                     \
-} while (0)
-
 #define GGML_F32_VEC        GGML_F32x8
 #define GGML_F32_VEC128     GGML_F32x4
 #define GGML_F32_VEC_MAX    GGML_F32x8_MAX
@@ -1335,7 +1316,6 @@ do {                                                              \
 #define GGML_F32_VEC_XOR    GGML_F32x8_XOR 
 #define GGML_F32_VEC_REDUCE GGML_F32x8_REDUCE
 #define GGML_F32_VEC_REDUCE_MAX GGML_F32x8_REDUCE_MAX
-#define GGML_F32_VEC_REDUCE512_MAX GGML_F32x8_REDUCE512_MAX
 
 #ifdef __AVX512F__
 #define GGML_F32_STEP16 64
@@ -1352,14 +1332,9 @@ do {                                                              \
 
 #define GGML_F32_VEC_REDUCE512(res, x)                            \
 do {                                                              \
-    int offset = GGML_F32_ARR >> 1;                               \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = _mm512_add_ps(x[i], x[offset+i]);                  \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = _mm512_add_ps(x[i], x[offset+i]);                  \
-    }                                                             \
+    x[0] = _mm512_add_ps(x[0], x[1]);                             \
+    x[2] = _mm512_add_ps(x[2], x[3]);                             \
+    x[0] = _mm512_add_ps(x[0], x[2]);                             \
     const __m256 t0 = _mm256_add_ps(_mm512_castps512_ps256(x[0]), \
                                     _mm512_extractf32x8_ps(x[0], 1)); \
     const __m128 t1 = _mm_add_ps(_mm256_castps256_ps128(t0),      \
@@ -1367,6 +1342,15 @@ do {                                                              \
     const __m128 t2 = _mm_hadd_ps(t1, t1);                        \
     res = _mm_cvtss_f32(_mm_hadd_ps(t2, t2));                     \
 } while (0)
+
+#define GGML_F32_VEC_REDUCE512_MAX(max, x)                        \
+do {                                                              \
+    x[0] = _mm512_max_ps(x[0], x[1]);                             \
+    x[2] = _mm512_max_ps(x[2], x[3]);                             \
+    x[0] = _mm512_max_ps(x[0], x[2]);                             \
+    max = _mm512_reduce_max_ps(x[0]);                             \
+} while (0)
+
 #endif // __AVX512F__
 
 // F16 AVX
@@ -3125,7 +3109,7 @@ void ggml_vec_normsq_f32(const uint64_t n, float * s, const float mean, float * 
             sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]);
         }
 
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
 
         GGML_F32_VEC_REDUCE512(sumf, sum); 
     }
@@ -3242,7 +3226,7 @@ void ggml_vec_sum_f32(const uint64_t n, float * s, const float * x) {
             sum[0] = _mm512_add_ps(ax[0], sum[0]); 
         }
     
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
 
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
@@ -3284,7 +3268,7 @@ void ggml_vec_sum_f32(const uint64_t n, float * s, const float * x) {
             sum[0] = GGML_F32_VEC_ADD(ax[0], sum[0]); 
         }
     
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
 
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
@@ -3342,7 +3326,7 @@ void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
             sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]); 
         }
     
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
 
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
@@ -3384,7 +3368,7 @@ void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
             sum[0] = GGML_F32_VEC_FMA(sum[0], ax[0], ax[0]);
         }
 
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
 
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
@@ -3458,7 +3442,7 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
             } while (i < xn);
         }
 
-        // reduce sum0..sum3 to sum0
+        // reduce sum0..sum3 to sumf
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
 
@@ -3922,7 +3906,7 @@ void ggml_vec_dot_bf16_f32(const int n, float * restrict s, size_t bs, const ggm
     *s = sumf;
 }
 
-void ggml_vec_dot_f16_f32(const int64_t n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -4631,12 +4615,13 @@ inline static float32x4_t ggml_v_silu(float32x4_t x) {
     return vdivq_f32(x, one_plus_exp_neg_x);
 }
 
-#elif defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
 
 // adapted from arm limited optimized routine
 // the maximum error is 1.45358 plus 0.5 ulps
 // numbers above 88.38 will flush to infinity
 // numbers beneath -103.97 will flush to zero
+
 inline static __m512 ggml_v_expf(__m512 x) {
   const __m512 r = _mm512_set1_ps(0x1.8p23f);
   const __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
@@ -4665,6 +4650,7 @@ inline static __m512 ggml_v_expf(__m512 x) {
 }
 
 // computes silu x/(1+exp(-x)) in single precision vector
+
 inline static __m512 ggml_v_silu(__m512 x) {
     const __m512 one = _mm512_set1_ps(1);
     const __m512 zero = _mm512_setzero_ps();
@@ -4680,6 +4666,7 @@ inline static __m512 ggml_v_silu(__m512 x) {
 // the maximum error is 1.45358 plus 0.5 ulps
 // numbers above 88.38 will flush to infinity
 // numbers beneath -103.97 will flush to zero
+
 inline static __m256 ggml_v_expf(__m256 x) {
   const __m256 r = _mm256_set1_ps(0x1.8p23f);
   const __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
@@ -4720,6 +4707,7 @@ inline static __m256 ggml_v_expf(__m256 x) {
 }
 
 // computes silu x/(1+exp(-x)) in single precision vector
+
 inline static __m256 ggml_v_silu(__m256 x) {
     const __m256 one = _mm256_set1_ps(1);
     const __m256 zero = _mm256_setzero_ps();
@@ -4729,137 +4717,148 @@ inline static __m256 ggml_v_silu(__m256 x) {
     return _mm256_div_ps(x, one_plus_exp_neg_x);
 }
 
-#elif defined(__SSE2__) // __AVX2__ / __ARM_NEON
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
 
-#if defined(__FMA__)
-#define MADD128(x, y, z) _mm_fmadd_ps(x, y, z)
-#define NMADD128(x, y, z) _mm_fnmadd_ps(x, y, z)
-#else
-#define MADD128(x, y, z) _mm_add_ps(_mm_mul_ps(x, y), z)
-#define NMADD128(x, y, z) _mm_sub_ps(z, _mm_mul_ps(x, y))
-#endif
+void ggml_vec_silu_f32(const int n, float * y, const float * x) {
+    uint64_t nc = n;
+    uint64_t i = 0;
 
-// adapted from arm limited optimized routine
-// the maximum error is 1.45358 plus 0.5 ulps
-// numbers above 88.38 will flush to infinity
-// numbers beneath -103.97 will flush to zero
-inline static __m128 ggml_v_expf(__m128 x) {
-    const __m128 r = _mm_set1_ps(0x1.8p23f);
-    const __m128 z = MADD128(x, _mm_set1_ps(0x1.715476p+0f), r);
-    const __m128 n = _mm_sub_ps(z, r);
-    const __m128 b =
-        NMADD128(n, _mm_set1_ps(0x1.7f7d1cp-20f), NMADD128(n, _mm_set1_ps(0x1.62e4p-1f), x));
-    const __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
-    const __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
-    const __m128i c =
-        _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
-    const __m128 u = _mm_mul_ps(b, b);
-    const __m128 j =
-        MADD128(MADD128(MADD128(_mm_set1_ps(0x1.0e4020p-7f), b, _mm_set1_ps(0x1.573e2ep-5f)), u,
-                        MADD128(_mm_set1_ps(0x1.555e66p-3f), b, _mm_set1_ps(0x1.fffdb6p-2f))),
-                u, _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
-    if (!_mm_movemask_epi8(c))
-        return MADD128(j, k, k);
-    const __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),
-                                    _mm_set1_epi32(0x82000000u));
-    const __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
-    const __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
-    const __m128i d =
-        _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
-    return _mm_or_ps(
-        _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
-        _mm_andnot_ps(_mm_castsi128_ps(d),
-                      _mm_or_ps(_mm_and_ps(_mm_castsi128_ps(c), _mm_mul_ps(MADD128(s2, j, s2), s1)),
-                                _mm_andnot_ps(_mm_castsi128_ps(c), MADD128(k, j, k)))));
-}
+#if defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
 
-// computes silu x/(1+exp(-x)) in single precision vector
-inline static __m128 ggml_v_silu(__m128 x) {
-    const __m128 one = _mm_set1_ps(1);
-    const __m128 zero = _mm_setzero_ps();
-    const __m128 neg_x = _mm_sub_ps(zero, x);
-    const __m128 exp_neg_x = ggml_v_expf(neg_x);
-    const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
-    return _mm_div_ps(x, one_plus_exp_neg_x);
-}
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1)); 
 
-#endif // __ARM_NEON / __AVX2__ / __SSE2__
-
-static void ggml_vec_silu_f32(const int n, float * y, const float * x) {
-    int i = 0;
-#if defined(__AVX512F__) && defined(__AVX512DQ__)
-    for (; i + 15 < n; i += 16) {
-        _mm512_storeu_ps(y + i, ggml_v_silu(_mm512_loadu_ps(x + i)));
+    for (; i < xn; i += GGML_F32_EPR16) {
+        const __m512 ax = _mm512_loadu_ps(x + i);
+        const __m512 ay = ggml_v_silu(ax);
+        _mm512_storeu_ps(y + i, ay);
     }
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
+        do {
+            y[i] = ggml_silu_f32(x[i]);
+            i += 1;
+        } while (i < nc);
+    }
+
 #elif defined(__AVX2__) && defined(__FMA__)
-    for (; i + 7 < n; i += 8) {
-        _mm256_storeu_ps(y + i, ggml_v_silu(_mm256_loadu_ps(x + i)));
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1)); 
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        const __m256 ax = _mm256_loadu_ps(x + i);
+        const __m256 ay = ggml_v_silu(ax);
+        _mm256_storeu_ps(y + i, ay);
     }
-#elif defined(__SSE2__)
-    for (; i + 3 < n; i += 4) {
-        _mm_storeu_ps(y + i, ggml_v_silu(_mm_loadu_ps(x + i)));
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR - 1)) {
+        do {
+            y[i] = ggml_silu_f32(x[i]);
+            i += 1;
+        } while (i < nc);
     }
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    for (; i + 3 < n; i += 4) {
-        vst1q_f32(y + i, ggml_v_silu(vld1q_f32(x + i)));
-    }
-#endif
-    for (; i < n; ++i) {
+
+#else
+
+    for (; i < nc; ++i) {
         y[i] = ggml_silu_f32(x[i]);
     }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
+
 }
 
-static ggml_float ggml_vec_soft_max_f32(const int n, float * y, const float * x, float max) {
-    int i = 0;
-    ggml_float sum = 0;
-#if defined(__AVX512F__) && defined(__AVX512DQ__)
-    for (; i + 15 < n; i += 16) {
-        __m512 val = ggml_v_expf(_mm512_sub_ps(_mm512_loadu_ps(x + i),
-                                               _mm512_set1_ps(max)));
-        _mm512_storeu_ps(y + i, val);
-        sum += (ggml_float)_mm512_reduce_add_ps(val);
+ggml_float ggml_vec_soft_max_f32(const int n, float * y, const float * x, float max) {
+    uint64_t nc = n;
+    uint64_t i = 0;
+    float sumf = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1)); 
+
+    if (xn) {
+        __m512 vmax = _mm512_set1_ps(max);
+        __m512 sum = _mm512_setzero_ps();
+        __m512 val;
+
+        do {
+            val = _mm512_loadu_ps(x + i);
+            val = _mm512_sub_ps(val, vmax);
+            val = ggml_v_expf(val);
+            _mm512_storeu_ps(y + i, val);
+            sum = _mm512_add_ps(sum, val);
+            i += GGML_F32_EPR16;
+        } while (i < xn);
+
+        // reduce sum
+
+        sumf = _mm512_reduce_add_ps(sum);
     }
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
+        do {
+            float val = expf(x[i] - max);
+            y[i] = val;
+            sumf += val;
+            i += 1;
+        } while (i < nc);
+    }
+
 #elif defined(__AVX2__) && defined(__FMA__)
-    for (; i + 7 < n; i += 8) {
-        __m256 val = ggml_v_expf(_mm256_sub_ps(_mm256_loadu_ps(x + i),
-                                               _mm256_set1_ps(max)));
-        _mm256_storeu_ps(y + i, val);
-        __m128 val2 = _mm_add_ps(_mm256_extractf128_ps(val, 1),
-                                 _mm256_castps256_ps128(val));
-        val2 = _mm_add_ps(val2, _mm_movehl_ps(val2, val2));
-        val2 = _mm_add_ss(val2, _mm_movehdup_ps(val2));
-        sum += (ggml_float)_mm_cvtss_f32(val2);
+
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1)); 
+
+    if (xn) {
+        __m256 vmax = _mm256_set1_ps(max);
+        __m256 sum = _mm256_setzero_ps();
+        __m256 val;
+
+        do {
+            val = _mm256_loadu_ps(x + i);
+            val = _mm256_sub_ps(val, vmax);
+            val = ggml_v_expf(val);
+            _mm256_storeu_ps(y + i, val);
+            sum = _mm256_add_ps(sum, val);
+            i += GGML_F32_EPR;
+        } while (i < xn);
+
+        // reduce sum
+
+        const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(sum),
+                                     _mm256_extractf128_ps(sum, 1));
+
+        const __m128 t1 = _mm_hadd_ps(t0, t0);
+        sumf = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
     }
-#elif defined(__SSE2__)
-    for (; i + 3 < n; i += 4) {
-        __m128 val = ggml_v_expf(_mm_sub_ps(_mm_loadu_ps(x + i),
-                                            _mm_set1_ps(max)));
-        _mm_storeu_ps(y + i, val);
-#if defined(__AVX__) || defined(__AVX2__) || defined(__AVX512F__)
-        val = _mm_add_ps(val, _mm_movehl_ps(val, val));
-        val = _mm_add_ss(val, _mm_movehdup_ps(val));
+
+    // leftovers
+
+    if (nc & (GGML_F32_EPR - 1)) {
+        do {
+            float val = expf(x[i] - max);
+            y[i] = val;
+            sumf += val;
+            i += 1;
+        } while (i < nc);
+    }
+
 #else
-        __m128 tmp = _mm_shuffle_ps(val, val, _MM_SHUFFLE(2, 3, 0, 1));
-        val = _mm_add_ps(val, tmp);
-        tmp = _mm_movehl_ps(tmp, val);
-        val = _mm_add_ss(val, tmp);
-#endif
-        sum += (ggml_float)_mm_cvtss_f32(val);
-    }
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    for (; i + 3 < n; i += 4) {
-        float32x4_t val = ggml_v_expf(vsubq_f32(vld1q_f32(x + i),
-                                                vdupq_n_f32(max)));
-        vst1q_f32(y + i, val);
-        sum += (ggml_float)vaddvq_f32(val);
-    }
-#endif
-    for (; i < n; ++i) {
+
+    for (; i < nc; ++i) {
         float val = expf(x[i] - max);
-        sum += (ggml_float)val;
         y[i] = val;
+        sumf += val;
     }
-    return sum;
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
+
+    return (ggml_float)sumf;
 }
 
 inline static float ggml_silu_backward_f32(float x, float dy) {
@@ -4897,20 +4896,21 @@ inline static void ggml_vec_sum_bf16_ggf(const int n, float * s, const ggml_bf16
     *s = sum;
 }
 
-void ggml_vec_max_f32(const uint64_t n, float * s, const float * x) {
+void ggml_vec_max_f32(const uint32_t n, float * s, const float * x) {
 
+    uint64_t nc = n;
+    uint64_t i = 0;
     float max = -INFINITY;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    uint64_t i = 0;
-    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1)); 
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1)); 
 
     if (xn) {
         __m512 maxvx[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
 
-        const uint64_t np = (n &~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (nc &~(GGML_F32_STEP16 - 1));
 
         maxvx[0] = _mm512_set1_ps(max);
         maxvx[1] = _mm512_set1_ps(max);
@@ -4936,23 +4936,22 @@ void ggml_vec_max_f32(const uint64_t n, float * s, const float * x) {
 
     // leftovers
 
-    if (n & (GGML_F32_EPR16 - 1)) {
+    if (nc & (GGML_F32_EPR16 - 1)) {
         do {
             max = MAX(max, x[i]);
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #elif defined(__AVX2__)
 
-    uint64_t i = 0;
-    const uint64_t xn = (n & ~(GGML_F32_EPR - 1)); 
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1)); 
 
     if (xn) {
         GGML_F32_VEC maxvx[GGML_F32_ARR];
         GGML_F32_VEC ax[GGML_F32_ARR];
 
-        const uint64_t np = (n &~(GGML_F32_STEP - 1));
+        const uint64_t np = (nc &~(GGML_F32_STEP - 1));
 
         maxvx[0] = _mm256_set1_ps(max);
         maxvx[1] = _mm256_set1_ps(max);
@@ -4978,16 +4977,16 @@ void ggml_vec_max_f32(const uint64_t n, float * s, const float * x) {
 
     // leftovers
 
-    if (n & (GGML_F32_EPR - 1)) {
+    if (nc & (GGML_F32_EPR - 1)) {
         do {
             max = MAX(max, x[i]);
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #else
 
-    for (uint64_t i = 0; i < n; ++i) {
+    for (; i < nc; ++i) {
         max = MAX(max, x[i]);
     }
 
@@ -5518,8 +5517,6 @@ static_assert(sizeof(struct ggml_tensor)%GGML_MEM_ALIGN == 0, "ggml_tensor size 
 //      barriers are set up by the compute dispatcher for synchronizing this computation.
 //
 
-static int8_t GGML_OP_IS_SKIPPED[GGML_OP_COUNT] = { 0 };
-
 static void ggml_setup_op_has_task_pass(void) {
 /*
     {   // INIT
@@ -5549,15 +5546,6 @@ static void ggml_setup_op_has_task_pass(void) {
     }
 */
 
-    {   // SKIPPED
-        int8_t * p = GGML_OP_IS_SKIPPED;
-
-        p[GGML_OP_NONE] = true;
-        p[GGML_OP_RESHAPE] = true;
-        p[GGML_OP_VIEW] = true;
-        p[GGML_OP_PERMUTE] = true;
-        p[GGML_OP_TRANSPOSE] = true; 
-    }
 }
 
 //
@@ -7994,7 +7982,7 @@ struct ggml_tensor * ggml_mul_mat(
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
     result->op = GGML_OP_MUL_MAT;
-    result->is_empty = ggml_is_empty(result);
+    result->is_skipped = ggml_is_empty(result);
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
     result->src[1] = b;
@@ -8051,7 +8039,7 @@ struct ggml_tensor * ggml_mul_mat_id(
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
     result->op = GGML_OP_MUL_MAT_ID;
-    result->is_empty = ggml_is_empty(result);
+    result->is_skipped = ggml_is_empty(result);
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = as;
     result->src[1] = b;
@@ -8377,6 +8365,7 @@ struct ggml_tensor * ggml_reshape(
     ggml_format_name(result, "%s (reshaped)", a->name);
 
     result->op   = GGML_OP_RESHAPE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8401,6 +8390,7 @@ struct ggml_tensor * ggml_reshape_1d(
     ggml_format_name(result, "%s (reshaped)", a->name);
 
     result->op   = GGML_OP_RESHAPE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8426,6 +8416,7 @@ struct ggml_tensor * ggml_reshape_2d(
     ggml_format_name(result, "%s (reshaped)", a->name);
 
     result->op   = GGML_OP_RESHAPE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8452,6 +8443,7 @@ struct ggml_tensor * ggml_reshape_3d(
     ggml_format_name(result, "%s (reshaped)", a->name);
 
     result->op   = GGML_OP_RESHAPE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8479,6 +8471,7 @@ struct ggml_tensor * ggml_reshape_4d(
     ggml_format_name(result, "%s (reshaped)", a->name);
 
     result->op   = GGML_OP_RESHAPE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8504,6 +8497,7 @@ static struct ggml_tensor * ggml_view_impl(
     ggml_set_op_params(result, &offset, sizeof(offset));
 
     result->op   = GGML_OP_VIEW;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8646,6 +8640,7 @@ struct ggml_tensor * ggml_permute(
     result->nb[3] = nb[3];
 
     result->op   = GGML_OP_PERMUTE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -8676,6 +8671,7 @@ struct ggml_tensor * ggml_transpose(
     result->nb[1] = a->nb[0];
 
     result->op   = GGML_OP_TRANSPOSE;
+    result->is_skipped = true;
     result->grad = is_node ? ggml_dup_tensor(ctx, result) : NULL;
     result->src[0] = a;
 
@@ -14475,6 +14471,12 @@ void ggml_compute_forward_norm_f32(
         return;
     }
 
+    // parallelize across src0 rows
+
+    const int dr = (ne01 + nth - 1) / nth;
+    const int ir0 = dr * ith;
+    const int ir1 = MIN(ir0 + dr, ne01);
+
     const float recip = 1.0f / (float)ne00;
     float eps;
     memcpy(&eps, dst->op_params, sizeof(float));
@@ -14483,7 +14485,7 @@ void ggml_compute_forward_norm_f32(
 
     for (int64_t i03 = 0; i03 < ne03; i03++) {
         for (int64_t i02 = 0; i02 < ne02; i02++) {
-            for (int64_t i01 = ith; i01 < ne01; i01 += nth) {
+            for (int64_t i01 = ir0; i01 < ir1; i01 += 1) {
                 const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
                 float sum;
 
@@ -14542,6 +14544,12 @@ static void ggml_compute_forward_rms_norm_f32(
         return;
     }
 
+    // parallelize across src0 rows
+
+    const int dr = (ne01 + nth - 1) / nth;
+    const int ir0 = dr * ith;
+    const int ir1 = MIN(ir0 + dr, ne01);
+
     const float recip = 1.0f / (float)ne00; 
     float eps;
     memcpy(&eps, dst->op_params, sizeof(float));
@@ -14550,7 +14558,7 @@ static void ggml_compute_forward_rms_norm_f32(
 
     for (int64_t i03 = 0; i03 < ne03; i03++) {
         for (int64_t i02 = 0; i02 < ne02; i02++) {
-            for (int64_t i01 = ith; i01 < ne01; i01 += nth) {
+            for (int64_t i01 = ir0; i01 < ir1; i01 += 1) {
                 const float * x = (float *) ((char *) src0->data + i01*nb01 + i02*nb02 + i03*nb03);
                 float * y = (float *) ((char *) dst->data + i01*nb1 + i02*nb2 + i03*nb3);
                 ggml_vec_cpy_f32(ne00, y, x); 
@@ -16750,9 +16758,14 @@ void ggml_compute_forward_soft_max_f32(
                     wp[i] += slope*GGML_FP16_TO_FP32(mp_f16[i]);
                 }
             } else {
+                ggml_vec_mad_f32(nc, wp, mp_f32, slope);
+
+#if 0
                 for (int i = 0; i < nc; ++i) {
                     wp[i] += slope*mp_f32[i];
                 }
+#endif // #if 0
+
             }
         }
 
@@ -21903,7 +21916,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         // N.B. All nop'ed tensors have no side effects.
         //
 
-        if (GGML_OP_IS_SKIPPED[op] | node->is_empty) {
+        if (node->is_skipped) {
             continue;
         }
 
@@ -22311,7 +22324,9 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     int n_threads = cplan->n_threads;
 
 #if !defined(__clang__) && defined(GGML_USE_OPENMP) // CLang does not have OPENMP support
-    n_threads = MIN(n_threads, omp_get_max_threads());
+    if (ggml_use_omp) {
+        n_threads = MIN(n_threads, omp_get_max_threads());
+    }
 #endif
 
     struct ggml_compute_state_shared state_shared = {

@@ -652,7 +652,7 @@ extern "C" {
 
         struct {
             int n_tasks : 16;
-            int is_empty : 8;
+            int is_skipped : 8;
             int reserved : 8;
         };
 

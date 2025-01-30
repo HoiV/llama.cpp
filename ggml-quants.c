@@ -836,32 +836,6 @@ void quantize_row_q5_1(const float * restrict x, void * restrict y, int64_t k) {
     quantize_row_q5_1_reference(x, y, k);
 }
 
-// reference implementation for deterministic creation of model files
-void quantize_row_q8_0_reference(const float * restrict x, block_q8_0 * restrict y, int64_t k) {
-    assert(k % QK8_0 == 0);
-    const int nb = k / QK8_0;
-
-    for (int i = 0; i < nb; i++) {
-        float amax = 0.0f; // absolute max
-
-        for (int j = 0; j < QK8_0; j++) {
-            const float v = x[i*QK8_0 + j];
-            amax = MAX(amax, fabsf(v));
-        }
-
-        const float d = amax / ((1 << 7) - 1);
-        const float id = d ? 1.0f/d : 0.0f;
-
-        y[i].d = GGML_FP32_TO_FP16(d);
-
-        for (int j = 0; j < QK8_0; ++j) {
-            const float x0 = x[i*QK8_0 + j]*id;
-
-            y[i].qs[j] = roundf(x0);
-        }
-    }
-}
-
 void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) {
     uint64_t qk = QK8_0;
 
@@ -4394,24 +4368,21 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
+    const __m128i one = _mm_set1_epi8(1);
+    const __m128i zero128i = _mm_setzero_si128();
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
-    const __m512i perm = _mm512_setr_epi32(0, 4, 8, 12, 1, 5, 9, 13,
-                                           2, 6, 10, 14, 3, 7, 11, 15);
 
     for (uint64_t i = 0; i < nb; i++) {
-        __m512 ax;
-        __m512 maxvx = _mm512_setzero_ps();
+        __m512 ax = _mm512_loadu_ps(x);
+        __m512 maxvx = _mm512_andnot_ps(sign_bit, ax);
 
-        for (uint64_t j = 0; j < QK_K / 64; ++j) {
-            for (uint64_t l = 0; l < 4; l++) {
-                ax = _mm512_loadu_ps(x + (j * 64) + (l * 16));
-                maxvx = _mm512_max_ps(maxvx, _mm512_andnot_ps(sign_bit, ax));
-            }
+        for (uint64_t j = 16; j < QK_K; j += 16) {
+            ax = _mm512_loadu_ps(x + j);
+            maxvx = _mm512_max_ps(maxvx, _mm512_andnot_ps(sign_bit, ax));
         }
 
         __m256 t0 = _mm256_max_ps(_mm512_castps512_ps256(maxvx),
                                   _mm512_extractf32x8_ps(maxvx, 1));
-
 
         __m128 t1 = _mm_max_ps(_mm256_castps256_ps128(t0),
                                _mm256_extractf128_ps(t0, 1));
@@ -4436,28 +4407,49 @@ void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_
         int8_t * q8 = y[i].qs;
 
         for (int l = 0; l < QK_K / 64; l += 1) {
-            __m512 xv[4];
-            __m512i xvi[4];
+            __m512 xv0 = _mm512_loadu_ps(x + (l * 64) + 0);
+            xv0 = _mm512_mul_ps(xscale, xv0);
+//              xv0 = _mm512_round_ps(xv0, _MM_ROUND_NEAREST);
+            const __m128i v0 = _mm512_cvtepi32_epi8(_mm512_cvtps_epi32(xv0));
 
-            for (uint64_t j = 0; j < 4; j += 1) {
-                xv[j] = _mm512_loadu_ps(x + (j * 16) + (l * 64));
-                xv[j] = _mm512_mul_ps(xscale, xv[j]);
-//                xv[j] = _mm512_round_ps(xv[j], _MM_ROUND_NEAREST);
-                xvi[j] = _mm512_cvtps_epi32(xv[j]);
-            }
+            __m128i v0sum = _mm_dpbusd_epi32(zero128i, one, v0);
+            v0sum = _mm_hadd_epi32(v0sum, v0sum);
+            y[i].bsums[(l * 4) + 0] = _mm_cvtsi128_si32(_mm_hadd_epi32(v0sum, v0sum));
 
-            y[i].bsums[(l * 4) + 0] = hsum_i32_16(xvi[0]);
-            y[i].bsums[(l * 4) + 1] = hsum_i32_16(xvi[1]);
+            _mm_storeu_si128((__m128i *)(q8 + (l * 64) + 0), v0);
 
-            y[i].bsums[(l * 4) + 2] = hsum_i32_16(xvi[2]);
-            y[i].bsums[(l * 4) + 3] = hsum_i32_16(xvi[3]);
+            __m512 xv1 = _mm512_loadu_ps(x + (l * 64) + 16);
+            xv1 = _mm512_mul_ps(xscale, xv1);
+//              xv1 = _mm512_round_ps(xv1, _MM_ROUND_NEAREST);
+            const __m128i v1 = _mm512_cvtepi32_epi8(_mm512_cvtps_epi32(xv1));
 
-            xvi[0] = _mm512_packs_epi32(xvi[0], xvi[1]);
-            xvi[2] = _mm512_packs_epi32(xvi[2], xvi[3]);
-            xvi[0] = _mm512_packs_epi16(xvi[0], xvi[2]);
-            xvi[0] = _mm512_permutevar_epi32(perm, xvi[0]);
+            __m128i v1sum = _mm_dpbusd_epi32(zero128i, one, v1);
+            v1sum = _mm_hadd_epi32(v1sum, v1sum);
+            y[i].bsums[(l * 4) + 1] = _mm_cvtsi128_si32(_mm_hadd_epi32(v1sum, v1sum));
 
-            _mm512_storeu_si512((__m512i *)(q8 + (l * 64)), xvi[0]);
+            _mm_storeu_si128((__m128i *)(q8 + (l * 64) + 16), v1);
+
+            __m512 xv2 = _mm512_loadu_ps(x + (l * 64) + 32);
+            xv2 = _mm512_mul_ps(xscale, xv2);
+//              xv2 = _mm512_round_ps(xv2, _MM_ROUND_NEAREST);
+            const __m128i v2 = _mm512_cvtepi32_epi8(_mm512_cvtps_epi32(xv2));
+
+            __m128i v2sum = _mm_dpbusd_epi32(zero128i, one, v2);
+            v2sum = _mm_hadd_epi32(v2sum, v2sum);
+            y[i].bsums[(l * 4) + 2] = _mm_cvtsi128_si32(_mm_hadd_epi32(v2sum, v2sum));
+
+            _mm_storeu_si128((__m128i *)(q8 + (l * 64) + 32), v2);
+
+            __m512 xv3 = _mm512_loadu_ps(x + (l * 64) + 48);
+            xv3 = _mm512_mul_ps(xscale, xv3);
+//              xv3 = _mm512_round_ps(xv3, _MM_ROUND_NEAREST);
+            const __m128i v3 = _mm512_cvtepi32_epi8(_mm512_cvtps_epi32(xv3));
+
+            __m128i v3sum = _mm_dpbusd_epi32(zero128i, one, v3);
+            v3sum = _mm_hadd_epi32(v3sum, v3sum);
+            y[i].bsums[(l * 4) + 3] = _mm_cvtsi128_si32(_mm_hadd_epi32(v3sum, v3sum));
+
+            _mm_storeu_si128((__m128i *)(q8 + (l * 64) + 48), v3);
         }
 
         x += 256;
@@ -4728,7 +4720,7 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     const block_q8_0 * restrict y = vy;
 
 #if (defined(__AVX2__) || defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
-// #if defined(__AVX2__) || defined(__AVX512__) // original code
+// #if defined(__AVX2__) || defined(__AVX512F__) // original code
 
     __m256 acc = _mm256_setzero_ps();
     __m256i zero256 = _mm256_setzero_si256();
@@ -5922,11 +5914,9 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 #if (defined(__AVX2__) || defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
 // #if defined(__AVX2__) || defined(__AVX512F__) // original code for both AVX2 and AVX512
 
-    // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
     __m256i zero256 = _mm256_setzero_si256();
 
-    // Main loop
     for (uint64_t i = 0; i < nb; ++i) {
 
         //
@@ -5940,13 +5930,13 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
 
         //
-        // Get the absolute values of qx
+        // Get the absolute values of qx.
         //
 
         const __m256i ax = _mm256_sign_epi8(qx, qx);
 
         //
-        // Get the signed values of qy
+        // Get the signed values of qy.
         //
 
         const __m256i sy = _mm256_sign_epi8(qy, qx);
@@ -5961,7 +5951,7 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         const __m256 q = _mm256_cvtepi32_ps(summed_pairs);
 
         //
-        // Multiply q with scale and accumulate
+        // Multiply q with scale and accumulate.
         //
 
         acc = _mm256_fmadd_ps(d, q, acc);
@@ -6059,9 +6049,6 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
     __m512 acc = _mm512_setzero_ps();
 
-    const __m512 zero512 = _mm512_setzero_ps();
-    const __m512i zero512i = _mm512_setzero_si512();
-
     const __m512i idx0 = _mm512_loadu_si512((__m512i *)&perm0);
     const __m512i idx1 = _mm512_loadu_si512((__m512i *)&perm1);
     const __m512i idx2 = _mm512_loadu_si512((__m512i *)&perm2);
@@ -6084,15 +6071,13 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         const __m128i scales8 = _mm_and_si128(mins_and_scales, m4);
         const __m128i mins8 = _mm_and_si128(_mm_srli_epi16(mins_and_scales, 4), m4);
 
-        const __m256i scales16 = _mm256_cvtepi8_epi16(scales8);
+        const __m512i scales_all = _mm512_castsi256_si512(_mm256_cvtepi8_epi16(scales8));
         const __m256i mins = _mm256_cvtepi8_epi16(mins8);
-
-        const __m512i scales_all = _mm512_inserti32x8(zero512i, scales16, 0);
 
         const __m256i prod = _mm256_madd_epi16(mins, bsums);
 
         const __m256 acc_mins = _mm256_mul_ps(bdmin_ss, _mm256_cvtepi32_ps(prod));
-        acc = _mm512_add_ps(acc, _mm512_insertf32x8(zero512, acc_mins, 0));
+        acc = _mm512_add_ps(acc, _mm512_castps256_ps512(acc_mins));
 
         const __m256i q8_0_low = _mm256_loadu_si256((const __m256i*)(q8 + 0));
         const __m256i q8_1_low = _mm256_loadu_si256((const __m256i*)(q8 + 32));
@@ -6109,10 +6094,10 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
         const __m256i q8_2_high = _mm256_loadu_si256((const __m256i*)(q8 + 192));
         const __m256i q8_3_high = _mm256_loadu_si256((const __m256i*)(q8 + 224));
 
-        __m512i q8_0 = _mm512_inserti64x4(zero512i, q8_0_low, 0);
-        __m512i q8_1 = _mm512_inserti64x4(zero512i, q8_1_low, 0);
-        __m512i q8_2 = _mm512_inserti64x4(zero512i, q8_2_low, 0);
-        __m512i q8_3 = _mm512_inserti64x4(zero512i, q8_3_low, 0);
+        __m512i q8_0 = _mm512_castsi256_si512(q8_0_low);
+        __m512i q8_1 = _mm512_castsi256_si512(q8_1_low);
+        __m512i q8_2 = _mm512_castsi256_si512(q8_2_low);
+        __m512i q8_3 = _mm512_castsi256_si512(q8_3_low);
 
         q8_0 = _mm512_inserti64x4(q8_0, q8_0_high, 1);
         q8_1 = _mm512_inserti64x4(q8_1, q8_1_high, 1);
@@ -6696,7 +6681,74 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
 
     uint32_t utmp[4];
 
-#if defined(__AVX2__) 
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    static const uint16_t k_perm[4][32] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    };
+
+    static const uint32_t kmask4 = 0xc0c0c0c0;
+
+    __m512 acc = _mm512_setzero_ps();
+    const __m512i m4 = _mm512_set1_epi8(0xf);
+    const __m512 zero512 = _mm512_setzero_ps();
+
+    for (int i = 0; i < nb; ++i) {
+
+        const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
+        const float dmin = -y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+
+        const uint32_t * vscales = (uint32_t *)x[i].scales;
+        utmp[3] = ((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2);
+        utmp[2] = vscales[1] & kmask1;
+        utmp[1] = (vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2);
+        utmp[0] = vscales[0] & kmask1;
+
+        const uint8_t * restrict q4 = x[i].qs;
+        const int8_t  * restrict q8 = y[i].qs;
+
+        const __m256i mins_and_scales = _mm256_cvtepu8_epi16(_mm_set_epi32(utmp[3], utmp[2], utmp[1], utmp[0]));
+        const __m512i scales = _mm512_castsi256_si512(mins_and_scales);
+
+        const __m256i q8sums = _mm256_loadu_si256((const __m256i*)y[i].bsums);
+        const __m128i q8s = _mm_hadd_epi16(_mm256_castsi256_si128(q8sums),
+                                           _mm256_extracti128_si256(q8sums, 1));
+
+        const __m128i prod = _mm_madd_epi16(_mm256_extracti128_si256(mins_and_scales, 1), q8s);
+
+        const __m128 prod_m = _mm_mul_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod));
+        acc = _mm512_add_ps(acc, _mm512_insertf32x4(zero512, prod_m, 0));
+
+        __m512i sumi = _mm512_setzero_si512();
+
+        for (int j = 0; j < QK_K/64; ++j) {
+            const __m256i q4bits = _mm256_loadu_si256((const __m256i*)(q4 + (j * 32)));
+            const __m512i q8v = _mm512_loadu_si512(q8 + (j * 64));
+            const __m512i idx = _mm512_loadu_si512(&k_perm[j][0]);
+
+            __m512i q4v = _mm512_castsi256_si512(q4bits);
+            q4v = _mm512_inserti32x8(q4v, _mm256_srli_epi16(q4bits, 4), 1);
+            q4v = _mm512_and_si512(q4v, m4);
+
+            __m512i p32v = _mm512_maddubs_epi16(q4v, q8v);
+
+            const __m512i scale = _mm512_permutexvar_epi16(idx, scales);
+            p32v = _mm512_madd_epi16(scale, p32v);
+            sumi = _mm512_add_epi32(sumi, p32v);
+        }
+
+        acc = _mm512_fmadd_ps(_mm512_set1_ps(d), _mm512_cvtepi32_ps(sumi), acc);
+    }
+
+    const __m256 t0 = _mm256_add_ps(_mm512_castps512_ps256(acc),
+                                    _mm512_extractf32x8_ps(acc, 1));
+
+    *s = hsum_float_8(t0);
+
+#elif defined(__AVX2__) 
 
     static const uint16_t k_perm[8][16] = {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -6891,7 +6943,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * r
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     *s = sumf;
 
-#endif // defined(__AVX2__)
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
 }
 
