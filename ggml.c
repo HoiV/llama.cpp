@@ -61,11 +61,11 @@ int ggml_sve_cnt_b = 0;
 #pragma warning(disable: 4996)
 #endif
 
+#if defined(_WIN32)
+
 #ifndef __AVX512BF16__
 #define __AVX512BF16__
 #endif // __AVX512BF16__
-
-#if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -314,7 +314,8 @@ inline static void * ggml_calloc(size_t num, size_t size) {
 #endif
 
 // floating point type used to accumulate sums
-typedef double ggml_float;
+//typedef double ggml_float;
+typedef float ggml_float; // ****** consider changing to float
 
 #undef MIN
 #undef MAX
@@ -3109,7 +3110,7 @@ void ggml_vec_normsq_f32(const uint64_t n, float * s, const float mean, float * 
             sum[0] = _mm512_fmadd_ps(ax[0], ax[0], sum[0]);
         }
 
-        // reduce sum0..sum3 to sumf
+        // reduce sum0..sum3 to sum0
 
         GGML_F32_VEC_REDUCE512(sumf, sum); 
     }
@@ -3226,7 +3227,7 @@ void ggml_vec_sum_f32(const uint64_t n, float * s, const float * x) {
             sum[0] = _mm512_add_ps(ax[0], sum[0]); 
         }
     
-        // reduce sum0..sum3 to sumf
+        // reduce sum0..sum3 to sum0
 
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
@@ -5248,6 +5249,13 @@ int init_wait_count = 0;
 int tensor_wait_count = 0;
 
 //
+// Mul_mat init time statistics.
+//
+
+int64_t mul_mat_init_time_us = 0;
+int mul_mat_init_count = 0;
+
+//
 // Block factor statistics.
 //
 
@@ -5302,10 +5310,10 @@ print_tensor_op_perf_data (
 
     printf("Tensor op dispatch spin wait information\n\n");
     printf("Threads dispatch tensor ops by scanning the graph node list in parallel,\n");
-    printf("selecting an elligible tensor (i.e., one that is not nop'ed and not empty),\n");
+    printf("selecting an eligible tensor (i.e., one that is not NOP'ed and not empty),\n");
     printf("executing their slice of the tensor computation, and then waiting until all\n");
     printf("threads are finished with the tensor. At this point the scan of the node list\n");
-    printf("continues to select the the next elligible tensor. Statistics are gathered for\n");
+    printf("continues to select the next eligible tensor. Statistics are gathered for\n");
     printf("the synchronization wait at the end of each loop iteration\n\n");
 
     //
@@ -5330,13 +5338,28 @@ print_tensor_op_perf_data (
     int64_t init_wait_us = ((double)init_wait_cycles * 1000. * 1000.) / (double)tsc_freq;
 
     printf("total number of init waits %d\n", init_wait_count);
-    printf("total elapsed init time %5.2fsec\n", (float)init_wait_us / (1000. * 1000.));
+    printf("total elapsed init wait time %5.2fsec\n", (float)init_wait_us / (1000. * 1000.));
     printf("average wait time per init wait %5.2fus\n",
            (float)init_wait_us / (float)init_wait_count);
 
     printf("total overall elapsed time %6.2fsec\n", (double)elapsed_time_us / (1000. * 1000.));
     printf("init wait time as percent of total elapsed time %5.2f%%\n\n",
            (float)(init_wait_us * 100.) / (float)elapsed_time_us);
+
+    //
+    // Mul_mat init statistics.
+    //
+
+    printf("total number of mul_mat init ops %d\n", mul_mat_init_count);
+    printf("total elapsed mul_mat init time %5.2fsec\n",
+           (float)mul_mat_init_time_us / (1000. * 1000.));
+
+    float mul_mat_average_time_us = 0.f;
+    if (mul_mat_init_count) {
+       mul_mat_average_time_us = (float)mul_mat_init_time_us / (float)mul_mat_init_count;
+    }
+
+    printf("average mul_mat init time %5.2fus\n\n", mul_mat_average_time_us);
 
     printf("vector dot matrix multiply type frequency\n\n");
     printf("   Count     %%\n\n");
@@ -5404,32 +5427,36 @@ print_tensor_op_perf_data (
 
             total_count = quant_type_row_size[i].total_count;
             total_percent = 0;
+            int64_t weighted_rowsize = 0;
+
             for (int64_t j = 0; j < ARRAYSIZE(quant_type_row_size[i].counts); j += 1) {
                 if (quant_type_row_size[i].counts[j]) {
                     percent = (double)quant_type_row_size[i].counts[j] * 100.f / (double)total_count;
                     total_percent += percent;
+                    weighted_rowsize += (j + 1) * quant_type_row_size[i].counts[j];
                     printf("%6zd  %6d  %5.2f\n",
                            j + 1,
                            quant_type_row_size[i].counts[j],
                            percent);
                 }
             }
-
+        
             printf("\n      %8d %5.2f\n\n", total_count, total_percent);
+            printf("Average row size %zd\n\n", weighted_rowsize / total_count);
         }
     }
 
-    printf("mul_mat loop block factor histogram\n");
+    printf("multiply matrix src0 block factor histogram\n");
 
     total_count = compute_op_counts[GGML_OP_MUL_MAT];
 
-    printf("src0-nr0 ge src1-nr1 %5.2f%%\n",
+    printf("src0-nr0 greater or equal src1-nr1 %5.2f%%\n",
            ((float)mul_mat_nr0_ge_count * 100.) / (float)total_count);
 
-    printf("src0-nr0 lt src1-nr1 %5.2f%%\n\n",
+    printf("src0-nr0 less than src1-nr1 %5.2f%%\n\n",
            ((float)(total_count - mul_mat_nr0_ge_count) * 100.) / (float)total_count);
 
-    puts("Computed block factor based on l1 dcache size\n");
+    puts("Computed block factor based on l1 d-cache size\n");
 
     total_count = 0;
     total_percent = 0;
@@ -15162,6 +15189,7 @@ void ggml_compute_forward_mul_mat(
     int64_t ir011;
     int64_t ir110;
     int64_t ir111;
+    int64_t src0_rpc = 0;
 
     if (nr0 >= nr1) {
 
@@ -15173,9 +15201,9 @@ void ggml_compute_forward_mul_mat(
 
 #endif // GGML_TENSOR_OP_PERF
 
-        const int64_t rpc = (nr0 + nth - 1) / nth;
-        ir010 = rpc * ith;
-        ir011 = MIN(ir010 + rpc, nr0);
+        src0_rpc = (nr0 + nth - 1) / nth;
+        ir010 = src0_rpc * ith;
+        ir011 = MIN(ir010 + src0_rpc, nr0);
 
         ir110 = 0;
         ir111 = nr1;
@@ -15183,6 +15211,7 @@ void ggml_compute_forward_mul_mat(
     } else {
         ir010 = 0;
         ir011 = nr0;
+        src0_rpc = nr0;
 
         const int64_t rpc = (nr1 + nth - 1) / nth;
         ir110 = rpc * ith;
@@ -15200,12 +15229,13 @@ void ggml_compute_forward_mul_mat(
     assert(ne13 % ne03 == 0);
 
     const enum ggml_type src1_type = src1->type;
-
+    
     // This check for init_mat does not include BF16 for a reason. It is not a bug.
     // See commit c26d7004a15ab5c134a2ebc66d04b545a45c01bb. We do want init_mat to 
     // be true for BF16 so the conversion to BF16 occurs. The vec_dot for BF16 takes
     // care of the rest.
-    const bool init_mat = ((vec_dot_type != src1_type) && (vec_dot_type != GGML_TYPE_F16));
+    const bool init_mat = ((vec_dot_type != src1_type) &&
+                           (vec_dot_type != GGML_TYPE_F16));
 
     size_t row_size = ggml_row_size(vec_dot_type, ne10);
     char * wdata = src1->data;
@@ -15217,9 +15247,19 @@ void ggml_compute_forward_mul_mat(
         GGML_ASSERT(src1_type == GGML_TYPE_F32);
 
         //
-        // Distribute the src1 conversion over all threads.
+        // Distribute the src1 converion over all threads.
         //
 
+#ifdef GGML_TENSOR_OP_PERF
+
+        int64_t init_t0 = 0;
+        if (!ith) {
+            init_t0 = ggml_time_us();
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
+        ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
         const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
         const int64_t start_row = rows_per_thread * ith;
         const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
@@ -15245,6 +15285,15 @@ void ggml_compute_forward_mul_mat(
 
         ggml_wait_for_done(params);
 
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith) {
+            mul_mat_init_count += 1;
+            mul_mat_init_time_us += ggml_time_us() - init_t0;
+        }
+        
+#endif // GGML_TENSOR_OP_PERF
+
     } else if (vec_dot_type != src1_type) {
         row_size = ggml_row_size(src1_type, ne10);
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
@@ -15257,7 +15306,7 @@ void ggml_compute_forward_mul_mat(
     // on all the rows in src0, then move on to the next src1 column. This is not,
     // however, very cache friendly. The strategy used to make this more efficient
     // is to break up the dot product into tiles. Basically a tile is sized to fit
-    // a contiguous set of src0 rows in the l1d-cache.
+    // a contigous set of src0 rows in the l1d-cache.
     //
     // Always compute the block factor based on the src0 row size. This is the data
     // that is repeated referenced for one tile block iteration of the src1 loop.
@@ -15313,6 +15362,12 @@ void ggml_compute_forward_mul_mat(
     //
     
     blck0_factor = MAX(1, blck0_factor);
+
+    //
+    // The block factor must be less than or equal to the src0 rows per cpu.
+    //
+
+    blck0_factor = MIN(blck0_factor, src0_rpc);
 
 #if 0
     printf("blck0_factor %d row size %d\n",
