@@ -5229,6 +5229,7 @@ atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
 int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
 int64_t unary_op_time[GGML_UNARY_OP_COUNT] = {0};
 int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
+int openMP_graph_runs = 0;
 
 #define ROW_SIZE_BUCKETS 16385
 
@@ -5279,6 +5280,8 @@ print_tensor_op_perf_data (
     printf("Tensor execution time is the total time by the parallel set of threads\n");
     printf("Total time is the seconds to execute all tensors of the specified type\n");
     printf("Tensor time is the average ms to execute a tensor of the specified type\n\n");
+
+    printf("OpenMP graph runs = %d\n\n", openMP_graph_runs);
 
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%   Time(us) Tensor Op\n\n");
@@ -15067,7 +15070,8 @@ void ggml_compute_forward_mul_mat(
 
 #endif
 
-#if 0
+#if GGML_Q4_0_X_X
+
     // special case for Q4_0_x_x
     if ((gemm != NULL) && (gemv != NULL)) {
         if (src1->type != vec_dot_type) {
@@ -15122,10 +15126,87 @@ void ggml_compute_forward_mul_mat(
             return;
         }
     }
-#endif
+
+#endif // GGML_Q4_0_X_X
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
+
+#if 1 // ORG_ALGO for distributing work over the nth cores
+
+    assert(ne12 % ne02 == 0);
+    assert(ne13 % ne03 == 0);
+
+    // ggml_vec_dot_t vec_dot = type_traits[src0_type].vec_dot;
+    // enum ggml_type const vec_dot_type = type_traits[src0_type].vec_dot_type;
+
+    const enum ggml_type src1_type = src1->type;
+    const bool init_mat = ((vec_dot_type != src1_type) &&
+                           (vec_dot_type != GGML_TYPE_F16));
+
+    size_t row_size = ggml_row_size(vec_dot_type, ne10);
+    char * wdata = src1->data;
+
+    if (init_mat) {
+        wdata = params->wdata;
+
+        assert(params->wsize >= ne11*ne12*ne13*row_size);
+        GGML_ASSERT(src1_type == GGML_TYPE_F32);
+
+        //
+        // Distribute the src1 converion over all threads.
+        //
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        int64_t init_t0 = 0;
+        if (!ith) {
+            init_t0 = ggml_time_us();
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
+        ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
+        const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
+        const int64_t start_row = rows_per_thread * ith;
+        const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
+
+        //
+        // Convert the src1 rows to the destination vector dot type.
+        //
+
+        for (int64_t i13 = 0; i13 < ne13; ++i13) {
+            char * row_data = wdata + (i13 * ne12 * ne11 * row_size);
+            for (int64_t i12 = 0; i12 < ne12; ++i12) {
+                char * row_base = row_data + (((i12 * ne11) + start_row) * row_size);
+                for (int64_t i11 = start_row; i11 < end_row; ++i11) {
+                    from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), row_base, ne10);
+                    row_base += row_size;
+                }
+            }
+        }
+
+        //
+        // Wait until all threads are finished with the src1 conversion before proceeding.
+        //
+
+        ggml_wait_for_done(params);
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith) {
+            mul_mat_init_count += 1;
+            mul_mat_init_time_us += ggml_time_us() - init_t0;
+        }
+        
+#endif // GGML_TENSOR_OP_PERF
+
+    } else if (vec_dot_type != src1_type) {
+        row_size = ggml_row_size(src1_type, ne10);
+        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
+    }
+
+#endif // ORG_ALGO
 
 /*
     printf("ne00 %zd, ne01 %zd, ne02 %zd, ne03 %zd\n"
@@ -15192,6 +15273,9 @@ void ggml_compute_forward_mul_mat(
     int64_t src0_rpc = 0;
 
     if (nr0 >= nr1) {
+#if 1 // ORG_ALGO
+//    if (nr0 >= nth) {
+#endif
 
 #ifdef GGML_TENSOR_OP_PERF
 
@@ -15221,9 +15305,12 @@ void ggml_compute_forward_mul_mat(
     //printf("ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", ir010, ir011, ir110, ir111);
 
     if (ir010 >= ir011 || ir110 >= ir111) {
+        // printf("unused cpu %d in mul mat\n", ith);
         // sched_yield();
         return;
     }
+
+#if 0 // NEW_ALGO for distributing work to all nth cores
 
     assert(ne12 % ne02 == 0);
     assert(ne13 % ne03 == 0);
@@ -15299,8 +15386,10 @@ void ggml_compute_forward_mul_mat(
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
 
+#endif // NEW_ALGO
+
     //
-    // Compute the dot matric multiply using tiling.
+    // Compute the dot matrix multiply using tiling.
     //
     // The general algorithm is to perform the dot product on one column from src1
     // on all the rows in src0, then move on to the next src1 column. This is not,
@@ -15315,6 +15404,8 @@ void ggml_compute_forward_mul_mat(
     //      src0 loop is the data that gets continually referenced as the src1 loop
     //      sequences through scr0 tile blocks.
     //
+
+#if GGML_Q4_0_X_X
 
     if ((gemm != NULL) && (gemv != NULL)) {
         if (ggml_n_dims(src0) == 2) {
@@ -15341,6 +15432,8 @@ void ggml_compute_forward_mul_mat(
             return;
         }
     }
+
+#endif // GGML_Q4_0_X_X
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
@@ -22426,6 +22519,10 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     if (ggml_use_omp) {
 #if !defined(__clang__)
         if (n_threads > 1) {
+            #ifdef GGML_TENSOR_OP_PERF
+            openMP_graph_runs += 1;
+            #endif
+
             #pragma omp parallel num_threads(n_threads)
             {
                 ggml_graph_compute_thread(&workers[omp_get_thread_num()]);
