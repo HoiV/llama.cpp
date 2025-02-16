@@ -5229,13 +5229,15 @@ atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
 int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
 int64_t unary_op_time[GGML_UNARY_OP_COUNT] = {0};
 int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
+int64_t vec_dot_type_times[GGML_TYPE_COUNT] = {0};
 int openMP_graph_runs = 0;
 
 #define ROW_SIZE_BUCKETS 16385
 
 typedef struct {
     int32_t total_count;
-    int32_t counts[ROW_SIZE_BUCKETS]; 
+    int32_t counts[ROW_SIZE_BUCKETS];
+    int64_t times[ROW_SIZE_BUCKETS];
 } guant_type_info;
 
 DECLSPEC_CACHEALIGN guant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
@@ -5284,7 +5286,7 @@ print_tensor_op_perf_data (
     printf("OpenMP graph runs = %d\n\n", openMP_graph_runs);
 
     printf("          Total     Total  Tensor\n");
-    printf("   Count Time(sec)   %%   Time(us) Tensor Op\n\n");
+    printf("   Count Time(sec)   %%     Time(us) Tensor Op\n");
 
     for (int64_t i = 0; i < ARRAYSIZE(compute_op_counts); i += 1) {
         total_count += compute_op_counts[i];
@@ -5297,7 +5299,7 @@ print_tensor_op_perf_data (
         if (compute_op_counts[i]) {
             percent = (double)compute_op_time[i] * 100.f / (double)total_time;
             total_percent += percent;
-            printf("%8ld %8.2f  %5.2f %8.2f GGML_OP_%s\n",
+            printf("%8ld %8.2f  %5.2f   %8.2f GGML_OP_%s\n",
                    compute_op_counts[i],
                    (double)(compute_op_time[i]) / (1000. * 1000.),
                    percent,
@@ -5365,21 +5367,25 @@ print_tensor_op_perf_data (
     printf("average mul_mat init time %5.2fus\n\n", mul_mat_average_time_us);
 
     printf("vector dot matrix multiply type frequency\n\n");
-    printf("   Count     %%\n\n");
+    printf("   Count     %%    Time(ms)      %%   vec_dot_type\n");
 
     total_count = 0;
     total_percent = 0.;
+    total_time = 0;
     for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
         total_count += vec_dot_type_counts[i];
+        total_time += vec_dot_type_times[i];
     }
 
     for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
         if (vec_dot_type_counts[i]) {
             percent = (double)vec_dot_type_counts[i] * 100.f / (double)total_count;
             total_percent += percent;
-            printf("%8d   %5.2f GGML_TYPE_%s\n",
+            printf("%8d   %5.2f  %8.2f %8.2f GGML_TYPE_%s\n",
                    vec_dot_type_counts[i],
                    percent,
+                   vec_dot_type_times[i] / 1000.0f,
+                   (vec_dot_type_times[i] * 100.0) / total_time,
                    type_traits[i].type_name);
         }
     }
@@ -5426,10 +5432,11 @@ print_tensor_op_perf_data (
             printf("vector row size count histogram for quant type %s\n\n",
                    ggml_type_name(i));
 
-            printf("  Size   Count    %%\n\n");
+            printf("  Size   Count    %%    Time(ms)\n");
 
             total_count = quant_type_row_size[i].total_count;
             total_percent = 0;
+            total_time = 0;
             int64_t weighted_rowsize = 0;
 
             for (int64_t j = 0; j < ARRAYSIZE(quant_type_row_size[i].counts); j += 1) {
@@ -5437,14 +5444,16 @@ print_tensor_op_perf_data (
                     percent = (double)quant_type_row_size[i].counts[j] * 100.f / (double)total_count;
                     total_percent += percent;
                     weighted_rowsize += (j + 1) * quant_type_row_size[i].counts[j];
-                    printf("%6zd  %6d  %5.2f\n",
+                    total_time += quant_type_row_size[i].times[j];
+                    printf("%6zd  %6d  %5.2f  %8.2f\n",
                            j + 1,
                            quant_type_row_size[i].counts[j],
-                           percent);
+                           percent,
+                           quant_type_row_size[i].times[j] / 1000.0);
                 }
             }
         
-            printf("\n      %8d %5.2f\n\n", total_count, total_percent);
+            printf("\n      %8d %5.2f  %8.2f\n\n", total_count, total_percent, total_time / 1000.0);
             printf("Average row size %zd\n\n", weighted_rowsize / total_count);
         }
     }
@@ -22126,6 +22135,15 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
                 if (op == GGML_OP_UNARY) {
                     unary_op_time[ggml_get_unary_op(node)] += tensor_t0;
                 }
+                // update time per vec_dot_type and per src0_row_size
+                const struct ggml_tensor * src0 = node->src[0];
+                const enum ggml_type src0_type = src0->type;
+                vec_dot_type_times[type_traits[src0_type].vec_dot_type] += tensor_t0;
+                uint64_t bucket_index = ggml_row_size(src0_type, src0->ne[0]);
+                if (bucket_index > ARRAYSIZE(quant_type_row_size[src0_type].counts)) {
+                    bucket_index = ARRAYSIZE(quant_type_row_size[src0_type].counts);
+                }
+                quant_type_row_size[src0_type].times[bucket_index - 1] += tensor_t0;
             }
     
 #endif // GGML_TENSOR_OP_PERF
