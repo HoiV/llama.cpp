@@ -380,6 +380,7 @@ struct gpt_params {
     bool custom_prompts_on = false; // custom prompts are available
     bool use_prefix_cache  = false; // use prefix cache if it exists and create one if it is not present
     bool use_omp           = false; // use open MP threading
+    bool no_query          = false; // no query mode for llindex
     bool use_proc_affinity = false; // use process affinity
 
     std::string cache_type_k = "f16"; // KV cache data type for the K

@@ -1728,6 +1728,10 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.chunk_separator = argv[i];
         return true;
     }
+    if (arg == "-nq") {
+        params.no_query = true;
+        return true;
+    }
     if (arg == "--junk") {
         if (++i >= argc) {
             invalid_param = true;
