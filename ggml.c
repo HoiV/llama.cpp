@@ -22555,7 +22555,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 
 #ifdef GGML_TENSOR_OP_PERF
-    atomic_fetch_add(&thread_create_count, 1);
+    atomic_fetch_add(&thread_create_count, n_threads - 1);
 #endif // GGML_TENSOR_OP_PERF
 
     //
