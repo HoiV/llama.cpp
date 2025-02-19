@@ -5366,7 +5366,7 @@ print_tensor_op_perf_data (
         if (vec_dot_src0_counts[i]) {
             percent = (float)vec_dot_src0_time[i] * 100.f / (float)total_time;
             total_percent += percent;
-            printf("%8ld %8.2f  %5.2f %8.2f GGML_OP_%s\n",
+            printf("%8ld %8.2f  %5.2f %8.2f GGML_TYPE_%s\n",
                    vec_dot_src0_counts[i],
                    (float)(vec_dot_src0_time[i]) / (1000. * 1000.),
                    percent,
