@@ -5229,6 +5229,8 @@ atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
 int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
 int64_t unary_op_time[GGML_UNARY_OP_COUNT] = {0};
 int32_t vec_dot_type_counts[GGML_TYPE_COUNT] = {0};
+int32_t vec_dot_src0_counts[GGML_TYPE_COUNT] = {0};
+int64_t vec_dot_src0_time[GGML_TYPE_COUNT] = {0};
 int64_t vec_dot_type_times[GGML_TYPE_COUNT] = {0};
 int openMP_graph_runs = 0;
 
@@ -5276,12 +5278,12 @@ print_tensor_op_perf_data (
     int64_t elapsed_time_us
     )
 {
-    int32_t total_count = 0;
-    int32_t total_op_count = 0;
-    double total_percent = 0.;
+    int32_t total_count;
+    int32_t total_op_count;
+    float total_percent;
     int32_t total_tensors = 0;
-    int64_t total_time = 0;
-    double percent;
+    int64_t total_time;
+    float percent;
 
     printf("\n Overall Tensor Op Performance Data\n\n");
     printf("Tensor ops are executed in parallel by a specified set of threads\n");
@@ -5294,6 +5296,8 @@ print_tensor_op_perf_data (
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%     Time(us) Tensor Op\n");
 
+    total_count = 0;
+    total_time = 0;
     for (int64_t i = 0; i < ARRAYSIZE(compute_op_counts); i += 1) {
         total_count += compute_op_counts[i];
         total_time += compute_op_time[i];
@@ -5303,20 +5307,107 @@ print_tensor_op_perf_data (
     total_percent = 0.;
     for (int64_t i = 0; i < ARRAYSIZE(compute_op_counts); i += 1) {
         if (compute_op_counts[i]) {
-            percent = (double)compute_op_time[i] * 100.f / (double)total_time;
+            percent = (float)compute_op_time[i] * 100.f / (float)total_time;
             total_percent += percent;
-            printf("%8ld %8.2f  %5.2f   %8.2f GGML_OP_%s\n",
+            printf("%8ld %8.2f  %5.2f %8.2f GGML_OP_%s\n",
                    compute_op_counts[i],
-                   (double)(compute_op_time[i]) / (1000. * 1000.),
+                   (float)(compute_op_time[i]) / (1000. * 1000.),
                    percent,
-                   (double)(compute_op_time[i]) / (double)compute_op_counts[i],
+                   (float)(compute_op_time[i]) / (float)compute_op_counts[i],
                    GGML_OP_NAME[i]);
         }
     }
 
     printf("\n%8d %8.2f %4.2f\n\n",
            total_count,
-           (double)(total_time) / (1000. * 1000.),
+           (float)(total_time) / (1000. * 1000.),
+           total_percent);
+
+    printf("Vector Dot Matrix Multiply Type Frequency\n\n");
+    printf("   Count     %%    Time(ms)      %%   vec_dot_type\n");
+
+    total_count = 0;
+    total_percent = 0.;
+    total_time = 0;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        total_count += vec_dot_type_counts[i];
+        total_time += vec_dot_type_times[i];
+    }
+
+    total_percent = 0.;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
+        if (vec_dot_type_counts[i]) {
+            percent = (float)vec_dot_type_counts[i] * 100.f / (float)total_count;
+            total_percent += percent;
+            printf("%8d   %5.2f  %8.2f %8.2f GGML_TYPE_%s\n",
+                   vec_dot_type_counts[i],
+                   percent,
+                   vec_dot_type_times[i] / 1000.0f,
+                   (vec_dot_type_times[i] * 100.0) / total_time,
+                   type_traits[i].type_name);
+        }
+    }
+
+    printf("\n%8d  %5.2f\n\n", total_count, total_percent);
+
+    printf("Vector Dot Matrix Multiply Src0 Type Frequency\n\n");
+    printf("          Total    Total  Tensor\n");
+    printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
+
+    total_count = 0;
+    total_time = 0;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_src0_counts); i += 1) {
+        total_count += vec_dot_src0_counts[i];
+        total_time += vec_dot_src0_time[i];
+    }
+
+    total_percent = 0.;
+    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_src0_counts); i += 1) {
+        if (vec_dot_src0_counts[i]) {
+            percent = (float)vec_dot_src0_time[i] * 100.f / (float)total_time;
+            total_percent += percent;
+            printf("%8ld %8.2f  %5.2f %8.2f GGML_OP_%s\n",
+                   vec_dot_src0_counts[i],
+                   (float)(vec_dot_src0_time[i]) / (1000. * 1000.),
+                   percent,
+                   (float)(vec_dot_src0_time[i]) / (1000. * (float)vec_dot_src0_counts[i]),
+                   type_traits[i].type_name);
+        }
+    }
+
+    printf("\n%8d %8.2f %4.2f\n\n",
+           total_count,
+           (float)(total_time) / (1000. * 1000.),
+           total_percent);
+
+    printf("Unary Op frequency\n\n");
+    printf("          Total     Total  Tensor\n");
+    printf("   Count Time(sec)   %%    Time(ms) Unary Op\n\n");
+
+    total_count = 0;
+    total_percent = 0.;
+    total_time = 0;
+    for (int64_t i = 0; i < ARRAYSIZE(unary_op_counts); i += 1) {
+        total_count += unary_op_counts[i];
+        total_time += unary_op_time[i];
+    }
+
+    for (int64_t i = 0; i < ARRAYSIZE(unary_op_counts); i += 1) {
+        if (unary_op_counts[i]) {
+            percent = (float)unary_op_time[i] * 100.f / (float)total_time;
+            total_percent += percent;
+            printf("%8ld %8.2f  %5.2f %7.2f  GGML_UNARY_OP_%s\n",
+                   unary_op_counts[i],
+                   (float)(unary_op_time[i]) / (1000. * 1000.),
+                   percent,
+                   (float)(unary_op_time[i]) / (1000. * (float)unary_op_counts[i]),
+                   GGML_UNARY_OP_NAME[i]);
+        }
+    }
+
+    printf("\n%8d %8.2f  %5.2f\n\n",
+           total_count,
+           (float)(total_time) / (1000. * 1000.),
            total_percent);
 
     printf("Tensor op dispatch spin wait information\n\n");
@@ -5331,14 +5422,14 @@ print_tensor_op_perf_data (
     // Tensor wait statistics.
     //
 
-    int64_t tensor_wait_us = ((double)tensor_wait_cycles * 1000. * 1000.) / (double)tsc_freq;;
+    int64_t tensor_wait_us = ((float)tensor_wait_cycles * 1000. * 1000.) / (float)tsc_freq;;
 
     printf("total number of tensor waits %d\n", tensor_wait_count);
     printf("total elapsed tensor wait time %5.2fsec\n", (float)tensor_wait_us / (1000. * 1000.));
     printf("average wait time per tensor wait %5.2fus\n",
            (float)tensor_wait_us / (float)tensor_wait_count);
 
-    printf("total overall elapsed time %6.2fsec\n", (double)elapsed_time_us / (1000. * 1000.));
+    printf("total overall elapsed time %6.2fsec\n", (float)elapsed_time_us / (1000. * 1000.));
     printf("tensor wait time as percent of total elapsed time %5.2f%%\n\n",
            (float)(tensor_wait_us * 100.) / (float)elapsed_time_us);
 
@@ -5346,14 +5437,14 @@ print_tensor_op_perf_data (
     // Init wait statistics.
     //
 
-    int64_t init_wait_us = ((double)init_wait_cycles * 1000. * 1000.) / (double)tsc_freq;
+    int64_t init_wait_us = ((float)init_wait_cycles * 1000. * 1000.) / (float)tsc_freq;
 
     printf("total number of init waits %d\n", init_wait_count);
     printf("total elapsed init wait time %5.2fsec\n", (float)init_wait_us / (1000. * 1000.));
     printf("average wait time per init wait %5.2fus\n",
            (float)init_wait_us / (float)init_wait_count);
 
-    printf("total overall elapsed time %6.2fsec\n", (double)elapsed_time_us / (1000. * 1000.));
+    printf("total overall elapsed time %6.2fsec\n", (float)elapsed_time_us / (1000. * 1000.));
     printf("init wait time as percent of total elapsed time %5.2f%%\n\n",
            (float)(init_wait_us * 100.) / (float)elapsed_time_us);
 
@@ -5371,62 +5462,6 @@ print_tensor_op_perf_data (
     }
 
     printf("average mul_mat init time %5.2fus\n\n", mul_mat_average_time_us);
-
-    printf("vector dot matrix multiply type frequency\n\n");
-    printf("   Count     %%    Time(ms)      %%   vec_dot_type\n");
-
-    total_count = 0;
-    total_percent = 0.;
-    total_time = 0;
-    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
-        total_count += vec_dot_type_counts[i];
-        total_time += vec_dot_type_times[i];
-    }
-
-    for (int64_t i = 0; i < ARRAYSIZE(vec_dot_type_counts); i += 1) {
-        if (vec_dot_type_counts[i]) {
-            percent = (double)vec_dot_type_counts[i] * 100.f / (double)total_count;
-            total_percent += percent;
-            printf("%8d   %5.2f  %8.2f %8.2f GGML_TYPE_%s\n",
-                   vec_dot_type_counts[i],
-                   percent,
-                   vec_dot_type_times[i] / 1000.0f,
-                   (vec_dot_type_times[i] * 100.0) / total_time,
-                   type_traits[i].type_name);
-        }
-    }
-
-    printf("\n%8d  %5.2f\n\n", total_count, total_percent);
-
-    printf("unary op frequency\n\n");
-    printf("          Total     Total  Tensor\n");
-    printf("   Count Time(sec)   %%    Time(ms) Unary Op\n\n");
-
-    total_count = 0;
-    total_percent = 0.;
-    total_time = 0;
-    for (int64_t i = 0; i < ARRAYSIZE(unary_op_counts); i += 1) {
-        total_count += unary_op_counts[i];
-        total_time += unary_op_time[i];
-    }
-
-    for (int64_t i = 0; i < ARRAYSIZE(unary_op_counts); i += 1) {
-        if (unary_op_counts[i]) {
-            percent = (double)unary_op_time[i] * 100.f / (double)total_time;
-            total_percent += percent;
-            printf("%8ld %8.2f  %5.2f %7.2f  GGML_UNARY_OP_%s\n",
-                   unary_op_counts[i],
-                   (double)(unary_op_time[i]) / (1000. * 1000.),
-                   percent,
-                   (double)(unary_op_time[i]) / (1000. * (double)unary_op_counts[i]),
-                   GGML_UNARY_OP_NAME[i]);
-        }
-    }
-
-    printf("\n%8d %8.2f  %5.2f\n\n",
-           total_count,
-           (double)(total_time) / (1000. * 1000.),
-           total_percent);
 
     //
     // Scan through all the quant types looking for types that have a non-zero
@@ -5447,11 +5482,11 @@ print_tensor_op_perf_data (
 
             for (int64_t j = 0; j < ARRAYSIZE(quant_type_row_size[i].counts); j += 1) {
                 if (quant_type_row_size[i].counts[j]) {
-                    percent = (double)quant_type_row_size[i].counts[j] * 100.f / (double)total_count;
+                    percent = (float)quant_type_row_size[i].counts[j] * 100.f / (float)total_count;
                     total_percent += percent;
                     weighted_rowsize += (j + 1) * quant_type_row_size[i].counts[j];
                     total_time += quant_type_row_size[i].times[j];
-                    printf("%6zd  %6d  %5.2f  %8.2f %9.2f\n",
+                    printf("%6zd  %6d %6.2f  %8.2f %9.2f\n",
                            j + 1,
                            quant_type_row_size[i].counts[j],
                            percent,
@@ -5460,15 +5495,15 @@ print_tensor_op_perf_data (
                 }
             }
         
-            printf("\n      %8d %5.2f  %8.2f\n\n", total_count, total_percent, total_time / 1000.0);
+            printf("\n      %8d %5.2f  %8.2fms\n\n", total_count, total_percent, total_time / 1000.0);
             printf("Average row size %zd\n\n", weighted_rowsize / total_count);
             printf("  Max entry: ne00 ne01 ne10 ne11  Time(us)\n");
-            printf("             %4d %4d %4d %4d %8.2f\n\n",
+            printf("             %4d %4d %4d %4d %9.2f\n\n",
                 quant_type_row_size[i].max_ne00,
                 quant_type_row_size[i].max_ne01,
                 quant_type_row_size[i].max_ne10,
                 quant_type_row_size[i].max_ne01,
-                (double)quant_type_row_size[i].max_time);
+                (float)quant_type_row_size[i].max_time);
         }
     }
 
@@ -5493,7 +5528,7 @@ print_tensor_op_perf_data (
     printf("Factor   Count    %%    Cum %%\n\n");
     for (int64_t i = 0; i < ARRAYSIZE(vec_blk_factor_counts); i += 1) {
         if (vec_blk_factor_counts[i]) {
-            percent = (double)vec_blk_factor_counts[i] * 100.f / (double)total_count;
+            percent = (float)vec_blk_factor_counts[i] * 100.f / (float)total_count;
             total_percent += percent;
             printf("%6zd  %6d %6.2f %6.2f\n",
                    i + 1,
@@ -5526,24 +5561,24 @@ print_tensor_op_perf_data (
                    i,
                    graph_tensor_counts[i],
                    graph_tensor_counts[i] * i,
-                   (double)graph_tensor_time[i] / (1000. * 1000.),
-                   (double)graph_tensor_time[i] / (1000. * (double)graph_tensor_counts[i]));
+                   (float)graph_tensor_time[i] / (1000. * 1000.),
+                   (float)graph_tensor_time[i] / (1000. * (float)graph_tensor_counts[i]));
         }
     }
 
     printf("\nTotal %5d %8d   %7.2f\n\n",
            total_count,
            total_tensors,
-           (double)total_time / (1000. * 1000.));
+           (float)total_time / (1000. * 1000.));
 
     printf("Total NOP Tensors %d\n", total_tensors - total_op_count);
     printf("Total one task Tensors %ld\n\n", compute_one_task_count);
 
     printf(" Tensor Thread Creation Performance\n\n");
     printf("Creation count: %ld\n", thread_create_count);
-    printf("Total creation Time(ms): %6.2f\n", (double)thread_create_time / 1000.);
+    printf("Total creation Time(ms): %6.2f\n", (float)thread_create_time / 1000.);
     printf("Thread creation time(us): %6.2f\n\n",
-           (double)thread_create_time / (double)thread_create_count);
+           (float)thread_create_time / (float)thread_create_count);
 
     printf("\n");
 }
@@ -15016,7 +15051,9 @@ void ggml_compute_forward_mul_mat(
     const int nth = params->nth;
 
 #ifdef GGML_TENSOR_OP_PERF
+    int64_t vec_dot_src0_t0 = 0;
     if (!ith) {
+        vec_dot_src0_t0 = ggml_time_us();
         vec_dot_type_counts[type_traits[src0_type].vec_dot_type] += 1;
     }
 #endif // GGML_TENSOR_OP_PERF
@@ -15027,7 +15064,6 @@ void ggml_compute_forward_mul_mat(
 
     ggml_vec_dot_t          vec_dot               = type_traits[src0_type].vec_dot;
     enum ggml_type    const vec_dot_type          = type_traits[src0_type].vec_dot_type;
-    ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[src0_type].nrows;
     int64_t           const matmul_num_cols       = type_traits[src0_type].ncols;
     int64_t           const blck_size_interleave  = type_traits[src0_type].blck_size_interleave;
@@ -15171,6 +15207,7 @@ void ggml_compute_forward_mul_mat(
     char * wdata = src1->data;
 
     if (init_mat) {
+        // printf("src0_type=[%s] src1_type=[%s]\n", ggml_type_name(src0_type), ggml_type_name(src1_type));
         wdata = params->wdata;
 
         assert(params->wsize >= ne11*ne12*ne13*row_size);
@@ -15270,7 +15307,7 @@ void ggml_compute_forward_mul_mat(
            nr1);
 */
 
-    // distribute the thread work across the inner or outer loop based on which one is larger
+    // distribute the thread work across the inner or outer loop
 
 #if 0
     const int64_t nth0 = nr0 > nr1 ? nth : 1; // parallelize by src0 rows
@@ -15295,10 +15332,13 @@ void ggml_compute_forward_mul_mat(
     int64_t ir111;
     int64_t src0_rpc = 0;
 
-    if (nr0 >= nr1) {
-#if 1 // ORG_ALGO
-//    if (nr0 >= nth) {
+#if 1 // ORG_ALO
+//    if ((nr0 >= nth) && (nr0 >= nr1)) {
+//    if ((nr0 >= blck0_factor * nth) || (nr1 < nth)) {
+//    if (nr0 >= nr1) {
+//    if ((nr0 >= nth) || (nr1 < nth)) { // << llindex 1017tps
 #endif
+    if ((nr0 >= nr1) && ((nr0 >= nth) || (nr1 < nth))) {
 
 #ifdef GGML_TENSOR_OP_PERF
 
@@ -15332,84 +15372,6 @@ void ggml_compute_forward_mul_mat(
         // sched_yield();
         return;
     }
-
-#if 0 // NEW_ALGO for distributing work to all nth cores
-
-    assert(ne12 % ne02 == 0);
-    assert(ne13 % ne03 == 0);
-
-    const enum ggml_type src1_type = src1->type;
-    
-    // This check for init_mat does not include BF16 for a reason. It is not a bug.
-    // See commit c26d7004a15ab5c134a2ebc66d04b545a45c01bb. We do want init_mat to 
-    // be true for BF16 so the conversion to BF16 occurs. The vec_dot for BF16 takes
-    // care of the rest.
-    const bool init_mat = ((vec_dot_type != src1_type) &&
-                           (vec_dot_type != GGML_TYPE_F16));
-
-    size_t row_size = ggml_row_size(vec_dot_type, ne10);
-    char * wdata = src1->data;
-
-    if (init_mat) {
-        wdata = params->wdata;
-
-        assert(params->wsize >= ne11*ne12*ne13*row_size);
-        GGML_ASSERT(src1_type == GGML_TYPE_F32);
-
-        //
-        // Distribute the src1 converion over all threads.
-        //
-
-#ifdef GGML_TENSOR_OP_PERF
-
-        int64_t init_t0 = 0;
-        if (!ith) {
-            init_t0 = ggml_time_us();
-        }
-
-#endif // GGML_TENSOR_OP_PERF
-
-        ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
-        const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
-        const int64_t start_row = rows_per_thread * ith;
-        const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
-
-        //
-        // Convert the src1 rows to the destination vector dot type.
-        //
-
-        for (int64_t i13 = 0; i13 < ne13; ++i13) {
-            char * row_data = wdata + (i13 * ne12 * ne11 * row_size);
-            for (int64_t i12 = 0; i12 < ne12; ++i12) {
-                char * row_base = row_data + (((i12 * ne11) + start_row) * row_size);
-                for (int64_t i11 = start_row; i11 < end_row; ++i11) {
-                    from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), row_base, ne10);
-                    row_base += row_size;
-                }
-            }
-        }
-
-        //
-        // Wait until all threads are finished with the src1 conversion before proceeding.
-        //
-
-        ggml_wait_for_done(params);
-
-#ifdef GGML_TENSOR_OP_PERF
-
-        if (!ith) {
-            mul_mat_init_count += 1;
-            mul_mat_init_time_us += ggml_time_us() - init_t0;
-        }
-        
-#endif // GGML_TENSOR_OP_PERF
-
-    } else if (vec_dot_type != src1_type) {
-        row_size = ggml_row_size(src1_type, ne10);
-        vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
-    }
-
-#endif // NEW_ALGO
 
     //
     // Compute the dot matrix multiply using tiling.
@@ -15483,7 +15445,19 @@ void ggml_compute_forward_mul_mat(
     // The block factor must be less than or equal to the src0 rows per cpu.
     //
 
+    blck0_factor = MAX(blck0_factor, nth * 2);
     blck0_factor = MIN(blck0_factor, src0_rpc);
+
+/*
+    static int32_t count = 0;
+
+    if (!ith) {
+        count += 1;
+        if (count <= 128) {
+            printf("nr0 %zd, nr1 %zd, blck0 %zd\n", nr0, nr1, blck0_factor);
+        }
+    }
+*/
 
 #if 0
     printf("blck0_factor %d row size %d\n",
@@ -15558,6 +15532,11 @@ void ggml_compute_forward_mul_mat(
                 vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
             }
         }
+    }
+
+    if (!ith) {
+        vec_dot_src0_counts[src0_type] += 1;
+        vec_dot_src0_time[src0_type] += ggml_time_us() - vec_dot_src0_t0;
     }
 }
 
@@ -16289,36 +16268,44 @@ void ggml_compute_forward_reshape(
     // NOP
     UNUSED(params);
     UNUSED(dst);
+
+    printf("ggml_compute_forward_reshape - should not occur\n");
 }
 
 // ggml_compute_forward_view
 
 void ggml_compute_forward_view(
         const struct ggml_compute_params * params,
-              struct ggml_tensor * dst) {
+        const struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
+
+    printf("ggml_compute_forward_view - should not occur\n");
 }
 
 // ggml_compute_forward_permute
 
 void ggml_compute_forward_permute(
         const struct ggml_compute_params * params,
-              struct ggml_tensor * dst) {
+        const struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
+
+    printf("ggml_compute_forward_permute - should not occur\n");
 }
 
 // ggml_compute_forward_transpose
 
 void ggml_compute_forward_transpose(
         const struct ggml_compute_params * params,
-              struct ggml_tensor * dst) {
+        const struct ggml_tensor * dst) {
     // NOP
     UNUSED(params);
     UNUSED(dst);
+
+    printf("ggml_compute_forward_transpose - should not occur\n");
 }
 
 // ggml_compute_forward_get_rows
@@ -20018,6 +20005,8 @@ void ggml_compute_forward_nop(
     UNUSED(params);
     UNUSED(dst);
 
+    printf("ggml_compute_forward_nop - should not occur\n");
+
     return;
 }
 
@@ -22555,7 +22544,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 
 #ifdef GGML_TENSOR_OP_PERF
-    atomic_fetch_add(&thread_create_count, 1);
+    atomic_fetch_add(&thread_create_count, n_threads - 1);
 #endif // GGML_TENSOR_OP_PERF
 
     //
