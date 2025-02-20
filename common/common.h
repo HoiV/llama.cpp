@@ -383,6 +383,9 @@ struct gpt_params {
     bool no_query          = false; // no query mode for llindex
     bool use_proc_affinity = false; // use process affinity
 
+    bool cpumask[32]       = {false}; // CPU affinity mask
+    bool cpumask_present   = false;   // true if cpumask is specified
+
     std::string cache_type_k = "f16"; // KV cache data type for the K
     std::string cache_type_v = "f16"; // KV cache data type for the V
 
@@ -633,3 +636,4 @@ void yaml_dump_non_result_info(
     FILE * stream, const gpt_params & params, const llama_context * lctx,
     const std::string & timestamp, const std::vector<int> & prompt_tokens, const char * model_desc);
 
+bool parse_cpu_mask(const std::string & mask, bool (&boolmask)[32]);

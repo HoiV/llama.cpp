@@ -212,6 +212,8 @@ struct cmd_params {
     bool is_AMD_Ryzen_PRO_395;
     output_formats output_format;
     output_formats output_format_stderr;
+    bool cpumask[32];
+    bool cpumask_present;
 };
 
 static const cmd_params cmd_params_defaults = {
@@ -225,7 +227,7 @@ static const cmd_params cmd_params_defaults = {
     /* type_v               */ {GGML_TYPE_F16},
     /* n_threads            */ {cpu_get_num_math()},
     /* n_threads_prompt     */ {8},
-    /* n_threads_gen        */ {4},
+    /* n_threads_gen        */ {8},
     /* n_gpu_layers         */ {0},
     /* rpc_servers          */ {""},
     /* split_mode           */ {LLAMA_SPLIT_MODE_LAYER},
@@ -244,6 +246,8 @@ static const cmd_params cmd_params_defaults = {
     /* is_AMD_Ryzen_PRO_395 */ false,
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
+    /* cpumask              */ {false},
+    /* cpumask_present      */ false,
 };
 
 static void print_usage(int /* argc */, char ** argv) {
@@ -326,6 +330,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.numa = cmd_params_defaults.numa;
     params.process_affinity = cmd_params_defaults.process_affinity;
     params.openmp = cmd_params_defaults.openmp;
+    memset(&params.cpumask, 0, sizeof(params.cpumask));
+    params.cpumask_present = cmd_params_defaults.cpumask_present;
 
     for (int i = 1; i < argc; i++) {
         arg = argv[i];
@@ -561,6 +567,20 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             params.process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
+        } else if (arg == "-C" || arg == "--cpu-mask") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            auto p = string_split<int>(argv[i], split_delim);
+            params.n_gpu_layers.insert(params.n_gpu_layers.end(), p.begin(), p.end());
+            if (!parse_cpu_mask(argv[i], params.cpumask)) {
+                fprintf(stderr, "error: failed to parse CPU mask: '%s'\n", argv[i]);
+                invalid_param = true;
+                break;
+            } else {
+                params.cpumask_present = true;
+            }
         } else {
             invalid_param = true;
             break;
@@ -1428,6 +1448,18 @@ int main(int argc, char ** argv) {
 
     std::vector<cmd_params_instance> params_instances = get_cmd_params_instances(params);
 
+    int64_t cpu_affinity_mask = 0;
+    int32_t cpu_core_count = 0;
+    if (params.cpumask_present) {
+        for (int i = 0; i < 32; i++) {
+            if (params.cpumask[i]) {
+                cpu_core_count++;
+                cpu_affinity_mask |= 1ull << i;
+            }
+        }
+        printf("CPU affinity mask = [%0X] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count);
+    }
+
     llama_model * lmodel = nullptr;
     const cmd_params_instance * prev_inst = nullptr;
 
@@ -1461,7 +1493,9 @@ int main(int argc, char ** argv) {
         if (t.n_prompt > 0) {
             //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
 
-            if (params.process_affinity) {
+            if (params.cpumask_present && (cpu_core_count >= t.n_threads_prompt)) {
+                common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
+            } else if (params.process_affinity) {
                 common::xb_set_optimal_process_affinity(t.n_threads_prompt);
             }
 
@@ -1472,7 +1506,9 @@ int main(int argc, char ** argv) {
         }
 
         if (t.n_gen > 0) {
-            if (params.process_affinity) {
+            if (params.cpumask_present && (cpu_core_count >= t.n_threads_gen)) {
+                common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
+            } else if (params.process_affinity) {
                 if (t.n_threads_prompt != t.n_threads_gen) {
                     common::xb_set_optimal_process_affinity(t.n_threads_gen);
                 }

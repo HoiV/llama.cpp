@@ -305,6 +305,42 @@ int32_t cpu_get_num_math() {
     return cpu_get_num_physical_cores();
 }
 
+bool parse_cpu_mask(const std::string & mask, bool (&boolmask)[32]) {
+    // Discard potential 0x prefix
+    size_t start_i = 0;
+    if (mask.length() >= 2 && mask.substr(0, 2) == "0x") {
+        start_i = 2;
+    }
+
+    size_t num_digits = mask.length() - start_i;
+    if (num_digits > 128) num_digits = 128;
+
+    size_t end_i = num_digits + start_i;
+
+    for (size_t i = start_i, n = (num_digits*4 - 1); i < end_i; i++, n-=4) {
+        char c = mask.at(i);
+        int8_t id = c;
+
+        if ((c >= '0' && c <= '9')) {
+            id -= '0';
+        } else if (c >= 'a' && c <= 'f') {
+            id -= 'a' - 10;
+        } else if (c >= 'A' && c <= 'F') {
+            id -= 'A' - 10;
+        } else {
+            fprintf(stderr, "Invalid hex character '%c' at position %d\n", c, int32_t(i));
+            return false;
+        }
+
+        boolmask[n    ] = boolmask[n    ] || ((id & 8) != 0);
+        boolmask[n - 1] = boolmask[n - 1] || ((id & 4) != 0);
+        boolmask[n - 2] = boolmask[n - 2] || ((id & 2) != 0);
+        boolmask[n - 3] = boolmask[n - 3] || ((id & 1) != 0);
+    }
+
+    return true;
+}
+
 //
 // CLI argument parsing
 //
@@ -558,6 +594,19 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
     if (arg == "-omp") {
         params.use_omp = true;
         return true;
+    }
+    if (arg == "-C" || arg == "--cpu-mask") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        if (!parse_cpu_mask(argv[i], params.cpumask)) {
+            fprintf(stderr, "error: failed to parse CPU mask: '%s'\n", argv[i]);
+            invalid_param = true;
+            return true;
+        } else {
+            params.cpumask_present = true;
+        }
     }
     if (arg == "-paffin" || arg == "--proc-affin") {
         params.use_proc_affinity = true;
