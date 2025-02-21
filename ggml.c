@@ -5222,8 +5222,8 @@ atomic_int thread_create_count = 0;
 atomic_int64 thread_create_time = 0;
 int mul_mat_nr0_ge_count = 0;
 int compute_op_counts[GGML_OP_COUNT] = {0};
-int compute_one_task_count = 0;
 int64_t compute_op_time[GGML_OP_COUNT] = {0};
+int compute_one_task_count = 0;
 atomic_int graph_tensor_counts[GGML_TENSOR_NODE_COUNT] = {0};
 atomic_int64 graph_tensor_time[GGML_TENSOR_NODE_COUNT] = {0};
 int unary_op_counts[GGML_UNARY_OP_COUNT] = {0};
@@ -5352,7 +5352,7 @@ print_tensor_op_perf_data (
 
     printf("Vector Dot Matrix Multiply Src0 Type Frequency\n\n");
     printf("          Total    Total  Tensor\n");
-    printf("   Count Time(sec)   %%   Time(ms) Tensor Op\n\n");
+    printf("   Count Time(sec)   %%   Time(us) Tensor Op\n\n");
 
     total_count = 0;
     total_time = 0;
@@ -5370,7 +5370,7 @@ print_tensor_op_perf_data (
                    vec_dot_src0_counts[i],
                    (float)(vec_dot_src0_time[i]) / (1000. * 1000.),
                    percent,
-                   (float)(vec_dot_src0_time[i]) / (1000. * (float)vec_dot_src0_counts[i]),
+                   (float)(vec_dot_src0_time[i]) / (float)vec_dot_src0_counts[i],
                    type_traits[i].type_name);
         }
     }
@@ -5422,46 +5422,56 @@ print_tensor_op_perf_data (
     // Tensor wait statistics.
     //
 
-    int64_t tensor_wait_us = ((float)tensor_wait_cycles * 1000. * 1000.) / (float)tsc_freq;;
+    int64_t tensor_wait_us = ((double)tensor_wait_cycles * 1000. * 1000.) / (double)tsc_freq;;
 
     printf("total number of tensor waits %d\n", tensor_wait_count);
     printf("total elapsed tensor wait time %5.2fsec\n", (float)tensor_wait_us / (1000. * 1000.));
     printf("average wait time per tensor wait %5.2fus\n",
-           (float)tensor_wait_us / (float)tensor_wait_count);
+           tensor_wait_us / (float)tensor_wait_count);
 
     printf("total overall elapsed time %6.2fsec\n", (float)elapsed_time_us / (1000. * 1000.));
     printf("tensor wait time as percent of total elapsed time %5.2f%%\n\n",
-           (float)(tensor_wait_us * 100.) / (float)elapsed_time_us);
+           (tensor_wait_us * 100.) / (float)elapsed_time_us);
 
     //
     // Init wait statistics.
     //
 
-    int64_t init_wait_us = ((float)init_wait_cycles * 1000. * 1000.) / (float)tsc_freq;
+    int64_t init_wait_us = ((double)init_wait_cycles * 1000. * 1000.) / (double)tsc_freq;
 
     printf("total number of init waits %d\n", init_wait_count);
-    printf("total elapsed init wait time %5.2fsec\n", (float)init_wait_us / (1000. * 1000.));
-    printf("average wait time per init wait %5.2fus\n",
-           (float)init_wait_us / (float)init_wait_count);
+    if (init_wait_count) {
+        printf("total elapsed init wait time %5.2fsec\n",
+               init_wait_us / (1000. * 1000.));
 
-    printf("total overall elapsed time %6.2fsec\n", (float)elapsed_time_us / (1000. * 1000.));
+        printf("average wait time per init wait %5.2fus\n",
+               init_wait_us / (float)init_wait_count);
+    
+        printf("total overall elapsed time %6.2fsec\n",
+               (float)elapsed_time_us / (1000. * 1000.));
+
     printf("init wait time as percent of total elapsed time %5.2f%%\n\n",
-           (float)(init_wait_us * 100.) / (float)elapsed_time_us);
+           (init_wait_us * 100.) / (float)elapsed_time_us);
+
+    } else {
+        printf("\n");
+    }
 
     //
     // Mul_mat init statistics.
     //
 
-    printf("total number of mul_mat init ops %d\n", mul_mat_init_count);
-    printf("total elapsed mul_mat init time %5.2fsec\n",
-           (float)mul_mat_init_time_us / (1000. * 1000.));
-
-    float mul_mat_average_time_us = 0.f;
+    printf("total number of mul_mat init conversions %d\n", mul_mat_init_count);
     if (mul_mat_init_count) {
-       mul_mat_average_time_us = (float)mul_mat_init_time_us / (float)mul_mat_init_count;
-    }
+        printf("total elapsed init conversion time %5.2fsec\n",
+               (float)mul_mat_init_time_us / (1000. * 1000.));
+    
+        printf("average init conversion time %5.2fus\n\n",
+               (float)mul_mat_init_time_us / (float)mul_mat_init_count);
 
-    printf("average mul_mat init time %5.2fus\n\n", mul_mat_average_time_us);
+    } else {
+        printf("\n");
+    }
 
     //
     // Scan through all the quant types looking for types that have a non-zero
@@ -15333,8 +15343,6 @@ void ggml_compute_forward_mul_mat(
     int64_t src0_rpc = 0;
 
 #if 1 // ORG_ALO
-//    if ((nr0 >= nth) && (nr0 >= nr1)) {
-//    if ((nr0 >= blck0_factor * nth) || (nr1 < nth)) {
 //    if (nr0 >= nr1) {
 //    if ((nr0 >= nth) || (nr1 < nth)) { // << llindex 1017tps
 #endif
@@ -15356,6 +15364,7 @@ void ggml_compute_forward_mul_mat(
         ir111 = nr1;
 
     } else {
+        // printf("nr0 %zd, nr1 %zd\n", nr0, nr1);
         ir010 = 0;
         ir011 = nr0;
         src0_rpc = nr0;
