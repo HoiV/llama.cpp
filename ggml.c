@@ -22041,6 +22041,10 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     const int ith = state->ith;
     const int n_threads = shared->n_threads;
 
+#if 0
+    SetThreadAffinityMask(GetCurrentThread(), 1ull << (ith *2));
+#endif
+
     struct ggml_compute_params params = {
         .ith = ith,
         .nth = 0,
@@ -22591,6 +22595,12 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
                                               &workers[j]);
 
             GGML_ASSERT(rc == 0);
+
+#if 0
+            if (!SetThreadPriority(workers[j].thrd, THREAD_PRIORITY_HIGHEST)) {
+                fprintf(stderr, "%s: failed to bump thread priority\n", __func__);
+            }
+#endif
 
 #ifdef GGML_TENSOR_OP_PERF
             t1 = ggml_time_us() - t1;
