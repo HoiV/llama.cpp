@@ -9,7 +9,7 @@ llama_model_params model_params;
 static int total_tokens_generated = 0;
 bool save_slm_state = false;
 std::vector<llama_token> session_tokens;
-static int64_t t_token_generation = 0;
+static int64_t t_token_generation_ms = 0;
 std::vector<llama_token> tokens_shared;
 
 std::vector<llama_token> llama_tokenize(
@@ -101,6 +101,12 @@ int slm_init(xbapp_params& params) {
 
     ctx_params.seed  = params.seed;
     ctx_params.n_ctx = params.n_ctx;
+    if ((params.n_len + params.n_seqlen - 1) > params.n_ctx) {
+        printf("%s: context size (%d) < prompt (%d) + seq generated length (%d)\n",
+            __func__, params.n_ctx, params.n_len, params.n_seqlen);
+        return 1;
+    }
+    // n_batch is the max number of tokens processed in a single call to llama_decode()
     ctx_params.n_batch = params.n_batch;
     ctx_params.n_threads = params.n_threads;
     ctx_params.n_threads_batch = params.n_threads;
@@ -124,7 +130,7 @@ int slm_init(xbapp_params& params) {
             // build the shared prompt
             params.pfx_shared = ::trim(template_prompt.substr(0, pos));
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, true);
 
 #if 1 // use llama_state_load_file()
             // build the cache file directory
@@ -225,7 +231,7 @@ int slm_inference(xbapp_params& params) {
     }
 
     // tokenize the remaining prompt or full prompt if pfc_mode is off
-    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
+    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, true);
 
     // append the variant part of the prompt or the full prompt for non pfc mode
     embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
@@ -236,10 +242,7 @@ int slm_inference(xbapp_params& params) {
     // make sure the KV cache is big enough to hold all the prompt and generated tokens
     if (n_kv_req > n_ctx) {
         printf("%s: error: n_kv_req(%d-%d) > n_ctx(%d), the required KV cache size is not big enough\n",
-            __func__,
-            n_kv_pfx,
-            n_kv_req,
-            n_ctx);
+            __func__, n_kv_pfx, n_kv_req, n_ctx);
         printf("%s:        either reduce n_len or increase n_ctx\n", __func__);
         return 1;
     }
@@ -373,9 +376,12 @@ int slm_inference(xbapp_params& params) {
     }
 
     int64_t t_start_generation = ggml_time_us();
-    printf("Prompt TTFT = %.2fms (size = %lld)\n", 
-        ((t_start_generation - t_start_decoding) / 1000.0f), 
-        embd.size());
+    float t_prompt_eval_ms = (t_start_generation - t_start_decoding) / 1000.0f;
+    printf("Prompt TTFT = %.2fms (size = %zu) (%.2ft/s) (%.2fms)\n", 
+        t_prompt_eval_ms, 
+        embd.size(), 
+        (embd.size() * 1000.0f) / t_prompt_eval_ms, 
+        t_prompt_eval_ms / embd.size());
 
     if (params.pfc_mode && save_slm_state) {
         session_tokens.insert(session_tokens.end(), embd_inp.begin(), embd_inp.end());
@@ -393,7 +399,7 @@ int slm_inference(xbapp_params& params) {
             // build the shared prompt
             params.pfx_shared = ::trim(template_prompt.substr(0, pos));
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, true);
         }
 
 #else // use llama_set_state_data()
@@ -489,7 +495,7 @@ int slm_inference(xbapp_params& params) {
     }
 
     // compute max_len output
-    int max_len = std::min(params.n_len, (n_past + 128));
+    int max_len = std::min(params.n_len, (n_past + params.n_seqlen));
 
     std::string slm_output;
     bool valid_reply = false;
@@ -581,10 +587,10 @@ int slm_inference(xbapp_params& params) {
     printf("> token generation time = %.2fms (%d) (%.2ft/s) (%.2fms)\n", 
         t_ms,
         n_tokens_generated, 
-        n_tokens_generated / (t_ms / 1000.0f),
+        (t_ms == 0) ? 0.0 : n_tokens_generated / (t_ms / 1000.0f),
         (t_ms / n_tokens_generated));
 
-    t_token_generation += (t_end_generation - t_start_generation);
+    t_token_generation_ms += t_ms;
     return 0;
 }
 
@@ -733,8 +739,8 @@ void slm_terminate() {
 
     printf("%s: generated %d tokens in %.2f s, speed: %.2f t/s\n",
             __func__, 
-            total_tokens_generated, (t_token_generation / 1000000.0f), 
-            total_tokens_generated / (t_token_generation / 1000000.0f));
+            total_tokens_generated, (t_token_generation_ms / 1000.0f), 
+            (t_token_generation_ms == 0) ? 0.0: total_tokens_generated / (t_token_generation_ms / 1000.0f));
 
     llama_print_timings(ctx);
 
