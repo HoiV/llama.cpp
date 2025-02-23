@@ -226,8 +226,8 @@ static const cmd_params cmd_params_defaults = {
     /* type_k               */ {GGML_TYPE_F16},
     /* type_v               */ {GGML_TYPE_F16},
     /* n_threads            */ {cpu_get_num_math()},
-    /* n_threads_prompt     */ {8},
-    /* n_threads_gen        */ {8},
+    /* n_threads_prompt     */ {0},
+    /* n_threads_gen        */ {0},
     /* n_gpu_layers         */ {0},
     /* rpc_servers          */ {""},
     /* split_mode           */ {LLAMA_SPLIT_MODE_LAYER},
@@ -611,8 +611,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     if (params.use_mmap.empty())     { params.use_mmap = cmd_params_defaults.use_mmap; }
     if (params.embeddings.empty())   { params.embeddings = cmd_params_defaults.embeddings; }
     if (params.n_threads.empty())    { params.n_threads = cmd_params_defaults.n_threads; }
-    if (params.n_threads_prompt.empty()) { params.n_threads_prompt = cmd_params_defaults.n_threads_prompt; }
-    if (params.n_threads_gen.empty())    { params.n_threads_gen = cmd_params_defaults.n_threads_gen; }
+    if (params.n_threads_prompt.empty()) { params.n_threads_prompt = params.n_threads; }
+    if (params.n_threads_gen.empty())    { params.n_threads_gen = params.n_threads; }
 
     return params;
 }
@@ -1449,15 +1449,15 @@ int main(int argc, char ** argv) {
     std::vector<cmd_params_instance> params_instances = get_cmd_params_instances(params);
 
     int64_t cpu_affinity_mask = 0;
-    int32_t cpu_core_count = 0;
+    int32_t cpu_core_count_from_cpumask = 0;
     if (params.cpumask_present) {
         for (int i = 0; i < 32; i++) {
             if (params.cpumask[i]) {
-                cpu_core_count++;
+                cpu_core_count_from_cpumask++;
                 cpu_affinity_mask |= 1ull << i;
             }
         }
-        printf("CPU affinity mask = [%0X] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count);
+        printf("CPU affinity mask = [%0X] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count_from_cpumask);
     }
 
     llama_model * lmodel = nullptr;
@@ -1493,7 +1493,7 @@ int main(int argc, char ** argv) {
         if (t.n_prompt > 0) {
             //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
 
-            if (params.cpumask_present && (cpu_core_count >= t.n_threads_prompt)) {
+            if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_prompt)) {
                 common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
             } else if (params.process_affinity) {
                 common::xb_set_optimal_process_affinity(t.n_threads_prompt);
@@ -1506,7 +1506,7 @@ int main(int argc, char ** argv) {
         }
 
         if (t.n_gen > 0) {
-            if (params.cpumask_present && (cpu_core_count >= t.n_threads_gen)) {
+            if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
                 common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
             } else if (params.process_affinity) {
                 if (t.n_threads_prompt != t.n_threads_gen) {
