@@ -1489,14 +1489,20 @@ int main(int argc, char ** argv) {
 
         llama_kv_cache_clear(ctx);
 
+        bool warmup_run = false;
         // warmup run
         if (t.n_prompt > 0) {
-            //test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
+            if (!warmup_run) {
+                printf("Started pp warmup run\n");
+                test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
+                printf("Done pp warmup run\n");
 
-            if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_prompt)) {
-                common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
-            } else if (params.process_affinity) {
-                common::xb_set_optimal_process_affinity(t.n_threads_prompt);
+                if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_prompt)) {
+                    common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
+                } else if (params.process_affinity) {
+                    common::xb_set_optimal_process_affinity(t.n_threads_prompt);
+                }
+                warmup_run = true;
             }
 
             // for printer.print_test() to print the correct thread count
@@ -1506,12 +1512,17 @@ int main(int argc, char ** argv) {
         }
 
         if (t.n_gen > 0) {
-            if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
-                common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
-            } else if (params.process_affinity) {
-                if (t.n_threads_prompt != t.n_threads_gen) {
+            if (!warmup_run) {
+                printf("Started tg warmup run\n");
+                test_gen(ctx, 1, 0, t.n_threads_gen);
+                printf("Done tg warmup run\n");
+
+                if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
+                    common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
+                } else if (params.process_affinity) {
                     common::xb_set_optimal_process_affinity(t.n_threads_gen);
                 }
+                warmup_run = true;
             }
 
             // for printer.print_test() to print the correct thread count

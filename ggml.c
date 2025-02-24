@@ -5234,6 +5234,11 @@ int64_t vec_dot_src0_time[GGML_TYPE_COUNT] = {0};
 int64_t vec_dot_type_times[GGML_TYPE_COUNT] = {0};
 int openMP_graph_runs = 0;
 
+#ifdef GGML_USE_RYZENAI
+int total_Ryzen_mulmat_counts = 0;
+int64_t total_Ryzen_mulmat_times = 0;
+#endif
+
 #define ROW_SIZE_BUCKETS 16385
 
 typedef struct {
@@ -5322,6 +5327,15 @@ print_tensor_op_perf_data (
            total_count,
            (float)(total_time) / (1000. * 1000.),
            total_percent);
+
+#ifdef GGML_USE_RYZENAI
+    printf("\nTotal count Ryzen mulmat  = %8d      (%5.2f %%)\n", 
+        total_Ryzen_mulmat_counts, 
+        (total_Ryzen_mulmat_counts * 100.0) / (float)compute_op_counts[GGML_OP_MUL_MAT]);
+    printf("Total time RyzenAI mulmat =   %9.2fms (%5.2f %%)\n\n", 
+        (float)total_Ryzen_mulmat_times / 1000.0, 
+        ((float)total_Ryzen_mulmat_times * 100.0) / (float)compute_op_time[GGML_OP_MUL_MAT]);
+#endif
 
     printf("Vector Dot Matrix Multiply Type Frequency\n\n");
     printf("   Count     %%    Time(ms)      %%   vec_dot_type\n");
@@ -15132,7 +15146,10 @@ void ggml_compute_forward_mul_mat(
 
     if (ggml_ryzenai_can_mul_mat(src0, src1, dst)) {
         if (params->ith == 0) {
+            total_Ryzen_mulmat_counts += 1;
+            int64_t t_Ryzen = ggml_time_us();
             ggml_ryzenai_mul_mat(src0, src1, dst, params->wdata, params->wsize);
+            total_Ryzen_mulmat_times += ggml_time_us() - t_Ryzen;
         }
         return;
     }
