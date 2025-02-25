@@ -400,21 +400,7 @@ C:\llama.cpp\Ryzen\example\transformers\ops\cpp>
 REM To "BUILD" llama-bench/kv with RyzenAI: 
 
 --------------------------------------------------------------------------------
-# First enable CONDA environment for ryzenai-transformers and run "cmake .."
-
-REM First launch the anaconda 
-C:\llama.cpp>conda env list
-# conda environments:
-#
-                         C:\ProgramData\anaconda3
-ryzenai-transformers     C:\ProgramData\anaconda3\envs\ryzenai-transformers
-base                     c:\ProgramData\anaconda3
-ryzen-ai-1.2.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.2.0
-ryzen-ai-1.3.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.3.0
-ryzenai-transformers     c:\ProgramData\anaconda3\envs\ryzenai-transformers      <<<<=====================
-
-C:\llama.cpp>conda activate ryzenai-transformers
-(ryzenai-transformers) C:\llama.cpp>
+# Create conda env "ryzenai-transformers"
 
 REM Clone RyzenAI-SW into c:\llama.cpp\Ryzen
 
@@ -429,28 +415,100 @@ Resolving deltas: 100% (1623/1623), done.
 Updating files: 100% (4087/4087), done.
 Filtering content: 100% (42/42), 525.07 MiB | 11.05 MiB/s, done.
 
+REM Activate ryzenai-transformers Conda environment
+
+C:\llama.cpp\Ryzen>cd example\transformers
+C:\llama.cpp\Ryzen\example\transformers>set TRANSFORMERS_ROOT=%CD%
+
+C:\llama.cpp\Ryzen\example\transformers>set trans
+TRANSFORMERS_ROOT=C:\llama.cpp\Ryzen\example\transformers
+
+C:\llama.cpp\Ryzen\example\transformers>conda env create --file=env.yaml
+Retrieving notices: ...working... done
+Channels:
+ - conda-forge
+ - defaults
+Platform: win-64
+Collecting package metadata (repodata.json): done
+Solving environment: done
+
+Downloading and Extracting Packages:
+
+Preparing transaction: done
+Verifying transaction: done
+Executing transaction: - ...
+
+
+REM Activate conda env ryzenai-transformers
+conda init
+REM restart the command prompt and then
+conda activate ryzenai-transformers
+
+REM Use subst when path is too long
+@REM use any unused drive letter, Z: for example
+subst Z: %cd%
+
+REM Build and Install RyzenAI if first time
+setup_stx.bat
+
+cd %TRANSFORMERS_ROOT%\ops\cpp
+cmake -B build\ -DCMAKE_INSTALL_PREFIX=%CONDA_PREFIX%
+cmake --build build\ --config=Release
+cmake --install build\ --config=Release
+
+(ryzenai-transformers) C:\llama.cpp\Ryzen\example\transformers\ops\cpp>cmake --install build\ --config=Release
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/include/xaiengine/xaie_helper.h
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/include/xaiengine/xaie_txn.h
+
+...
+
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/include/ryzenai/utils/xrt_context.hpp
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/lib/cmake/ryzenai/RyzenAIConfigTargets.cmake
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/lib/cmake/ryzenai/RyzenAIConfig.cmake
+-- Installing: C:/ProgramData/anaconda3/envs/ryzenai-transformers/lib/cmake/ryzenai/RyzenAIConfigVersion.cmake
+
+--------------------------------------------------------------------------------
+# Then enable CONDA environment for ryzenai-transformers and run "cmake .."
+
+REM First activate conda env "ryzenai-transformers"
+C:\llama.cpp>conda env list
+# conda environments:
+#
+                         C:\ProgramData\anaconda3
+ryzenai-transformers     C:\ProgramData\anaconda3\envs\ryzenai-transformers
+base                     c:\ProgramData\anaconda3
+ryzen-ai-1.2.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.2.0
+ryzen-ai-1.3.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.3.0
+ryzenai-transformers     c:\ProgramData\anaconda3\envs\ryzenai-transformers      <<<<=====================
+
+C:\llama.cpp>conda activate ryzenai-transformers
+(ryzenai-transformers) C:\llama.cpp>
+
 REM Set XRT_PATH from the above repo
 
 (ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>set XRT_PATH=C:\llama.cpp\Ryzen\example\transformers\third_party\xrt-ipu
 
-REM Setup the build directories...
+REM cmake to prep llama.cpp build directories and cache...
 
-(ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>cmake .. -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%;%XRT_PATH%" -DLLAMA_RYZENAI=ON
+(ryzenai-transformers) C:\llama.cpp\Ryzen\example\transformers\ops\cpp>cd \llama.cpp\llama.dc\build.Ryzen
+
+(ryzenai-transformers) C:\llama.cpp\llama.dc\build.Ryzen>cmake .. -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%;%XRT_PATH%" -DLLAM
+A_RYZENAI=ON
 -- Building for: Visual Studio 17 2022
 -- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
--- The C compiler identification is MSVC 19.41.34120.0
--- The CXX compiler identification is MSVC 19.41.34120.0
+-- The C compiler identification is MSVC 19.42.34436.0
+-- The CXX compiler identification is MSVC 19.42.34436.0
 -- Detecting C compiler ABI info
 -- Detecting C compiler ABI info - done
--- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/cl.exe - skipped
 -- Detecting C compile features
 -- Detecting C compile features - done
 -- Detecting CXX compiler ABI info
 -- Detecting CXX compiler ABI info - done
--- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.42.34433/bin/Hostx64/x64/cl.exe - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.46.0.windows.1")
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.46.2.windows.1")
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
 -- Looking for pthread_create in pthreads
@@ -482,15 +540,17 @@ REM Setup the build directories...
 -- no Clang - enable /fp:fast
 -- Enable AVX512 support
 -- Add flag to generate AVX512 intrinsincs
--- Configuring done (23.6s)
--- Generating done (0.8s)
--- Build files have been written to: C:/llama.cpp/llama.dc/build.msvc.Ryzen
+-- Configuring done (11.4s)
+-- Generating done (0.6s)
+-- Build files have been written to: C:/llama.cpp/llama.dc/build.Ryzen
 
-(ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>
+(ryzenai-transformers) C:\llama.cpp\llama.dc\build.Ryzen>
 
 --------------------------------------------------------------------------------
-# Then go build things - for this there is no need for conda environment "ryzenai-transformers
+# Then go build llama.cpp - for this there is no need for conda environment "ryzenai-transformers" 
+# once "cmake .." above has been done.
 
+REM Build binaries
 C:\llama.cpp\llama.dc\build.msvc.Ryzen>cmake --build . --config RelWithDebInfo --target kv llama-bench llama-retrieval
 MSBuild version 17.11.2+c078802d4 for .NET Framework
 
