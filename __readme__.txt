@@ -399,7 +399,169 @@ C:\llama.cpp\Ryzen\example\transformers\ops\cpp>
 
 REM To "BUILD" llama-bench/kv with RyzenAI: 
 
+--------------------------------------------------------------------------------
+# First enable CONDA environment for ryzenai-transformers and run "cmake .."
 
+REM First launch the anaconda 
+C:\llama.cpp>conda env list
+# conda environments:
+#
+                         C:\ProgramData\anaconda3
+ryzenai-transformers     C:\ProgramData\anaconda3\envs\ryzenai-transformers
+base                     c:\ProgramData\anaconda3
+ryzen-ai-1.2.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.2.0
+ryzen-ai-1.3.0           c:\ProgramData\anaconda3\envs\ryzen-ai-1.3.0
+ryzenai-transformers     c:\ProgramData\anaconda3\envs\ryzenai-transformers      <<<<=====================
+
+C:\llama.cpp>conda activate ryzenai-transformers
+(ryzenai-transformers) C:\llama.cpp>
+
+REM Clone RyzenAI-SW into c:\llama.cpp\Ryzen
+
+C:\llama.cpp\Ryzen>git clone https://github.com/hoivb612/RyzenAI-SW .
+Cloning into '.'...
+remote: Enumerating objects: 6128, done.
+remote: Counting objects: 100% (101/101), done.
+remote: Compressing objects: 100% (92/92), done.
+remote: Total 6128 (delta 12), reused 56 (delta 6), pack-reused 6027 (from 3)
+Receiving objects: 100% (6128/6128), 418.31 MiB | 7.36 MiB/s, done.
+Resolving deltas: 100% (1623/1623), done.
+Updating files: 100% (4087/4087), done.
+Filtering content: 100% (42/42), 525.07 MiB | 11.05 MiB/s, done.
+
+REM Set XRT_PATH from the above repo
+
+(ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>set XRT_PATH=C:\llama.cpp\Ryzen\example\transformers\third_party\xrt-ipu
+
+REM Setup the build directories...
+
+(ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>cmake .. -DCMAKE_PREFIX_PATH="%CONDA_PREFIX%;%XRT_PATH%" -DLLAMA_RYZENAI=ON
+-- Building for: Visual Studio 17 2022
+-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
+-- The C compiler identification is MSVC 19.41.34120.0
+-- The CXX compiler identification is MSVC 19.41.34120.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Git: C:/Program Files/Git/cmd/git.exe (found version "2.46.0.windows.1")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found OpenMP_C: -openmp (found version "2.0")
+-- Found OpenMP_CXX: -openmp (found version "2.0")
+-- Found OpenMP: TRUE (found version "2.0")
+-- OpenMP found
+-- Found XRT: C:/llama.cpp/Ryzen/example/transformers/third_party/xrt-ipu/xrt/share/cmake/XRT (found version "2.17.0")
+-- Found xaiengine::xaiengine: C:/ProgramData/anaconda3/envs/ryzenai-transformers/lib/xaiengine.lib
+-- Found target aie_controller: C:/ProgramData/anaconda3/envs/ryzenai-transformers/Lib/cmake/aie_controller
+-- Found RyzenAI: C:/ProgramData/anaconda3/envs/ryzenai-transformers/Lib/cmake/ryzenai Version: 0.0.1
+-- RyzenAI found
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with LLAMA_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: AMD64
+-- CMAKE_GENERATOR_PLATFORM:
+-- x86 detected
+-- Performing Test HAS_AVX_1
+-- Performing Test HAS_AVX_1 - Success
+-- Performing Test HAS_AVX2_1
+-- Performing Test HAS_AVX2_1 - Success
+-- Performing Test HAS_FMA_1
+-- Performing Test HAS_FMA_1 - Success
+-- Performing Test HAS_AVX512_1
+-- Performing Test HAS_AVX512_1 - Success
+-- no Clang - enable /fp:fast
+-- Enable AVX512 support
+-- Add flag to generate AVX512 intrinsincs
+-- Configuring done (23.6s)
+-- Generating done (0.8s)
+-- Build files have been written to: C:/llama.cpp/llama.dc/build.msvc.Ryzen
+
+(ryzenai-transformers) C:\llama.cpp\llama.dc\build.msvc.Ryzen>
+
+--------------------------------------------------------------------------------
+# Then go build things - for this there is no need for conda environment "ryzenai-transformers
+
+C:\llama.cpp\llama.dc\build.msvc.Ryzen>cmake --build . --config RelWithDebInfo --target kv llama-bench llama-retrieval
+MSBuild version 17.11.2+c078802d4 for .NET Framework
+
+  1>Checking Build System
+  Building Custom Rule C:/llama.cpp/llama.dc/CMakeLists.txt
+  ggml.c
+  ggml-alloc.c
+  ggml-backend.c
+  ggml-quants.c
+  ggml-aarch64.c
+  ggml-ryzenai.cpp
+  ggml.vcxproj -> C:\llama.cpp\llama.dc\build.msvc.Ryzen\ggml.dir\RelWithDebInfo\ggml.lib
+  Building Custom Rule C:/llama.cpp/llama.dc/CMakeLists.txt
+  llama.cpp
+  ...
+
+C:\llama.cpp\llama.dc\build.msvc.Ryzen>dir bin\RelWithDebInfo
+ Volume in drive C has no label.
+ Volume Serial Number is 2C73-3E2C
+
+ Directory of C:\llama.cpp\llama.dc\build.msvc.Ryzen\bin\RelWithDebInfo
+
+02/24/2025  01:28 AM    <DIR>          .
+02/24/2025  01:28 AM    <DIR>          ..
+02/24/2025  01:28 AM         2,412,544 kv.exe
+02/24/2025  01:28 AM        13,193,216 kv.pdb
+02/24/2025  01:28 AM         3,093,504 llama-bench.exe
+02/24/2025  01:28 AM        19,427,328 llama-bench.pdb
+02/24/2025  01:28 AM         3,006,976 llama-retrieval.exe
+02/24/2025  01:28 AM        18,903,040 llama-retrieval.pdb
+               6 File(s)     60,036,608 bytes
+               2 Dir(s)  30,316,195,840 bytes free
+
+C:\llama.cpp\llama.dc\build.msvc.Ryzen>link -dump -imports bin\RelWithDebInfo\kv.exe | More
+Microsoft (R) COFF/PE Dumper Version 14.41.34120.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+
+Dump of file bin\RelWithDebInfo\kv.exe
+
+File Type: EXECUTABLE IMAGE
+
+  Section contains the following imports:
+
+    xrt_coreutil.dll
+             140FB2170 Import Address Table
+             140FB3548 Import Name Table
+                     0 time date stamp
+                     0 Index of first forwarder reference
+
+                         143 ?size@bo@xrt@@QEBA_KXZ
+                         106 ?group_id@kernel@xrt@@QEBAHH@Z
+                          30 ??0kernel@xrt@@QEAA@AEBVhw_context@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+                         13D ?set_arg_at_index@run@xrt@@AEAAXHAEBVbo@2@@Z
+                         13E ?set_arg_at_index@run@xrt@@AEAAXHPEBX_K@Z
+                         15E ?wait2@run@xrt@@QEBA?AW4cv_status@std@@AEBV?$duration@_JU?$ratio@$00$0DOI@@std@@@chrono@4@@Z
+                         145 ?start@run@xrt@@QEAAXXZ
+                          38 ??0run@xrt@@QEAA@AEBVkernel@1@@Z
+                          29 ??0hw_context@xrt@@QEAA@AEBVdevice@1@AEBVuuid@1@W4access_mode@01@@Z
+                         133 ?register_xclbin@device@xrt@@QEAA?AVuuid@2@AEBVxclbin@2@@Z
+                          1C ??0device@xrt@@QEAA@I@Z
+                          F9 ?get_uuid@xclbin@xrt@@QEBA?AVuuid@2@XZ
+                          3E ??0xclbin@xrt@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+                         166 ?write@bo@xrt@@QEAAXPEBX_K1@Z
+                         116 ?map@bo@xrt@@QEAAPEAXXZ
+                         14C ?sync@bo@xrt@@QEAAXW4xclBOSyncDirection@@_K1@Z
+                          52 ?address@bo@xrt@@QEBA_KXZ
+                          12 ??0bo@xrt@@QEAA@AEBVhw_context@1@_KW4flags@01@I@Z
+
+    KERNEL32.dll
+    ...
 
 --------------------------------------------------------------------------------
 
