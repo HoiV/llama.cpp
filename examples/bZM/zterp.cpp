@@ -41,7 +41,7 @@
 #include "options.h"
 #include "osdep.h"
 #include "patches.h"
-#include "process.h"
+#include "processp.h"
 #include "random.h"
 #include "screen.h"
 #include "sound.h"
@@ -53,6 +53,14 @@
 #ifdef ZTERP_GLK
 #include <glk.h>
 #endif
+
+// From speech.cpp
+extern std::string tts_string;
+extern int InitializeSpeechModels();
+extern void ListSpeechSynthesisVoices();
+
+// From slm.cpp
+extern int slm_init();
 
 using namespace std::literals;
 
@@ -706,6 +714,11 @@ void zquit()
         }
     }
 
+    // Xbox-B612 - clear TTS string as previous content is 
+    // no longer relevant for the game.
+
+    tts_string.clear();
+
     throw Operation::Quit();
 }
 
@@ -859,6 +872,14 @@ static void real_main(int argc, char **argv)
     zterp_os_init_term();
 #endif
 
+    // Xbox-B612: initialize voice synthesis and recognition models
+    //if (InitializeSpeechModels() != 0) {
+    //    die("Speech init failed");
+    //}
+    if (slm_init() != 0) {
+        die("SLM init failed");
+    }
+
     if (options.show_version) {
         screen_puts("Bocfel " ZTERP_VERSION);
 #ifdef ZTERP_NO_SAFETY_CHECKS
@@ -871,6 +892,9 @@ static void real_main(int argc, char **argv)
 #else
         screen_puts("Cheat support enabled");
 #endif
+
+        // Show voice models supported
+        ListSpeechSynthesisVoices();
 
         auto config = zterp_os_rcfile(false);
         if (config != nullptr) {

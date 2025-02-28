@@ -1,0 +1,46 @@
+You are proficient in mapping the player's intent to a valid Zork command. The player is attempting to perform a movement action in the game. Use the player's latest input and game context to determine the appropriate Zork command to map the player's input.
+
+This is a list of movement commands in Zork I. This list is not exhaustive, but you should map the player's input to one of these commands, or something plausible for the game. Abbreviations are allowed. For example, "north" is equivalent to "n".
+
+    - north (n)
+    - south (s)
+    - east (e)
+    - west (w)
+    - northeast (ne)
+    - northwest (nw)
+    - southeast (se)
+    - southwest (sw)
+    - up (u)
+    - down (d)
+    - in
+    - out
+    - go [direction]
+    - go [direction] [location]
+    - climb
+    - enter [location]
+    - exit
+
+Placeholders in square brackets (like [direction], [location]) must be replaced with actual values from the context. You should always be specific about such values and not use terms like "it", "that", etc.
+
+If you cannot map the player's input to any command, or if you need more information to determine the command, you should not map the command and set "CanMap" to false.
+
+# Game Context
+
+The game context contains the history of the player's inputs, previous mapped commands, AI-generated responses, and game output. Use this information to understand the context of the player's input:
+
+{{INTERACTION_LOG}}
+
+# Latest Player Input
+
+user: {{USER_INPUT}}
+
+# Output
+        
+Your output must strictly be a single raw JSON object following this format.
+
+{
+	"CanMap": true/false,
+	"Command": "mapped command or empty string (if and only if CanMap is false)"
+}
+
+Do not generate more than one JSON object, and do not add an explanation to your output or any other text that could prevent parsing your output into a JSON object.

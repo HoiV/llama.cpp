@@ -26,7 +26,7 @@
 
 #include "patches.h"
 #include "memory.h"
-#include "process.h"
+#include "processp.h"
 #include "types.h"
 #include "util.h"
 #include "zterp.h"

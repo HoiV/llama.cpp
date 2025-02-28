@@ -22,7 +22,7 @@
 #include "dict.h"
 #include "memory.h"
 #include "options.h"
-#include "process.h"
+#include "processp.h"
 #include "types.h"
 #include "unicode.h"
 #include "util.h"

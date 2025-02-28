@@ -16,7 +16,7 @@
 
 #include "branch.h"
 #include "memory.h"
-#include "process.h"
+#include "processp.h"
 #include "stack.h"
 #include "types.h"
 #include "util.h"

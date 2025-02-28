@@ -17,7 +17,7 @@
 #include "objects.h"
 #include "branch.h"
 #include "memory.h"
-#include "process.h"
+#include "processp.h"
 #include "screen.h"
 #include "types.h"
 #include "util.h"

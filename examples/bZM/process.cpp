@@ -23,7 +23,7 @@ extern "C" {
 }
 #endif
 
-#include "process.h"
+#include "processp.h"
 #include "branch.h"
 #include "dict.h"
 #include "mathop.h"
@@ -156,25 +156,25 @@ void setup_opcodes()
     // §14.2.1
     ext_opcodes.fill(znop);
 
-    setup_single_opcode(1, 6, Opcount::Zero, 0x00, zrtrue);
+    setup_single_opcode(1, 6, Opcount::Zero, 0x00, zrtrue);      // 176
     setup_single_opcode(1, 6, Opcount::Zero, 0x01, zrfalse);
-    setup_single_opcode(1, 6, Opcount::Zero, 0x02, zprint);
-    setup_single_opcode(1, 6, Opcount::Zero, 0x03, zprint_ret);
-    setup_single_opcode(1, 6, Opcount::Zero, 0x04, znop);
+    setup_single_opcode(1, 6, Opcount::Zero, 0x02, zprint);      // 178 (176+2)
+    setup_single_opcode(1, 6, Opcount::Zero, 0x03, zprint_ret);  // 179
+    setup_single_opcode(1, 6, Opcount::Zero, 0x04, znop);        // 180
     setup_single_opcode(1, 4, Opcount::Zero, 0x05, zsave);
     setup_single_opcode(1, 4, Opcount::Zero, 0x06, zrestore);
     setup_single_opcode(1, 6, Opcount::Zero, 0x07, zrestart);
     setup_single_opcode(1, 6, Opcount::Zero, 0x08, zret_popped);
-    setup_single_opcode(1, 4, Opcount::Zero, 0x09, zpop);
+    setup_single_opcode(1, 4, Opcount::Zero, 0x09, zpop);        // 185
     setup_single_opcode(5, 6, Opcount::Zero, 0x09, zcatch);
     setup_single_opcode(1, 6, Opcount::Zero, 0x0a, zquit);
     setup_single_opcode(1, 6, Opcount::Zero, 0x0b, znew_line);
     setup_single_opcode(3, 3, Opcount::Zero, 0x0c, zshow_status);
-    setup_single_opcode(3, 6, Opcount::Zero, 0x0d, zverify);
+    setup_single_opcode(3, 6, Opcount::Zero, 0x0d, zverify);     // 190
     setup_single_opcode(5, 6, Opcount::Zero, 0x0e, zextended);
     setup_single_opcode(5, 6, Opcount::Zero, 0x0f, zpiracy);
 
-    setup_single_opcode(1, 6, Opcount::One, 0x00, zjz);
+    setup_single_opcode(1, 6, Opcount::One, 0x00, zjz);          // 160
     setup_single_opcode(1, 6, Opcount::One, 0x01, zget_sibling);
     setup_single_opcode(1, 6, Opcount::One, 0x02, zget_child);
     setup_single_opcode(1, 6, Opcount::One, 0x03, zget_parent);
@@ -184,15 +184,15 @@ void setup_opcodes()
     setup_single_opcode(1, 6, Opcount::One, 0x07, zprint_addr);
     setup_single_opcode(4, 6, Opcount::One, 0x08, zcall_1s);
     setup_single_opcode(1, 6, Opcount::One, 0x09, zremove_obj);
-    setup_single_opcode(1, 6, Opcount::One, 0x0a, zprint_obj);
+    setup_single_opcode(1, 6, Opcount::One, 0x0a, zprint_obj);  // 170 (160+0xa)
     setup_single_opcode(1, 6, Opcount::One, 0x0b, zret);
     setup_single_opcode(1, 6, Opcount::One, 0x0c, zjump);
     setup_single_opcode(1, 6, Opcount::One, 0x0d, zprint_paddr);
     setup_single_opcode(1, 6, Opcount::One, 0x0e, zload);
-    setup_single_opcode(1, 4, Opcount::One, 0x0f, znot);
-    setup_single_opcode(5, 6, Opcount::One, 0x0f, zcall_1n);
+    setup_single_opcode(1, 4, Opcount::One, 0x0f, znot);        // 175
+    setup_single_opcode(5, 6, Opcount::One, 0x0f, zcall_1n);    // 175
 
-    setup_single_opcode(1, 6, Opcount::Two, 0x01, zje);
+    setup_single_opcode(1, 6, Opcount::Two, 0x01, zje);         // 192
     setup_single_opcode(1, 6, Opcount::Two, 0x02, zjl);
     setup_single_opcode(1, 6, Opcount::Two, 0x03, zjg);
     setup_single_opcode(1, 6, Opcount::Two, 0x04, zdec_chk);
@@ -225,9 +225,9 @@ void setup_opcodes()
     setup_single_opcode(1, 6, Opcount::Var, 0x01, zstorew);
     setup_single_opcode(1, 6, Opcount::Var, 0x02, zstoreb);
     setup_single_opcode(1, 6, Opcount::Var, 0x03, zput_prop);
-    setup_single_opcode(1, 6, Opcount::Var, 0x04, zread);
-    setup_single_opcode(1, 6, Opcount::Var, 0x05, zprint_char);
-    setup_single_opcode(1, 6, Opcount::Var, 0x06, zprint_num);
+    setup_single_opcode(1, 6, Opcount::Var, 0x04, zread);       // 228
+    setup_single_opcode(1, 6, Opcount::Var, 0x05, zprint_char); // 229 (224+5)
+    setup_single_opcode(1, 6, Opcount::Var, 0x06, zprint_num);  // 230 (224+6)
     setup_single_opcode(1, 6, Opcount::Var, 0x07, zrandom);
     setup_single_opcode(1, 6, Opcount::Var, 0x08, zpush);
     setup_single_opcode(1, 6, Opcount::Var, 0x09, zpull);
@@ -254,7 +254,7 @@ void setup_opcodes()
     setup_single_opcode(5, 6, Opcount::Var, 0x1e, zprint_table);
     setup_single_opcode(5, 6, Opcount::Var, 0x1f, zcheck_arg_count);
 
-    setup_single_opcode(5, 6, Opcount::Ext, 0x00, zsave5);
+    setup_single_opcode(5, 6, Opcount::Ext, 0x00, zsave5);      // 0
     setup_single_opcode(5, 6, Opcount::Ext, 0x01, zrestore5);
     setup_single_opcode(5, 6, Opcount::Ext, 0x02, zlog_shift);
     setup_single_opcode(5, 6, Opcount::Ext, 0x03, zart_shift);
@@ -325,6 +325,7 @@ void process_instructions()
 
         if (opcode < 0x80) { // long 2OP
             znargs = 2;
+            //printf("%s: 2OP_LONG ", __func__);
 
             if ((opcode & 0x40) == 0x40) {
                 zargs[0] = variable(byte(pc++));
@@ -339,6 +340,7 @@ void process_instructions()
             }
         } else if (opcode < 0xb0) { // short 1OP
             znargs = 1;
+            //printf("%s: 1OP_B0 ", __func__);
 
             if ((opcode & 0x20) == 0x20) {
                 zargs[0] = variable(byte(pc++));
@@ -349,8 +351,10 @@ void process_instructions()
                 pc += 2;
             }
         } else if (opcode < 0xc0) { // short 0OP (plus EXT)
+            //printf("%s: 0OP_C0_EXT ", __func__);
             znargs = 0;
         } else if (opcode == 0xec || opcode == 0xfa) { // Double variable VAR
+            //printf("%s: EC_FA_VAR ", __func__);
             uint8_t types1, types2;
 
             znargs = 0;
@@ -360,12 +364,14 @@ void process_instructions()
             decode_var(types1);
             decode_var(types2);
         } else { // variable 2OP and VAR
+            //printf("%s: 2OP_VAR ", __func__);
             znargs = 0;
 
             decode_var(byte(pc++));
         }
 
         try {
+            //printf("Opcode=%d\n", opcode);
             op_call(opcode);
         } catch (const Operation::Return &) {
             processing_level--;

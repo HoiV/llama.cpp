@@ -23,7 +23,7 @@
 #include <string>
 
 #include "util.h"
-#include "process.h"
+#include "processp.h"
 #include "screen.h"
 #include "types.h"
 #include "zterp.h"

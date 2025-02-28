@@ -23,7 +23,7 @@
 
 #include "sound.h"
 #include "iff.h"
-#include "process.h"
+#include "processp.h"
 #include "types.h"
 #include "zterp.h"
 

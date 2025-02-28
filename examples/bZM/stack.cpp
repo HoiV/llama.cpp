@@ -39,7 +39,7 @@
 #include "meta.h"
 #include "options.h"
 #include "osdep.h"
-#include "process.h"
+#include "processp.h"
 #include "random.h"
 #include "screen.h"
 #include "stash.h"

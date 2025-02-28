@@ -16,7 +16,7 @@
 
 #include "mathop.h"
 #include "branch.h"
-#include "process.h"
+#include "processp.h"
 #include "stack.h"
 #include "types.h"
 #include "util.h"
