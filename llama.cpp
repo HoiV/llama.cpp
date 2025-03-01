@@ -1369,9 +1369,10 @@ struct LLM_TN {
 //
 
 static const std::map<llama_rope_scaling_type, const char *> LLAMA_ROPE_SCALING_TYPES = {
-    { LLAMA_ROPE_SCALING_TYPE_NONE,   "none"   },
-    { LLAMA_ROPE_SCALING_TYPE_LINEAR, "linear" },
-    { LLAMA_ROPE_SCALING_TYPE_YARN,   "yarn"   },
+    { LLAMA_ROPE_SCALING_TYPE_NONE,       "none"    },
+    { LLAMA_ROPE_SCALING_TYPE_LINEAR,     "linear"  },
+    { LLAMA_ROPE_SCALING_TYPE_YARN,       "yarn"    },
+    { LLAMA_ROPE_SCALING_TYPE_LONGROPE,   "longrope"}, // Phi-4-mini
 };
 
 static llama_rope_scaling_type llama_rope_scaling_type_from_string(const std::string & name) {
@@ -5451,6 +5452,11 @@ static void llm_load_vocab(
             } else if (
                 tokenizer_pre == "jais") {
                 vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_JAIS;
+            // For Phi-4-mini
+            } else if (
+                tokenizer_pre == "gpt-4o") {
+                vocab.type_pre = LLAMA_VOCAB_PRE_TYPE_GPT4O;
+                vocab.tokenizer_clean_spaces = false;
             } else {
                 throw std::runtime_error(format("unknown pre-tokenizer type: '%s'", tokenizer_pre.c_str()));
             }
@@ -6021,7 +6027,8 @@ static bool llm_load_tensors(
         const int64_t n_embd_gqa    = n_embd_v_gqa;
         const int64_t n_vocab       = hparams.n_vocab;
         const int64_t n_vocab_type  = hparams.n_vocab_type;
-        const int64_t n_rot         = (hparams.n_head() > 0) ? hparams.n_embd_head_k : 0;
+        // const int64_t n_rot         = (hparams.n_head() > 0) ? hparams.n_embd_head_k : 0;
+        const int64_t n_rot         = hparams.n_rot;
         const int64_t n_expert      = hparams.n_expert;
         const int64_t n_expert_used = hparams.n_expert_used;
         const int64_t n_ctx_train   = hparams.n_ctx_train;
@@ -6079,7 +6086,15 @@ static bool llm_load_tensors(
 
                         layer.ffn_norm = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd});
 
-                        layer.rope_freqs = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FREQS, "weight"), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        // layer.rope_freqs = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FREQS, "weight"), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        if (hparams.rope_scaling_type_train == LLAMA_ROPE_SCALING_TYPE_LONGROPE) {
+                            layer.rope_long  = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_LONG,  "weight", i), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                            layer.rope_short = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_SHORT, "weight", i), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        }
+                        else {
+                            layer.rope_freqs = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FREQS, "weight", i), {n_rot/2}, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        }
+
 
                         if (n_expert == 0) {
                             layer.ffn_gate = ml.create_tensor(ctx_split, tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff});
@@ -6735,7 +6750,17 @@ static bool llm_load_tensors(
                     // output
                     {
                         model.output_norm = ml.create_tensor(ctx_output, tn(LLM_TENSOR_OUTPUT_NORM, "weight"), { n_embd });
-                        model.output = ml.create_tensor(ctx_output_split, tn(LLM_TENSOR_OUTPUT, "weight"), { n_embd, n_vocab });
+
+                        // For Phi-4-mini support
+                        // model.output = ml.create_tensor(ctx_output_split, tn(LLM_TENSOR_OUTPUT, "weight"), { n_embd, n_vocab });
+
+                        model.output = ml.create_tensor(ctx_output_split, tn(LLM_TENSOR_OUTPUT, "weight"), {n_embd, n_vocab}, llama_model_loader::TENSOR_NOT_REQUIRED);
+
+                        // if output is NULL, init from the input tok embed
+                        if (model.output == NULL) {
+                            model.output = ml.create_tensor(ctx_output_split, tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, llama_model_loader::TENSOR_DUPLICATED);
+                        }
+                        // End Phi-4-mini support
                     }
 
                     for (int i = 0; i < n_layer; ++i) {
@@ -6754,8 +6779,18 @@ static bool llm_load_tensors(
                         layer.ffn_down = ml.create_tensor(ctx_split, tn(LLM_TENSOR_FFN_DOWN, "weight", i), { n_ff, n_embd });
                         layer.ffn_up = ml.create_tensor(ctx_split, tn(LLM_TENSOR_FFN_UP, "weight", i), { n_embd, 2 * n_ff });
 
-                        layer.rope_long  = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_LONG,  "weight"), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
-                        layer.rope_short = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_SHORT, "weight"), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        // For Phi-4-mini support
+                        // layer.rope_long  = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_LONG,  "weight"), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        // layer.rope_short = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_SHORT, "weight"), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        if (hparams.rope_scaling_type_train == LLAMA_ROPE_SCALING_TYPE_LONGROPE) {
+                            layer.rope_long  = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_LONG,  "weight", i), { n_rot/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                            layer.rope_short = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_SHORT, "weight", i), { n_rot/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        }
+                        else
+                        {
+                            layer.rope_long  = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_LONG,  "weight", i), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                            layer.rope_short = ml.create_tensor(ctx_layer, tn(LLM_TENSOR_ROPE_FACTORS_SHORT, "weight", i), { n_embd_head/2 }, llama_model_loader::TENSOR_NOT_REQUIRED | (i != 0 ? llama_model_loader::TENSOR_DUPLICATED : 0));
+                        }
                     }
                 } break;
             case LLM_ARCH_PLAMO:
@@ -15479,6 +15514,13 @@ struct llm_tokenizer_bpe {
                     " ?[^(\\s|.,!?…。，、।۔،)]+",
                 };
                 break;
+            case LLAMA_VOCAB_PRE_TYPE_GPT4O:
+                    // original regex from tokenizer.json
+                    // "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+                    regex_exprs = {
+                    "[^\\r\\n\\p{L}\\p{N}]?((?=[\\p{L}])([^a-z]))*((?=[\\p{L}])([^A-Z]))+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\\r\\n\\p{L}\\p{N}]?((?=[\\p{L}])([^a-z]))+((?=[\\p{L}])([^A-Z]))*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+",
+                };
+                break;
             default:
                 // default regex for BPE tokenization pre-processing
                 regex_exprs = {
@@ -20471,6 +20513,48 @@ size_t llama_state_set_data(struct llama_context * ctx, const uint8_t * src) {
     return nread;
 }
 
+static uint32_t llama_model_ftype_rank(llama_ftype ftype) {
+    if (ftype & LLAMA_FTYPE_GUESSED) {
+        return llama_model_ftype_rank((enum llama_ftype) (ftype & ~LLAMA_FTYPE_GUESSED));
+    }
+    
+    switch (ftype) {
+        case LLAMA_FTYPE_MOSTLY_IQ1_S  :return 1; // "IQ1_S - 1.5625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ1_M  :return 1; // "IQ1_M - 1.75 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_XXS:return 1; // "IQ2_XXS - 2.0625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_XS: return 1; // "IQ2_XS - 2.3125 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_S:  return 1; // "IQ2_S - 2.5 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ2_M:  return 1; // "IQ2_M - 2.7 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_XS: return 1; // "IQ3_XS - 3.3 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_XXS:return 1; // "IQ3_XXS - 3.0625 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_S:  return 1; // "IQ3_S - 3.4375 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ3_M:  return 1; // "IQ3_S mix - 3.66 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ4_NL: return 1; // "IQ4_NL - 4.5 bpw";
+        case LLAMA_FTYPE_MOSTLY_IQ4_XS: return 1; // "IQ4_XS - 4.25 bpw";
+        case LLAMA_FTYPE_MOSTLY_Q2_K:   return 2;
+        case LLAMA_FTYPE_MOSTLY_Q2_K_S: return 2;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_S: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_M: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q3_K_L: return 3;
+        case LLAMA_FTYPE_MOSTLY_Q4_0: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_1: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_1_SOME_F16:
+                                      return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_K_S: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q4_K_M: return 4;
+        case LLAMA_FTYPE_MOSTLY_Q5_0: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_1: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_K_S: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q5_K_M: return 5;
+        case LLAMA_FTYPE_MOSTLY_Q6_K:   return 6;
+        case LLAMA_FTYPE_MOSTLY_Q8_0: return 8;
+        case LLAMA_FTYPE_MOSTLY_BF16: return 16;
+        case LLAMA_FTYPE_MOSTLY_F16:  return 16+1; // F16 is more accurate then BF16
+        case LLAMA_FTYPE_ALL_F32:     return 32;
+        default: return 0;
+    }
+}
+
 static bool llama_state_load_file_internal(struct llama_context * ctx, const char * path_session, llama_token * tokens_out, size_t n_token_capacity, size_t * n_token_count_out) {
     llama_file file(path_session, "rb");
 
@@ -20493,6 +20577,18 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
         }
     }
 
+    // check the ftype
+    const llama_ftype session_ftype = (llama_ftype) file.read_u32();
+
+    if (llama_model_ftype_rank(session_ftype) < llama_model_ftype_rank(ctx->model.ftype)) {
+        // do not use a lower quantized session to serve a higher quantized model
+        LLAMA_LOG_INFO("%s : session %s was created with lower quantization '%s' - create new cache\n", 
+                       __func__, 
+                       path_session,
+                       llama_model_ftype_name(session_ftype).c_str());
+        return false;
+    }
+
     // load the prompt
     {
         const uint32_t n_token_count = file.read_u32();
@@ -20503,6 +20599,16 @@ static bool llama_state_load_file_internal(struct llama_context * ctx, const cha
         }
 
         file.read_raw(tokens_out, sizeof(llama_token) * n_token_count);
+
+        if (*n_token_count_out == 0xffffffff) {
+            // signal from caller that this is the first time through so print info about cache file
+            LLAMA_LOG_INFO("%s : cache file %s ('%s') with prompt size (%d) is loaded''\n", 
+                           __func__,
+                           path_session,
+                           llama_model_ftype_name(session_ftype).c_str(),
+                           n_token_count);
+        }
+
         *n_token_count_out = n_token_count;
     }
 
@@ -20542,6 +20648,9 @@ static bool llama_state_save_file_internal(struct llama_context * ctx, const cha
 
     file.write_raw(&ctx->model.hparams, sizeof(llama_hparams));
 
+    // save the ftype for verification when we load it from disk
+    file.write_u32(ctx->model.ftype);
+
     // save the prompt
     file.write_u32((uint32_t) n_token_count);
     file.write_raw(tokens, sizeof(llama_token) * n_token_count);
@@ -20549,6 +20658,11 @@ static bool llama_state_save_file_internal(struct llama_context * ctx, const cha
     // save the context state using stream saving
     llama_data_file_context data_ctx(&file);
     llama_state_get_data_internal(ctx, &data_ctx);
+
+    LLAMA_LOG_INFO("\n%s : session %s ('%s) created!\n", 
+                   __func__, 
+                   path_session,
+                   llama_model_ftype_name(ctx->model.ftype).c_str());
 
     return true;
 }

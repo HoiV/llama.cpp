@@ -92,6 +92,17 @@ extern "C" {
         LLAMA_VOCAB_PRE_TYPE_CHATGLM4       = 17,
         LLAMA_VOCAB_PRE_TYPE_VIKING         = 18,
         LLAMA_VOCAB_PRE_TYPE_JAIS           = 19,
+        LLAMA_VOCAB_PRE_TYPE_TEKKEN         = 20,
+        LLAMA_VOCAB_PRE_TYPE_SMOLLM         = 21,
+        LLAMA_VOCAB_PRE_TYPE_CODESHELL      = 22,
+        LLAMA_VOCAB_PRE_TYPE_BLOOM          = 23,
+        LLAMA_VOCAB_PRE_TYPE_GPT3_FINNISH   = 24,
+        LLAMA_VOCAB_PRE_TYPE_EXAONE         = 25,
+        LLAMA_VOCAB_PRE_TYPE_CHAMELEON      = 26,
+        LLAMA_VOCAB_PRE_TYPE_MINERVA        = 27,
+        LLAMA_VOCAB_PRE_TYPE_DEEPSEEK3_LLM  = 28,
+        // For Phi-4-mini
+        LLAMA_VOCAB_PRE_TYPE_GPT4O          = 29,
     };
 
     // note: these values should be synchronized with ggml_rope
@@ -174,7 +185,8 @@ extern "C" {
         LLAMA_ROPE_SCALING_TYPE_NONE        = 0,
         LLAMA_ROPE_SCALING_TYPE_LINEAR      = 1,
         LLAMA_ROPE_SCALING_TYPE_YARN        = 2,
-        LLAMA_ROPE_SCALING_TYPE_MAX_VALUE   = LLAMA_ROPE_SCALING_TYPE_YARN,
+        LLAMA_ROPE_SCALING_TYPE_LONGROPE    = 3,
+        LLAMA_ROPE_SCALING_TYPE_MAX_VALUE   = LLAMA_ROPE_SCALING_TYPE_LONGROPE,
     };
 
     enum llama_pooling_type {
