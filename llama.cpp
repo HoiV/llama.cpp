@@ -19759,17 +19759,29 @@ int32_t llama_model_desc(const struct llama_model * model, char * buf, size_t bu
 }
 
 uint64_t llama_model_size(const struct llama_model * model) {
+    std::vector<std::string> tensor_names;
     uint64_t size = 0;
     for (const auto & it : model->tensors_by_name) {
+        if (std::find(tensor_names.begin(), tensor_names.end(), it.first) != tensor_names.end()) {
+            // skip all all duplicate tensors
+            continue;
+        }
         size += ggml_nbytes(it.second);
+        tensor_names.push_back(it.first);
     }
     return size;
 }
 
 uint64_t llama_model_n_params(const struct llama_model * model) {
+    std::vector<std::string> tensor_names;
     uint64_t nparams = 0;
     for (const auto & it : model->tensors_by_name) {
+        if (std::find(tensor_names.begin(), tensor_names.end(), it.first) != tensor_names.end()) {
+            // skip all all duplicate tensors
+            continue;
+        }
         nparams += ggml_nelements(it.second);
+        tensor_names.push_back(it.first);
     }
     return nparams;
 }
