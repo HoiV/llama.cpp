@@ -567,7 +567,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             invalid_param = !output_format_from_str(argv[i], params.output_format_stderr);
         } else if (arg == "-v" || arg == "--verbose") {
             params.verbose = true;
-        } else if (arg == "-affin" || arg == "--process-affinity") {
+        } else if (arg == "-paffin" || arg == "--process-affinity") {
             params.process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
@@ -578,8 +578,6 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                 invalid_param = true;
                 break;
             }
-            auto p = string_split<int>(argv[i], split_delim);
-            params.n_gpu_layers.insert(params.n_gpu_layers.end(), p.begin(), p.end());
             if (!parse_cpu_mask(argv[i], params.cpumask)) {
                 fprintf(stderr, "error: failed to parse CPU mask: '%s'\n", argv[i]);
                 invalid_param = true;
@@ -1463,7 +1461,7 @@ int main(int argc, char ** argv) {
                 cpu_affinity_mask |= 1ull << i;
             }
         }
-        printf("CPU affinity mask = [%0X] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count_from_cpumask);
+        printf("CPU affinity mask = [%016llX] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count_from_cpumask);
     }
 
     llama_model * lmodel = nullptr;
@@ -1497,6 +1495,10 @@ int main(int argc, char ** argv) {
 
         // setup for warmup run if asked to do so (params.warmup_run == true)
         bool warmup_already = params.warmup_run ? false : true;
+        // if either process_affinity or cpumask_present are true then enable warmup run
+        if (params.process_affinity || params.cpumask_present) {
+            warmup_already = false;
+        }
         // warmup run
         if (t.n_prompt > 0) {
             if (!warmup_already) {
@@ -1525,10 +1527,11 @@ int main(int argc, char ** argv) {
                 printf("Done tg warmup run\n");
 
                 if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
-                    common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
+                    cpu_affinity_mask = common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
                 } else if (params.process_affinity) {
-                    common::xb_set_optimal_process_affinity(t.n_threads_gen);
+                    cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_gen);
                 }
+                printf("Set process affinity %16llX\n", cpu_affinity_mask);
                 warmup_already = true;
             }
 

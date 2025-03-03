@@ -144,205 +144,53 @@ bool processCustomPromptsFromFile(xbapp_params& xbparams) {
 #ifdef _WIN32
 
 #include <intrin.h>
-
-uint64_t l1d_cache_size = 48ull * 1024ull;
-uint64_t l1i_cache_size = 32ull * 1024ull;
-uint64_t l2_cache_size = 1024ull * 1024ull;
-uint64_t l3_cache_size = 1024ull * 1024ull;
-
-typedef struct {
-    uint64_t mask;
-    uint16_t group;
-    uint16_t reserved[3];
-} group_affinity_t;
-
-void
-xb_set_process_affinity (
-    uint32_t n_threads,
-    int64_t affinity_mask_requested
-    )
-{
-#if defined(__x86_64__) || defined(_M_X64)
-
-    //
-    // Get the default rounding mode.
-    //
-
-    char * default_mode = "none";
-
-    uint32_t mxcsr = _mm_getcsr();
-
-    uint32_t round_mode = mxcsr & _MM_ROUND_MASK;
-
-    switch (round_mode) {
-    case _MM_ROUND_NEAREST:
-        default_mode = "round nearest";
-        break;
-
-    case _MM_ROUND_DOWN:
-        default_mode = "round_down";
-        break;
-
-    case _MM_ROUND_UP:
-        default_mode = "round_up";
-        break;
-
-    case _MM_ROUND_TOWARD_ZERO:
-        default_mode = "round_toward_zero";
-        break;
-
-    }
-
-    printf("mxcsr 0x%08lx, default rounding mode - %s\n", mxcsr, default_mode);
-
-    //
-    // Get number of logical processors per physical core and the maximum number of logical
-    // processsors.
-    //
-
-    struct {
-        uint32_t eax;
-        uint32_t ebx;
-        uint32_t ecx;
-        uint32_t edx;
-    } cpu_info;
-
-    int64_t affinity_mask = affinity_mask_requested;
-
-    if (affinity_mask_requested != 0) {
-        goto set_affinity;
-    }
-
-    //
-    // Get L1 instruction and data cache attributes.
-    //
-
-    __cpuid((int *)&cpu_info, 0x80000005);
-
-//    printf("l1 d-cache line size %d\n", cpu_info.ecx & 0xff);
-//    printf("l1 d-cache lines per tag %d\n", (cpu_info.ecx >> 8) & 0xff);
-//    printf("l1 d-cache associativity %d\n", (cpu_info.ecx >> 16) & 0xff);
-
-    l1d_cache_size = ((cpu_info.ecx >> 24) & 0xff) * 1024ull;
-    printf("l1 d-cache size in bytes %zd\n", l1d_cache_size);
-
-//    printf("l1 i-cache line size %d\n", cpu_info.edx & 0xff);
-//    printf("l1 i-cache lines per tag %d\n", (cpu_info.edx >> 8) & 0xff);
-//    printf("l1 i-cache associativity %d\n", (cpu_info.edx >> 16) & 0xff);
-
-    l1i_cache_size = ((cpu_info.edx >> 24) & 0xff) * 1024ull;
-    printf("l1 i-cache size in bytes %zd\n", l1i_cache_size);
-
-    //
-    // Get l2 and l3 cache sizes.
-    //
-
-    __cpuid((int *)&cpu_info, 0x80000006);
-
-    l2_cache_size = ((cpu_info.ecx >> 16) & 0xffff) * 1024ull;
-    printf("l2 cache size in bytes %zd\n", l2_cache_size); 
-
-//    l3_cache_size = ((cpu_info.edx >> 18) & 0x3fff); // * 1024ull;
-//    printf("l3 cache size in bytes %zd\n", l3_cache_size); 
-
-    //
-    // Get logical processors per core.
-    //
-
-    printf("n_threads specified %d\n", n_threads);
-    __cpuid((int *)&cpu_info, 0x8000001e);
-    const uint32_t logical_per_physical_core = ((cpu_info.ebx & 0x300) >> 8) + 1;
-    printf("number of logical processors per physical core %d\n", logical_per_physical_core);
-
-    if (logical_per_physical_core == 1) {
-        printf("bypassing set process affinity - not SMT system\n");
-        return;
-    }
-
-    __cpuid((int *)&cpu_info, 0x00000001);
-    const uint32_t maximum_logical = (cpu_info.ebx & 0xff0000) >> 16;
-    printf("maximum number of logical processors %d\n", maximum_logical);
-
-    //
-    // Check the specified number of threads against the maximum logical processor count.
-    //
-
-    const uint32_t maximum_smt_threads = maximum_logical / 2;
-    if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
-        printf("bypassing set process affinity - number threads odd or gt maximum logical / 2\n");
-        return;
-    }
-
-    //
-    // Get the current process group count.
-    //
-
-#if 0
-    uint16_t group_array[4];
-    uint16_t group_count = 4;
-
-    if (GetProcessGroupAffinity(GetCurrentProcess(), &group_count, group_array)) {
-        printf("GetProcessGroupAffinity succeeded with %d groups\n", group_count);
-        if (group_count != 1) {
-            printf("bypassing set affinity process because group count is greater than one\n");
-            return;
-        }
-
-    } else {
-        printf("GetProcessGroupAffinity failed\n");
-        return;
-    }
-#endif // #if 0
-
-    //
-    // Set process affinity.
-    //
-
-    affinity_mask = ((1ull << (n_threads * 2)) - 1) & 0x55555555ull;
-
-    //
-    // It is known that the number of threads fits within the maximum smt set. If the
-    // maximum smt set is less than or equal to 32, then the threads can be pushed
-    // up to higher numbers threads which will remove them from contention issues
-    // with clock and device interrupts.
-    //
-
-    if (maximum_smt_threads <= 32) {
-
-        //
-        // Compute the shift up such that the thread affinity straddles CCDs.
-        //
-
-        uint32_t half_shift = maximum_logical - (n_threads * 2);
-
-        half_shift = ((half_shift / 2) + 1) & 0x1e;
-
-        affinity_mask <<= half_shift;
-    }
-
-set_affinity:
-    if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        printf("process group affinity set to 0x%08llx\n", affinity_mask);
-
-    } else {
-        printf("failed to set process affinity mask\n");
-    }
-
-
-#else
-
-    // printf("%s: set process affinity is only available for x86 architecture\n", __func__);
-
-#endif // __x86_64__ || _M_X64_
-
-    return;
+namespace common {
+    #include <xbox-cpu.h>
+    #include <xbox-cpu.hpp>
 }
 
-#else
+#else // _WIN32
 
-#define xb_set_process_affinity(n)
+#define xb_set_process_affinity(n, m)
+#define xb_set_optimal_process_affinity(n)
 
 #endif // _WIN32
+
+bool parse_cpu_mask(const std::string & mask, bool (&boolmask)[32]) {
+    // Discard potential 0x prefix
+    size_t start_i = 0;
+    if (mask.length() >= 2 && mask.substr(0, 2) == "0x") {
+        start_i = 2;
+    }
+
+    size_t num_digits = mask.length() - start_i;
+    if (num_digits > 128) num_digits = 128;
+
+    size_t end_i = num_digits + start_i;
+
+    for (size_t i = start_i, n = (num_digits*4 - 1); i < end_i; i++, n-=4) {
+        char c = mask.at(i);
+        int8_t id = c;
+
+        if ((c >= '0' && c <= '9')) {
+            id -= '0';
+        } else if (c >= 'a' && c <= 'f') {
+            id -= 'a' - 10;
+        } else if (c >= 'A' && c <= 'F') {
+            id -= 'A' - 10;
+        } else {
+            fprintf(stderr, "Invalid hex character '%c' at position %d\n", c, int32_t(i));
+            return false;
+        }
+
+        boolmask[n    ] = boolmask[n    ] || ((id & 8) != 0);
+        boolmask[n - 1] = boolmask[n - 1] || ((id & 4) != 0);
+        boolmask[n - 2] = boolmask[n - 2] || ((id & 2) != 0);
+        boolmask[n - 3] = boolmask[n - 3] || ((id & 1) != 0);
+    }
+
+    return true;
+}
 
 void print_system_info(xbapp_params& xb_params) {
     std::ostringstream os;
@@ -398,7 +246,7 @@ int main(int argc, char** argv) {
     {
         int i = 1;
         for (; i < argc; i++) {
-            if (strcmp(argv[i], "-affin") == 0) {
+            if (strcmp(argv[i], "-paffin") == 0) {
                 xbparams.process_affinity = true;
             } else if (strcmp(argv[i], "-cpf") == 0) {
                 if (i + 1 < argc) {
@@ -459,6 +307,19 @@ int main(int argc, char** argv) {
                     print_usage(argc, argv);
                     return 1;
                 }
+            } else if (strcmp(argv[i], "-C") == 0) {
+                if (i + 1 < argc) {
+                    if (!parse_cpu_mask(argv[++i], xbparams.cpumask)) {
+                        fprintf(stderr, "error: failed to parse CPU mask: '%s'\n", argv[i]);
+                        print_usage(argc, argv);
+                        return 1;
+                    } else {
+                        xbparams.cpumask_present = true;
+                    }
+                } else {
+                    print_usage(argc, argv);
+                    return 1;
+                }
             } else if (strcmp(argv[i], "-vl") == 0) {
                 if (i + 1 < argc) {
                     try {
@@ -513,24 +374,27 @@ int main(int argc, char** argv) {
     }
 #endif
 
-    CPUInfo cinfo;
-    cout << "CPU vendor = " << cinfo.vendor() << endl;
-    cout << "CPU Brand String = " << cinfo.model() << endl;
-    cout << "# of cores = " << cinfo.cores() << endl;
-    cout << "# of logical cores = " << cinfo.logicalCpus() << endl;
-    cout << "Is CPU Hyper threaded = " << cinfo.isHyperThreaded() << endl;
+    printf("%s: running with: %d threads\n", __func__, xbparams.n_threads);
 
-    if (cinfo.vendor().find("AMD") != std::string::npos) {
-        if (cinfo.model().find("AMD Ryzen AI 9 HX 370") != std::string::npos) {
-            printf("%s: Detected AMD Ryzen HX 370\n", __func__);
-            xbparams.is_AMD_Ryzen_HX_370 = true;
-        } else if (cinfo.model().find("AMD RYZEN AI MAX+ PRO 395") != std::string::npos) {
-            printf("%s: Detected AMD Ryzen PRO 395\n", __func__);
-            xbparams.is_AMD_Ryzen_PRO_395 = true;
+    int64_t cpu_affinity_mask = 0;
+    int32_t cpu_core_count_from_cpumask = 0;
+    if (xbparams.cpumask_present) {
+        for (int i = 0; i < 32; i++) {
+            if (xbparams.cpumask[i]) {
+                cpu_core_count_from_cpumask++;
+                cpu_affinity_mask |= 1ull << i;
+            }
         }
+        printf("%s: CPU mask requested=[%0llX] - core count=[%d]\n", 
+            __func__, cpu_affinity_mask, cpu_core_count_from_cpumask);
     }
 
-    printf("%s: Actual using: %d threads\n", __func__, xbparams.n_threads);
+    if (xbparams.cpumask_present && (cpu_core_count_from_cpumask >= xbparams.n_threads)) {
+        cpu_affinity_mask = common::xb_set_process_affinity(xbparams.n_threads, cpu_affinity_mask);
+    } else if (xbparams.process_affinity) {
+        cpu_affinity_mask = common::xb_set_optimal_process_affinity(xbparams.n_threads);
+    }
+    printf("[%s]: Setting process affinity mask 0x%016llX\n", __func__, cpu_affinity_mask);
 
     console::init(true);
     printf("[%s]: processing cpf input file [%s]\n", __func__, xbparams.custom_p_file.c_str());
@@ -609,6 +473,8 @@ int main(int argc, char** argv) {
         custom_prompts_it++;
     }
 
+    xbparams.log_level = GGML_LOG_LEVEL_INFO;
+    llama_log_set(xbapp_log_callback, &(xbparams.log_level));
     slm_terminate();
     
     console::set_display(console::stats);

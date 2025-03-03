@@ -1,8 +1,7 @@
 #if defined(_WIN32)
 
 //
-// This file contains common affinity, core parking, cache enumeration code. It is included
-// in zo-ggml\ggml.c and za-ggml\ggml.c.
+// This file contains common affinity, core parking, cache enumeration code. 
 //
 
 #include <powrprof.h>
@@ -118,7 +117,7 @@ char * ggml_cache_type[4] = {
     "unified"
 };
 
-void
+uint64_t
 xb_set_process_affinity (
     uint32_t n_threads,
     uint64_t affinity_mask_requested
@@ -404,7 +403,7 @@ xb_set_process_affinity (
 
     if (logical_per_core == 1) {
         printf("bypassing set process affinity - not SMT system\n");
-        return;
+        return 0;
     }
 
     //
@@ -414,7 +413,7 @@ xb_set_process_affinity (
     const uint32_t maximum_smt_threads = maximum_logical / 2;
     if ((n_threads & 1) || (n_threads > maximum_smt_threads)) {
         printf("bypassing set process affinity - number threads odd or gt maximum logical / 2\n");
-        return;
+        return 0;
     }
 
     //
@@ -466,14 +465,14 @@ xb_set_process_affinity (
 
     set_affinity:
     if (SetProcessAffinityMask(GetCurrentProcess(), affinity_mask)) {
-        printf("process group affinity set to 0x%016llx\n", affinity_mask);
+        // printf("process group affinity set to 0x%016llx\n", affinity_mask);
 
         //
         // Compute the processor index of the master thread.
         //
 
         BitScanForward64(&master_index, affinity_mask);
-        printf("processor index of master thread %lu\n", master_index);
+        // printf("processor index of master thread %lu\n", master_index);
 
 #if 0
         //
@@ -492,7 +491,7 @@ xb_set_process_affinity (
         printf("failed to set process affinity mask\n");
     }
 
-    return;
+    return affinity_mask;
 }
 
 #else
