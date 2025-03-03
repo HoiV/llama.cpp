@@ -208,6 +208,7 @@ struct cmd_params {
     bool process_affinity;
     bool openmp;
     bool verbose;
+    bool warmup_run;
     bool is_AMD_Ryzen_HX_370;
     bool is_AMD_Ryzen_PRO_395;
     output_formats output_format;
@@ -242,6 +243,7 @@ static const cmd_params cmd_params_defaults = {
     /* process_affinity     */ false,
     /* openmp               */ false,
     /* verbose              */ false,
+    /* warmup_run           */ false,
     /* is_AMD_Ryzen_HX_370  */ false,
     /* is_AMD_Ryzen_PRO_395 */ false,
     /* output_format        */ MARKDOWN,
@@ -281,6 +283,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -oe, --output-err <csv|json|md|sql> (default: %s)\n", output_format_str(cmd_params_defaults.output_format_stderr));
     printf("  -affin, --process_affinity          (default: %s)\n", cmd_params_defaults.process_affinity ? "1" : "0");
     printf("  -omp, --openmp                      (default: %s)\n", cmd_params_defaults.openmp ? "1" : "0");
+    printf("  -warm, --warmup_run                 (default: %s)\n", cmd_params_defaults.warmup_run ? "1" : "0");
     printf("  -v, --verbose                       (default: %s)\n", cmd_params_defaults.verbose ? "1" : "0");
     printf("\n");
     printf("Multiple values can be given for each parameter by separating them with ',' or by specifying the parameter multiple times.\n");
@@ -330,6 +333,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.numa = cmd_params_defaults.numa;
     params.process_affinity = cmd_params_defaults.process_affinity;
     params.openmp = cmd_params_defaults.openmp;
+    params.warmup_run = cmd_params_defaults.warmup_run;
     memset(&params.cpumask, 0, sizeof(params.cpumask));
     params.cpumask_present = cmd_params_defaults.cpumask_present;
 
@@ -567,6 +571,8 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             params.process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
+        } else if (arg == "-warm" || arg == "--warmup_run") {
+            params.warmup_run = true;
         } else if (arg == "-C" || arg == "--cpu-mask") {
             if (++i >= argc) {
                 invalid_param = true;
@@ -1489,10 +1495,11 @@ int main(int argc, char ** argv) {
 
         llama_kv_cache_clear(ctx);
 
-        bool warmup_run = false;
+        // setup for warmup run if asked to do so (params.warmup_run == true)
+        bool warmup_already = params.warmup_run ? false : true;
         // warmup run
         if (t.n_prompt > 0) {
-            if (!warmup_run) {
+            if (!warmup_already) {
                 printf("Started pp warmup run\n");
                 test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
                 printf("Done pp warmup run\n");
@@ -1502,7 +1509,7 @@ int main(int argc, char ** argv) {
                 } else if (params.process_affinity) {
                     common::xb_set_optimal_process_affinity(t.n_threads_prompt);
                 }
-                warmup_run = true;
+                warmup_already = true;
             }
 
             // for printer.print_test() to print the correct thread count
@@ -1512,7 +1519,7 @@ int main(int argc, char ** argv) {
         }
 
         if (t.n_gen > 0) {
-            if (!warmup_run) {
+            if (!warmup_already) {
                 printf("Started tg warmup run\n");
                 test_gen(ctx, 1, 0, t.n_threads_gen);
                 printf("Done tg warmup run\n");
@@ -1522,7 +1529,7 @@ int main(int argc, char ** argv) {
                 } else if (params.process_affinity) {
                     common::xb_set_optimal_process_affinity(t.n_threads_gen);
                 }
-                warmup_run = true;
+                warmup_already = true;
             }
 
             // for printer.print_test() to print the correct thread count

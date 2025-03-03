@@ -15391,10 +15391,9 @@ void ggml_compute_forward_mul_mat(
         ir111 = MIN(ir110 + rpc, nr1);
     }
 
-    //printf("ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", ir010, ir011, ir110, ir111);
-
+    // printf("%s: %d: ir010 = %6lld, ir011 = %6lld, ir110 = %6lld, ir111 = %6lld\n", __func__, ith, ir010, ir011, ir110, ir111);
     if (ir010 >= ir011 || ir110 >= ir111) {
-        // printf("unused cpu %d in mul mat\n", ith);
+        // printf("%s: unused cpu %d in mul mat\n", __func__, ith);
         // sched_yield();
         return;
     }
@@ -22171,6 +22170,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 
                 // update time per vec_dot_type and per src0_row_size for mul_mat
                 if (node->op == GGML_OP_MUL_MAT) {
+                    // printf("=================================================\n");
                     const struct ggml_tensor * src0 = node->src[0];
                     const enum ggml_type src0_type = src0->type;
                     vec_dot_type_times[type_traits[src0_type].vec_dot_type] += tensor_t0;
