@@ -209,8 +209,6 @@ struct cmd_params {
     bool openmp;
     bool verbose;
     bool warmup_run;
-    bool is_AMD_Ryzen_HX_370;
-    bool is_AMD_Ryzen_PRO_395;
     output_formats output_format;
     output_formats output_format_stderr;
     bool cpumask[32];
@@ -244,8 +242,6 @@ static const cmd_params cmd_params_defaults = {
     /* openmp               */ false,
     /* verbose              */ false,
     /* warmup_run           */ false,
-    /* is_AMD_Ryzen_HX_370  */ false,
-    /* is_AMD_Ryzen_PRO_395 */ false,
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
     /* cpumask              */ {false},
@@ -1531,7 +1527,7 @@ int main(int argc, char ** argv) {
                 } else if (params.process_affinity) {
                     cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_gen);
                 }
-                printf("Set process affinity %16llX\n", cpu_affinity_mask);
+                printf("Set process affinity %016llX\n", cpu_affinity_mask);
                 warmup_already = true;
             }
 
