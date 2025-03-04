@@ -1503,9 +1503,11 @@ int main(int argc, char ** argv) {
                 printf("Done pp warmup run\n");
 
                 if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_prompt)) {
-                    common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
+                    cpu_affinity_mask = common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
+                    printf("Set process affinity w/ cpuMask %016llX\n", cpu_affinity_mask);
                 } else if (params.process_affinity) {
-                    common::xb_set_optimal_process_affinity(t.n_threads_prompt);
+                    cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_prompt);
+                    printf("Set process affinity w/ n_threads %016llX\n", cpu_affinity_mask);
                 }
                 warmup_already = true;
             }
@@ -1524,10 +1526,11 @@ int main(int argc, char ** argv) {
 
                 if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
                     cpu_affinity_mask = common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
+                    printf("Set process affinity w/ cpuMask %016llX\n", cpu_affinity_mask);
                 } else if (params.process_affinity) {
                     cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_gen);
+                    printf("Set process affinity w/ n_threads %016llX\n", cpu_affinity_mask);
                 }
-                printf("Set process affinity %016llX\n", cpu_affinity_mask);
                 warmup_already = true;
             }
 
