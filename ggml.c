@@ -6070,7 +6070,7 @@ static inline bool ggml_is_padded_1d(const struct ggml_tensor * tensor) {
         tensor->nb[3] == tensor->nb[2]*tensor->ne[2];
 }
 
-inline bool ggml_is_empty(const struct ggml_tensor * tensor) {
+GGML_CALL bool ggml_is_empty(const struct ggml_tensor * tensor) {
     for (int i = 0; i < GGML_MAX_DIMS; ++i) {
         if (tensor->ne[i] == 0) {
             // empty if any dimension has no elements
