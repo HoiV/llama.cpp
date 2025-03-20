@@ -1,0 +1,79 @@
+{
+  "created_at": 1741314371.0363877,
+  "model": "all-MiniLM-L6-v2",
+  "dimension": 384,
+  "document_count": 7,
+  "document_types": {
+    "docx": 7,
+    "txt": 0,
+    "pdf": 0,
+    "unsupported": 0,
+    "failed": 0
+  },
+  "chunk_count": 393,
+  "total_tokens": 8604,
+  "index_params": {
+    "ef_construction": 200,
+    "M": 16,
+    "ef_search": 100
+  },
+  "embedding_time": 1741314371.0363877,
+  "documents": [
+    {
+      "filename": "KB1.docx",
+      "path": "D:\\RagService\\RagDocs\\KB1.docx",
+      "size_bytes": 17655,
+      "extraction_time": 0.015889883041381836,
+      "char_count": 7185,
+      "type": "docx"
+    },
+    {
+      "filename": "KB2.docx",
+      "path": "D:\\RagService\\RagDocs\\KB2.docx",
+      "size_bytes": 18009,
+      "extraction_time": 0.031846046447753906,
+      "char_count": 7545,
+      "type": "docx"
+    },
+    {
+      "filename": "KB3.docx",
+      "path": "D:\\RagService\\RagDocs\\KB3.docx",
+      "size_bytes": 17923,
+      "extraction_time": 0.015980243682861328,
+      "char_count": 8053,
+      "type": "docx"
+    },
+    {
+      "filename": "KB4.docx",
+      "path": "D:\\RagService\\RagDocs\\KB4.docx",
+      "size_bytes": 17707,
+      "extraction_time": 0.01579117774963379,
+      "char_count": 7956,
+      "type": "docx"
+    },
+    {
+      "filename": "Linda_PM_election.docx",
+      "path": "D:\\RagService\\RagDocs\\Linda_PM_election.docx",
+      "size_bytes": 16516,
+      "extraction_time": 0.015704870223999023,
+      "char_count": 5069,
+      "type": "docx"
+    },
+    {
+      "filename": "Rupo Won Nobel Prize.docx",
+      "path": "D:\\RagService\\RagDocs\\Rupo Won Nobel Prize.docx",
+      "size_bytes": 16245,
+      "extraction_time": 0.015949487686157227,
+      "char_count": 4572,
+      "type": "docx"
+    },
+    {
+      "filename": "Shilpa_Fed_Chair.docx",
+      "path": "D:\\RagService\\RagDocs\\Shilpa_Fed_Chair.docx",
+      "size_bytes": 16881,
+      "extraction_time": 0.015742778778076172,
+      "char_count": 6389,
+      "type": "docx"
+    }
+  ]
+}

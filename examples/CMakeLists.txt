@@ -59,6 +59,7 @@ else()
     add_subdirectory(bZM)
     add_subdirectory(perfavx)
     add_subdirectory(chatbot)
+    add_subdirectory(llm-infer)
 endif()
 
 #    add_subdirectory(frotz)

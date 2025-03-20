@@ -1,0 +1,2360 @@
+[
+  {
+    "id": 0,
+    "text": "**Summary**   Windows updates released on and after March 15, 2025, introduce new protections in the SMB protocol as part of **CVE-2023-48090**.",
+    "source": "KB1.docx",
+    "tokens": 27
+  },
+  {
+    "id": 1,
+    "text": "These protections intentionally block the re-use of SMB session keys unless:   1.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 2,
+    "text": "The user initiating the session is the original creator of the session key.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 3,
+    "text": "OR   2.",
+    "source": "KB1.docx",
+    "tokens": 2
+  },
+  {
+    "id": 4,
+    "text": "The session key was created by a member of the **Domain Admins** group.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 5,
+    "text": "Topics covered in this article include: - Legacy SMB session handling behavior   - New SMB session protections introduced by March 15, 2023 and later updates   - Take Action – Solution Steps   - New events and error codes   **Legacy Behavior**   Before the March 15, 2023, or later cumulative updates, when a user initiated an SMB connection to a server, the client would attempt to reuse an existing SMB session key if a matching session key was found on the server.",
+    "source": "KB1.docx",
+    "tokens": 102
+  },
+  {
+    "id": 6,
+    "text": "This was done without additional checks.",
+    "source": "KB1.docx",
+    "tokens": 7
+  },
+  {
+    "id": 7,
+    "text": "Note: The reuse attempt would fail if the user did not have the appropriate permissions to access the session. However, if the user had sufficient permissions, the session would be reused.",
+    "source": "KB1.docx",
+    "tokens": 40
+  },
+  {
+    "id": 8,
+    "text": "There were two common scenarios for SMB session reuse with respective default behaviors as follows:   - **Session Reuse (NetUseSession)**     Defaults to session key reuse (unless the **NETUSE_NO_KEY_REUSE** flag is specified).",
+    "source": "KB1.docx",
+    "tokens": 39
+  },
+  {
+    "id": 9,
+    "text": "- **Session Initialization (NetInitializeSessionKey)**     Defaults to no session key reuse (unless **NETUSE_PROVISION_REUSE_SESSION** is specified).",
+    "source": "KB1.docx",
+    "tokens": 18
+  },
+  {
+    "id": 10,
+    "text": "**New Behavior**   Once the March 15, 2023, or later Windows cumulative updates are installed on a client computer, SMB session handling will perform additional security checks before attempting to reuse an existing session key.",
+    "source": "KB1.docx",
+    "tokens": 44
+  },
+  {
+    "id": 11,
+    "text": "**Algorithm:**   1.",
+    "source": "KB1.docx",
+    "tokens": 2
+  },
+  {
+    "id": 12,
+    "text": "The SMB session key reuse will be allowed if the user initiating the connection is the creator of the session key.",
+    "source": "KB1.docx",
+    "tokens": 27
+  },
+  {
+    "id": 13,
+    "text": "2.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 14,
+    "text": "The SMB session key reuse will be allowed if the session key was created by a member of the **Domain Admins** group.",
+    "source": "KB1.docx",
+    "tokens": 28
+  },
+  {
+    "id": 15,
+    "text": "These checks are performed before the SMB connection is established. If the checks pass, the SMB session is established under the same security model as before.",
+    "source": "KB1.docx",
+    "tokens": 33
+  },
+  {
+    "id": 16,
+    "text": "This change does not affect new sessions where no previous session exists.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 17,
+    "text": "**Note:** After installing the March 15, 2023, or later updates, the reuse of SMB session keys may intentionally fail with the following error:   **Error 0x8B0 (2240): NERR_SessionKeyReuseBlockedByPolicy:** \"The session key reuse was blocked due to security policy.",
+    "source": "KB1.docx",
+    "tokens": 48
+  },
+  {
+    "id": 18,
+    "text": "\"   This indicates the session key is being protected by the new behavior.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 19,
+    "text": "**Event ID 5001** will be logged when the error occurs, and the issue will be recorded in `c:\\windows\\debug\\netsetup.",
+    "source": "KB1.docx",
+    "tokens": 23
+  },
+  {
+    "id": 20,
+    "text": "log`.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 21,
+    "text": "Follow the steps below in **Take Action** to understand and resolve the issue.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 22,
+    "text": "**Take Action**   Review SMB session handling workflows to determine if changes are needed.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 23,
+    "text": "1.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 24,
+    "text": "**Ensure session initiation is done by the same user who created the session key**.",
+    "source": "KB1.docx",
+    "tokens": 18
+  },
+  {
+    "id": 25,
+    "text": "2.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 26,
+    "text": "If the session key is stale (unused), reset the session key before attempting to initiate the SMB connection again.",
+    "source": "KB1.docx",
+    "tokens": 24
+  },
+  {
+    "id": 27,
+    "text": "3.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 28,
+    "text": "**Rename the session key** and attempt the connection using a different key that doesn't already exist.",
+    "source": "KB1.docx",
+    "tokens": 20
+  },
+  {
+    "id": 29,
+    "text": "4.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 30,
+    "text": "If the existing session key is owned by a trusted security principal and an administrator needs to reuse the key, they can temporarily set the following registry key at the individual client computer level.",
+    "source": "KB1.docx",
+    "tokens": 44
+  },
+  {
+    "id": 31,
+    "text": "Be sure to remove this setting immediately after the connection is established.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 32,
+    "text": "A restart is not required for the changes to take effect.",
+    "source": "KB1.docx",
+    "tokens": 14
+  },
+  {
+    "id": 33,
+    "text": "**Path**   `HKLM\\System\\CurrentControlSet\\Control\\LSA`   **Type**   `REG_DWORD`   **Name**   `NetUseLegacySessionKeyReuse`   **Value**   `1`   Other values are ignored.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 34,
+    "text": "**Important Guidance for using option 4:**   If you choose to set this key to bypass these protections, you risk leaving your environment vulnerable to CVE-2023-48090 unless you are sure the creator/owner of the session key is a trusted entity.",
+    "source": "KB1.docx",
+    "tokens": 50
+  },
+  {
+    "id": 35,
+    "text": "It is appropriate to use solution 4 in the following scenarios:   a.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 36,
+    "text": "An IT administrator with delegated permissions needs to establish a connection for troubleshooting purposes, and the original session key creator is a trusted account.",
+    "source": "KB1.docx",
+    "tokens": 31
+  },
+  {
+    "id": 37,
+    "text": "OR   b.",
+    "source": "KB1.docx",
+    "tokens": 2
+  },
+  {
+    "id": 38,
+    "text": "A deployment scenario where session keys are created before a dedicated service account (e.",
+    "source": "KB1.docx",
+    "tokens": 18
+  },
+  {
+    "id": 39,
+    "text": "g.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 40,
+    "text": ", SCCM or other tools) is used to establish SMB connections.",
+    "source": "KB1.docx",
+    "tokens": 14
+  },
+  {
+    "id": 41,
+    "text": "**Microsoft may remove support for the `NetUseLegacySessionKeyReuse` registry setting in a future update** and replace it with a more secure method.",
+    "source": "KB1.docx",
+    "tokens": 27
+  },
+  {
+    "id": 42,
+    "text": "This article will be updated if such changes are implemented.",
+    "source": "KB1.docx",
+    "tokens": 13
+  },
+  {
+    "id": 43,
+    "text": "**Non-Solutions**   - Do not add service accounts or provisioning accounts to the **Domain Admins** security group.",
+    "source": "KB1.docx",
+    "tokens": 20
+  },
+  {
+    "id": 44,
+    "text": "- Do not manually edit the security descriptor on SMB session keys to alter ownership.",
+    "source": "KB1.docx",
+    "tokens": 19
+  },
+  {
+    "id": 45,
+    "text": "While editing ownership may allow new checks to pass, it could leave potentially risky permissions on the original session key unless explicitly reviewed and removed.",
+    "source": "KB1.docx",
+    "tokens": 32
+  },
+  {
+    "id": 46,
+    "text": "- Do not add the `NetUseLegacySessionKeyReuse` registry key to base OS images, as this key should only be temporarily added and then removed once the SMB session is established.",
+    "source": "KB1.docx",
+    "tokens": 37
+  },
+  {
+    "id": 47,
+    "text": "**New Event Logs**   **Event log**: `SYSTEM`   **Event Source**: `NetUse`   **Event ID**: 5000   **Event Type**: **Informational**   **Event Text**: \"An existing session key was found during SMB connection initialization.",
+    "source": "KB1.docx",
+    "tokens": 35
+  },
+  {
+    "id": 48,
+    "text": "%nAn attempt to reuse the session key was permitted.",
+    "source": "KB1.docx",
+    "tokens": 11
+  },
+  {
+    "id": 49,
+    "text": "%n%nServer searched: %1%nExisting session key DN: %2%n%nSee https://go.",
+    "source": "KB1.docx",
+    "tokens": 10
+  },
+  {
+    "id": 50,
+    "text": "microsoft.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 51,
+    "text": "com/fwlink/?",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 52,
+    "text": "linkid=2202150 for more information.",
+    "source": "KB1.docx",
+    "tokens": 5
+  },
+  {
+    "id": 53,
+    "text": "\" **Event log**: `SYSTEM`   **Event Source**: `NetUse`   **Event ID**: 5001   **Event Type**: **Error**   **Event Text**: \"An existing session key was found during SMB connection initialization.",
+    "source": "KB1.docx",
+    "tokens": 32
+  },
+  {
+    "id": 54,
+    "text": "%nAn attempt to reuse the session key was prevented by security policy.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 55,
+    "text": "%n%nServer searched: %1%nExisting session key DN: %2%nThe error code was %3.",
+    "source": "KB1.docx",
+    "tokens": 14
+  },
+  {
+    "id": 56,
+    "text": "%n%nSee https://go.",
+    "source": "KB1.docx",
+    "tokens": 2
+  },
+  {
+    "id": 57,
+    "text": "microsoft.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 58,
+    "text": "com/fwlink/?",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 59,
+    "text": "linkid=2202150 for more information.",
+    "source": "KB1.docx",
+    "tokens": 5
+  },
+  {
+    "id": 60,
+    "text": "\" **Debug logging** is available by default (no need to enable verbose logging) in `C:\\Windows\\Debug\\netsetup.",
+    "source": "KB1.docx",
+    "tokens": 19
+  },
+  {
+    "id": 61,
+    "text": "log` on all client machines.",
+    "source": "KB1.docx",
+    "tokens": 6
+  },
+  {
+    "id": 62,
+    "text": "Example of the debug logging generated when reuse of the session key is prevented for security reasons:   ``` NetpGetSessionObjectDn: Crack results: (Session key already exists) DN = CN=SessionKey1,CN=Sessions,DC=contoso,DC=com   NetpGetADObjectOwnerAttributes: Looking up attributes for session key: CN=SessionKey1,CN=Sessions,DC=contoso,DC=com   NetpCheckIfSessionKeyShouldBeReused: Session key was created by a non-authorized user.",
+    "source": "KB1.docx",
+    "tokens": 58
+  },
+  {
+    "id": 63,
+    "text": "Blocking reuse of session key.",
+    "source": "KB1.docx",
+    "tokens": 6
+  },
+  {
+    "id": 64,
+    "text": "NetpCheckIfSessionKeyShouldBeReused:fReuseAllowed: FALSE, NetStatus:0x0   NetpModifySessionObjectInDs: Session key exists and reuse is blocked by policy.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 65,
+    "text": "Error: 0x8B0   NetpInitializeSessionKey: LDAP creation failed: 0x8B0   ldap_unbind status: 0x0   NetpSessionKeyInitialization: status:0x8B0.",
+    "source": "KB1.docx",
+    "tokens": 15
+  },
+  {
+    "id": 66,
+    "text": "NetpInitializeSessionKeyOnDs: Function exits with status of: 0x8B0   NetpSessionKeyInitializationOnDs: status of disconnecting from '\\\\DC1.",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 67,
+    "text": "contoso.",
+    "source": "KB1.docx",
+    "tokens": 1
+  },
+  {
+    "id": 68,
+    "text": "com': 0x0   NetpResetIDNEncoding: DnsDisableIdnEncoding(RESETALL) on 'contoso.",
+    "source": "KB1.docx",
+    "tokens": 7
+  },
+  {
+    "id": 69,
+    "text": "com' returned 0x0   NetpSessionKeyInitializationOnDs: NetpResetIDNEncoding on 'contoso. com': 0x0   NetpDoSessionKeyInitialization: status: 0x8B0 ```",
+    "source": "KB1.docx",
+    "tokens": 16
+  },
+  {
+    "id": 70,
+    "text": "**Summary**   Windows updates released on and after April 18, 2025, introduce additional security features as part of **CVE-2023-48711** to protect against unauthorized administrative privilege escalation during RDP (Remote Desktop Protocol) session establishment.",
+    "source": "KB2.docx",
+    "tokens": 41
+  },
+  {
+    "id": 71,
+    "text": "These protections intentionally block RDP session attempts that do not meet the following criteria:   1.",
+    "source": "KB2.docx",
+    "tokens": 19
+  },
+  {
+    "id": 72,
+    "text": "The user attempting to initiate the RDP session is a member of the **Remote Desktop Users** group.",
+    "source": "KB2.docx",
+    "tokens": 22
+  },
+  {
+    "id": 73,
+    "text": "OR   2.",
+    "source": "KB2.docx",
+    "tokens": 2
+  },
+  {
+    "id": 74,
+    "text": "The RDP session request originates from a trusted network zone. Topics covered in this article include: - Legacy RDP session initiation behavior   - New RDP session protections introduced by May 18, 2023, and later updates   - Take Action – Solution Steps   - New events and error codes   **Legacy Behavior**   Before the May 18, 2023, or later cumulative updates, RDP sessions would allow any user with valid credentials to attempt to establish an RDP session with a remote computer, regardless of their group membership or the network zone the request originated from.",
+    "source": "KB2.docx",
+    "tokens": 118
+  },
+  {
+    "id": 75,
+    "text": "If the user had administrative rights, the RDP session would proceed without any additional checks. Note: Unauthorized users who had stolen valid credentials could still attempt RDP sessions and gain access without additional restrictions.",
+    "source": "KB2.docx",
+    "tokens": 44
+  },
+  {
+    "id": 76,
+    "text": "There were two primary scenarios for RDP session initiation with respective default behaviors as follows:   - **RDP Session Request (InitiateRDP)**     Defaults to allowing any user with valid credentials to attempt a session. - **RDP Session Validation (ValidateRDPRequest)**     Defaults to minimal checks for session initiation, focusing on the user credentials without additional validation for security group membership or network origin.",
+    "source": "KB2.docx",
+    "tokens": 76
+  },
+  {
+    "id": 77,
+    "text": "**New Behavior**   Once the May 18, 2023, or later Windows cumulative updates are installed, additional checks will be introduced during RDP session initiation to enhance security. These checks will prevent unauthorized users from establishing RDP sessions unless they meet specific conditions.",
+    "source": "KB2.docx",
+    "tokens": 53
+  },
+  {
+    "id": 78,
+    "text": "**Algorithm:**   1.",
+    "source": "KB2.docx",
+    "tokens": 2
+  },
+  {
+    "id": 79,
+    "text": "**Remote Desktop Users Group Membership:**      The user attempting to initiate the RDP session must be a member of the **Remote Desktop Users** group.",
+    "source": "KB2.docx",
+    "tokens": 29
+  },
+  {
+    "id": 80,
+    "text": "2.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 81,
+    "text": "**Network Zone Restrictions:**      The RDP session request must originate from a trusted network zone, as defined by your organization's network configuration.",
+    "source": "KB2.docx",
+    "tokens": 27
+  },
+  {
+    "id": 82,
+    "text": "If these checks pass, the RDP session will proceed as normal, and administrative permissions will be granted as per usual.",
+    "source": "KB2.docx",
+    "tokens": 26
+  },
+  {
+    "id": 83,
+    "text": "This change does not affect existing users who meet the new criteria.",
+    "source": "KB2.docx",
+    "tokens": 15
+  },
+  {
+    "id": 84,
+    "text": "**Note:** After installing the May 18, 2023, or later updates, RDP sessions initiated by unauthorized users or from non-trusted networks may intentionally fail with the following error:   **Error 0xD0A (3338): NERR_RDPAccessBlockedByPolicy:** \"Your request to establish a Remote Desktop session has been blocked by security policy.",
+    "source": "KB2.docx",
+    "tokens": 58
+  },
+  {
+    "id": 85,
+    "text": "\"   This indicates that the session initiation was blocked by the new security checks.",
+    "source": "KB2.docx",
+    "tokens": 18
+  },
+  {
+    "id": 86,
+    "text": "**Event ID 6003** will be logged when the error occurs, and the issue will be recorded in `c:\\windows\\debug\\rdp.",
+    "source": "KB2.docx",
+    "tokens": 23
+  },
+  {
+    "id": 87,
+    "text": "log`.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 88,
+    "text": "Follow the steps below in **Take Action** to troubleshoot and resolve the issue.",
+    "source": "KB2.docx",
+    "tokens": 16
+  },
+  {
+    "id": 89,
+    "text": "**Take Action**   Review RDP session initiation workflows to ensure they align with the new security restrictions.",
+    "source": "KB2.docx",
+    "tokens": 20
+  },
+  {
+    "id": 90,
+    "text": "1.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 91,
+    "text": "**Ensure users are members of the Remote Desktop Users group** before attempting to initiate RDP sessions.",
+    "source": "KB2.docx",
+    "tokens": 20
+  },
+  {
+    "id": 92,
+    "text": "2.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 93,
+    "text": "If the session request originates from a non-trusted network zone, ensure the request is made from a valid, trusted location.",
+    "source": "KB2.docx",
+    "tokens": 26
+  },
+  {
+    "id": 94,
+    "text": "3.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 95,
+    "text": "If the user is not in the correct security group, add them to the **Remote Desktop Users** group and retry the connection.",
+    "source": "KB2.docx",
+    "tokens": 28
+  },
+  {
+    "id": 96,
+    "text": "4.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 97,
+    "text": "If an administrator needs to bypass the policy temporarily for troubleshooting purposes, they can set the following registry key on the affected machine.",
+    "source": "KB2.docx",
+    "tokens": 29
+  },
+  {
+    "id": 98,
+    "text": "Be sure to remove this registry setting after the RDP session completes.",
+    "source": "KB2.docx",
+    "tokens": 15
+  },
+  {
+    "id": 99,
+    "text": "No restart is required for the change to take effect.",
+    "source": "KB2.docx",
+    "tokens": 13
+  },
+  {
+    "id": 100,
+    "text": "**Path**   `HKLM\\System\\CurrentControlSet\\Control\\RDP`   **Type**   `REG_DWORD`   **Name**   `AllowLegacyRDPAccess`   **Value**   `1`   Other values are ignored.",
+    "source": "KB2.docx",
+    "tokens": 15
+  },
+  {
+    "id": 101,
+    "text": "**Important Guidance for using option 4:**   If you choose to set this registry key to bypass these protections, you risk leaving your environment vulnerable to potential security breaches unless you are certain that the user and network zone are trusted.",
+    "source": "KB2.docx",
+    "tokens": 52
+  },
+  {
+    "id": 102,
+    "text": "It is appropriate to use solution 4 in the following scenarios:   a.",
+    "source": "KB2.docx",
+    "tokens": 15
+  },
+  {
+    "id": 103,
+    "text": "An administrator with delegated permissions needs to perform troubleshooting on a remote system, and the system is located within a trusted network zone.",
+    "source": "KB2.docx",
+    "tokens": 29
+  },
+  {
+    "id": 104,
+    "text": "OR   b.",
+    "source": "KB2.docx",
+    "tokens": 2
+  },
+  {
+    "id": 105,
+    "text": "A deployment scenario where users from multiple network zones attempt to access the same RDP server, but access needs to be granted temporarily for specific users or use cases.",
+    "source": "KB2.docx",
+    "tokens": 37
+  },
+  {
+    "id": 106,
+    "text": "**Microsoft may remove support for the `AllowLegacyRDPAccess` registry setting in a future update** and replace it with a more secure method.",
+    "source": "KB2.docx",
+    "tokens": 27
+  },
+  {
+    "id": 107,
+    "text": "This article will be updated if such changes occur.",
+    "source": "KB2.docx",
+    "tokens": 11
+  },
+  {
+    "id": 108,
+    "text": "**Non-Solutions**   - Do not add non-administrative users to the **Remote Desktop Users** group unless absolutely necessary.",
+    "source": "KB2.docx",
+    "tokens": 20
+  },
+  {
+    "id": 109,
+    "text": "- Do not manually adjust the RDP session security policies by editing the security descriptor of RDP session objects.",
+    "source": "KB2.docx",
+    "tokens": 24
+  },
+  {
+    "id": 110,
+    "text": "Doing so may inadvertently grant unauthorized users access to sensitive resources.",
+    "source": "KB2.docx",
+    "tokens": 14
+  },
+  {
+    "id": 111,
+    "text": "- Do not apply the `AllowLegacyRDPAccess` registry setting globally across all systems, as this could expose your environment to vulnerabilities.",
+    "source": "KB2.docx",
+    "tokens": 26
+  },
+  {
+    "id": 112,
+    "text": "Only apply it on an individual, case-by-case basis.",
+    "source": "KB2.docx",
+    "tokens": 10
+  },
+  {
+    "id": 113,
+    "text": "**New Event Logs**   **Event log**: `SYSTEM`   **Event Source**: `RDP`   **Event ID**: 6002   **Event Type**: **Informational**   **Event Text**: \"An RDP session initiation request was received from a valid user.",
+    "source": "KB2.docx",
+    "tokens": 36
+  },
+  {
+    "id": 114,
+    "text": "%nThe session has been successfully established.",
+    "source": "KB2.docx",
+    "tokens": 7
+  },
+  {
+    "id": 115,
+    "text": "%n%nRDP server searched: %1%nUser DN: %2%n%nSee https://go.",
+    "source": "KB2.docx",
+    "tokens": 9
+  },
+  {
+    "id": 116,
+    "text": "microsoft.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 117,
+    "text": "com/fwlink/?",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 118,
+    "text": "linkid=2202160 for more information.",
+    "source": "KB2.docx",
+    "tokens": 5
+  },
+  {
+    "id": 119,
+    "text": "\" **Event log**: `SYSTEM`   **Event Source**: `RDP`   **Event ID**: 6003   **Event Type**: **Error**   **Event Text**: \"An RDP session initiation request was received from an unauthorized user.",
+    "source": "KB2.docx",
+    "tokens": 33
+  },
+  {
+    "id": 120,
+    "text": "%nThe session has been blocked due to security policy.",
+    "source": "KB2.docx",
+    "tokens": 11
+  },
+  {
+    "id": 121,
+    "text": "%n%nRDP server searched: %1%nUser DN: %2%nThe error code was %3.",
+    "source": "KB2.docx",
+    "tokens": 13
+  },
+  {
+    "id": 122,
+    "text": "%n%nSee https://go.",
+    "source": "KB2.docx",
+    "tokens": 2
+  },
+  {
+    "id": 123,
+    "text": "microsoft.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 124,
+    "text": "com/fwlink/?",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 125,
+    "text": "linkid=2202160 for more information.",
+    "source": "KB2.docx",
+    "tokens": 5
+  },
+  {
+    "id": 126,
+    "text": "\" **Debug logging** is available by default (no need to enable verbose logging) in `C:\\Windows\\Debug\\rdp.",
+    "source": "KB2.docx",
+    "tokens": 19
+  },
+  {
+    "id": 127,
+    "text": "log` on all client machines.",
+    "source": "KB2.docx",
+    "tokens": 6
+  },
+  {
+    "id": 128,
+    "text": "Example of the debug logging generated when an RDP session is blocked due to security policies:   ``` NetpGetRDPUserDn: Crack results: (User does not belong to Remote Desktop Users group) DN = CN=User1,CN=Users,DC=contoso,DC=com   NetpGetADObjectOwnerAttributes: Looking up attributes for RDP session request: CN=User1,CN=Users,DC=contoso,DC=com   NetpCheckIfRDPSessionShouldBeAllowed: User is not in Remote Desktop Users group.",
+    "source": "KB2.docx",
+    "tokens": 65
+  },
+  {
+    "id": 129,
+    "text": "Blocking session initiation.",
+    "source": "KB2.docx",
+    "tokens": 3
+  },
+  {
+    "id": 130,
+    "text": "NetpCheckIfRDPSessionShouldBeAllowed:fAllowRDP: FALSE, NetStatus:0x0   NetpModifyRDPObjectInDs: Session initiation is blocked by policy.",
+    "source": "KB2.docx",
+    "tokens": 13
+  },
+  {
+    "id": 131,
+    "text": "Error: 0xD0A   NetpInitializeRDPConnection: LDAP creation failed: 0xD0A   ldap_unbind status: 0x0   NetpRDPConnectionInitialization: status:0xD0A.",
+    "source": "KB2.docx",
+    "tokens": 15
+  },
+  {
+    "id": 132,
+    "text": "NetpInitializeRDPConnectionOnDs: Function exits with status of: 0xD0A   NetpRDPConnectionInitializationOnDs: status of disconnecting from '\\\\RDPServer.",
+    "source": "KB2.docx",
+    "tokens": 16
+  },
+  {
+    "id": 133,
+    "text": "contoso.",
+    "source": "KB2.docx",
+    "tokens": 1
+  },
+  {
+    "id": 134,
+    "text": "com': 0x0   NetpResetIDNEncoding: DnsDisableIdnEncoding(RESETALL) on 'contoso.",
+    "source": "KB2.docx",
+    "tokens": 7
+  },
+  {
+    "id": 135,
+    "text": "com' returned 0x0   NetpRDPConnectionInitializationOnDs: NetpResetIDNEncoding on 'contoso.",
+    "source": "KB2.docx",
+    "tokens": 9
+  },
+  {
+    "id": 136,
+    "text": "com': 0x0   NetpDoRDPConnection: status: 0xD0A ```",
+    "source": "KB2.docx",
+    "tokens": 7
+  },
+  {
+    "id": 137,
+    "text": "**Summary**   Windows updates released on and after May 22, 2025, introduce critical enhancements as part of **CVE-2023-49673** to secure the process of file sharing across network drives.",
+    "source": "KB3.docx",
+    "tokens": 35
+  },
+  {
+    "id": 138,
+    "text": "These updates ensure that file share permissions are validated and enforced based on the user’s group membership, and prevent unauthorized users from modifying or accessing shared folders unless:   1.",
+    "source": "KB3.docx",
+    "tokens": 37
+  },
+  {
+    "id": 139,
+    "text": "The user attempting to access the file share is a member of the **File Share Administrators** group.",
+    "source": "KB3.docx",
+    "tokens": 22
+  },
+  {
+    "id": 140,
+    "text": "OR   2.",
+    "source": "KB3.docx",
+    "tokens": 2
+  },
+  {
+    "id": 141,
+    "text": "The file share is explicitly configured to allow access from non-administrative users through specific permission settings.",
+    "source": "KB3.docx",
+    "tokens": 20
+  },
+  {
+    "id": 142,
+    "text": "Topics covered in this article include:   - Legacy file share access behavior   - New file share protection mechanisms introduced by August 22, 2023, and later updates   - Take Action – Solution Steps   - New events and error codes   **Legacy Behavior**   Before the August 22, 2023, or later cumulative updates, file share permissions were managed based on the sharing configuration, and minimal validation was performed regarding user group membership when accessing the file share.",
+    "source": "KB3.docx",
+    "tokens": 94
+  },
+  {
+    "id": 143,
+    "text": "In many cases, if a user had valid network credentials, they were able to access the file share and potentially modify files within it.",
+    "source": "KB3.docx",
+    "tokens": 31
+  },
+  {
+    "id": 144,
+    "text": "Note: This behavior created a risk where unauthorized users could access shared resources based on misconfigured permissions or group memberships.",
+    "source": "KB3.docx",
+    "tokens": 26
+  },
+  {
+    "id": 145,
+    "text": "The following two main scenarios existed for file share access with their default behaviors:   - **File Share Access (NetUseFileShare)**     Defaults to granting access to any user with valid credentials, unless explicitly restricted by share-level permissions. - **File Share Permissions Validation (ValidateFileShareAccess)**     Defaults to allowing access without checking whether the user is a member of a specific group like **File Share Administrators**.",
+    "source": "KB3.docx",
+    "tokens": 79
+  },
+  {
+    "id": 146,
+    "text": "**New Behavior**   After installing the August 22, 2023, or later cumulative updates, Windows will enforce more stringent checks for file share access.",
+    "source": "KB3.docx",
+    "tokens": 28
+  },
+  {
+    "id": 147,
+    "text": "During the connection attempt, Windows will verify that the user attempting to access the shared folder has sufficient group membership and the correct permissions set for the share.",
+    "source": "KB3.docx",
+    "tokens": 36
+  },
+  {
+    "id": 148,
+    "text": "**Algorithm:**   1.",
+    "source": "KB3.docx",
+    "tokens": 2
+  },
+  {
+    "id": 149,
+    "text": "**File Share Administrators Group Membership:**      The user must be a member of the **File Share Administrators** group to gain access to sensitive file shares or modify shared files.",
+    "source": "KB3.docx",
+    "tokens": 36
+  },
+  {
+    "id": 150,
+    "text": "2.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 151,
+    "text": "**Explicit Permissions:**      File shares that allow non-administrative access must have explicit permission settings defined.",
+    "source": "KB3.docx",
+    "tokens": 18
+  },
+  {
+    "id": 152,
+    "text": "If the share is not explicitly configured to allow access for a non-administrative user, the user will be blocked from accessing the shared files.",
+    "source": "KB3.docx",
+    "tokens": 31
+  },
+  {
+    "id": 153,
+    "text": "These changes apply to both new and existing file shares.",
+    "source": "KB3.docx",
+    "tokens": 13
+  },
+  {
+    "id": 154,
+    "text": "If the user does not meet the criteria, they will be blocked from accessing the file share, even if they have valid credentials.",
+    "source": "KB3.docx",
+    "tokens": 29
+  },
+  {
+    "id": 155,
+    "text": "**Note:** After installing the August 22, 2023, or later updates, attempts to access file shares with insufficient permissions may intentionally fail with the following error:   **Error 0x7B4 (1972): NERR_FileShareAccessDeniedByPolicy:** \"Your request to access the file share has been denied due to security policy settings.",
+    "source": "KB3.docx",
+    "tokens": 57
+  },
+  {
+    "id": 156,
+    "text": "\"   This indicates that the user does not have the required permissions.",
+    "source": "KB3.docx",
+    "tokens": 15
+  },
+  {
+    "id": 157,
+    "text": "**Event ID 7100** will be logged when the error occurs, and details will be recorded in `c:\\windows\\debug\\fileshare.",
+    "source": "KB3.docx",
+    "tokens": 22
+  },
+  {
+    "id": 158,
+    "text": "log`.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 159,
+    "text": "Follow the steps below in **Take Action** to understand and resolve the issue.",
+    "source": "KB3.docx",
+    "tokens": 16
+  },
+  {
+    "id": 160,
+    "text": "**Take Action**   Review your file share configurations to ensure they meet the new security requirements.",
+    "source": "KB3.docx",
+    "tokens": 19
+  },
+  {
+    "id": 161,
+    "text": "1.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 162,
+    "text": "**Ensure users who need access are members of the File Share Administrators group** or have been granted the necessary permissions for specific shares.",
+    "source": "KB3.docx",
+    "tokens": 29
+  },
+  {
+    "id": 163,
+    "text": "2.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 164,
+    "text": "If the share is intended for non-administrative users, verify that the correct share permissions are explicitly configured to allow access to these users.",
+    "source": "KB3.docx",
+    "tokens": 29
+  },
+  {
+    "id": 165,
+    "text": "3.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 166,
+    "text": "If access is required for a user without the appropriate group membership, temporarily add the user to the **File Share Administrators** group, perform the necessary task, and then remove them from the group afterward.",
+    "source": "KB3.docx",
+    "tokens": 44
+  },
+  {
+    "id": 167,
+    "text": "4.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 168,
+    "text": "If an administrator needs to bypass this security policy temporarily for troubleshooting purposes, they can set the following registry key on the affected machine.",
+    "source": "KB3.docx",
+    "tokens": 31
+  },
+  {
+    "id": 169,
+    "text": "Be sure to remove the registry setting once troubleshooting is complete.",
+    "source": "KB3.docx",
+    "tokens": 14
+  },
+  {
+    "id": 170,
+    "text": "A restart is not necessary for the change to take effect.",
+    "source": "KB3.docx",
+    "tokens": 14
+  },
+  {
+    "id": 171,
+    "text": "**Path**   `HKLM\\System\\CurrentControlSet\\Control\\FileShare`   **Type**   `REG_DWORD`   **Name**   `AllowLegacyFileShareAccess`   **Value**   `1`   Other values are ignored.",
+    "source": "KB3.docx",
+    "tokens": 15
+  },
+  {
+    "id": 172,
+    "text": "**Important Guidance for using option 4:**   If you choose to set this registry key to bypass the new protections, you risk exposing your network to unauthorized access unless you confirm the user’s credentials and the shared file’s permissions are properly verified.",
+    "source": "KB3.docx",
+    "tokens": 53
+  },
+  {
+    "id": 173,
+    "text": "It is appropriate to use solution 4 in the following scenarios:   a.",
+    "source": "KB3.docx",
+    "tokens": 15
+  },
+  {
+    "id": 174,
+    "text": "An administrator with the necessary permissions needs to bypass the security policy temporarily for troubleshooting or testing purposes.",
+    "source": "KB3.docx",
+    "tokens": 23
+  },
+  {
+    "id": 175,
+    "text": "OR   b.",
+    "source": "KB3.docx",
+    "tokens": 2
+  },
+  {
+    "id": 176,
+    "text": "A deployment scenario where non-administrative users from trusted sources are temporarily granted access to a file share for maintenance.",
+    "source": "KB3.docx",
+    "tokens": 24
+  },
+  {
+    "id": 177,
+    "text": "**Microsoft may remove support for the `AllowLegacyFileShareAccess` registry setting in a future update** and replace it with a more secure approach.",
+    "source": "KB3.docx",
+    "tokens": 27
+  },
+  {
+    "id": 178,
+    "text": "This article will be updated if such changes take place.",
+    "source": "KB3.docx",
+    "tokens": 13
+  },
+  {
+    "id": 179,
+    "text": "**Non-Solutions**   - Do not add non-administrative users to the **File Share Administrators** group permanently, as it could compromise the security of sensitive resources.",
+    "source": "KB3.docx",
+    "tokens": 29
+  },
+  {
+    "id": 180,
+    "text": "- Do not manually adjust the security descriptor on shared files to grant access to unauthorized users.",
+    "source": "KB3.docx",
+    "tokens": 22
+  },
+  {
+    "id": 181,
+    "text": "This can create unwanted vulnerabilities and leave resources open to exploitation.",
+    "source": "KB3.docx",
+    "tokens": 14
+  },
+  {
+    "id": 182,
+    "text": "- Do not apply the `AllowLegacyFileShareAccess` registry setting globally across your network.",
+    "source": "KB3.docx",
+    "tokens": 15
+  },
+  {
+    "id": 183,
+    "text": "It should only be used on a case-by-case basis and removed as soon as the necessary actions are completed.",
+    "source": "KB3.docx",
+    "tokens": 24
+  },
+  {
+    "id": 184,
+    "text": "**New Event Logs**   **Event log**: `SYSTEM`   **Event Source**: `FileShare`   **Event ID**: 7099   **Event Type**: **Informational**   **Event Text**: \"A file share access request was received and granted to a valid user.",
+    "source": "KB3.docx",
+    "tokens": 39
+  },
+  {
+    "id": 185,
+    "text": "%nThe session has been successfully initiated.",
+    "source": "KB3.docx",
+    "tokens": 7
+  },
+  {
+    "id": 186,
+    "text": "%n%nShare server searched: %1%nUser DN: %2%n%nSee https://go.",
+    "source": "KB3.docx",
+    "tokens": 9
+  },
+  {
+    "id": 187,
+    "text": "microsoft.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 188,
+    "text": "com/fwlink/?",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 189,
+    "text": "linkid=2202165 for more information.",
+    "source": "KB3.docx",
+    "tokens": 5
+  },
+  {
+    "id": 190,
+    "text": "\" **Event log**: `SYSTEM`   **Event Source**: `FileShare`   **Event ID**: 7100   **Event Type**: **Error**   **Event Text**: \"A file share access request was denied due to security policy.",
+    "source": "KB3.docx",
+    "tokens": 33
+  },
+  {
+    "id": 191,
+    "text": "%nThe access attempt has been blocked.",
+    "source": "KB3.docx",
+    "tokens": 7
+  },
+  {
+    "id": 192,
+    "text": "%n%nShare server searched: %1%nUser DN: %2%nThe error code was %3.",
+    "source": "KB3.docx",
+    "tokens": 13
+  },
+  {
+    "id": 193,
+    "text": "%n%nSee https://go.",
+    "source": "KB3.docx",
+    "tokens": 2
+  },
+  {
+    "id": 194,
+    "text": "microsoft.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 195,
+    "text": "com/fwlink/?",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 196,
+    "text": "linkid=2202165 for more information.",
+    "source": "KB3.docx",
+    "tokens": 5
+  },
+  {
+    "id": 197,
+    "text": "\" **Debug logging** is available by default (no need to enable verbose logging) in `C:\\Windows\\Debug\\fileshare.",
+    "source": "KB3.docx",
+    "tokens": 19
+  },
+  {
+    "id": 198,
+    "text": "log` on all client machines.",
+    "source": "KB3.docx",
+    "tokens": 6
+  },
+  {
+    "id": 199,
+    "text": "Example of the debug logging generated when access to a file share is blocked for security reasons:   ``` NetpGetFileShareObjectDn: Crack results: (Access denied by policy) DN = CN=User1,CN=Users,DC=contoso,DC=com   NetpGetADObjectOwnerAttributes: Looking up attributes for file share access request: CN=User1,CN=Users,DC=contoso,DC=com   NetpCheckIfShareAccessShouldBeAllowed: User is not in File Share Administrators group.",
+    "source": "KB3.docx",
+    "tokens": 61
+  },
+  {
+    "id": 200,
+    "text": "Blocking access.",
+    "source": "KB3.docx",
+    "tokens": 2
+  },
+  {
+    "id": 201,
+    "text": "NetpCheckIfShareAccessShouldBeAllowed:fAccessAllowed: FALSE, NetStatus:0x0   NetpModifyFileShareObjectInDs: Access to file share blocked by policy.",
+    "source": "KB3.docx",
+    "tokens": 14
+  },
+  {
+    "id": 202,
+    "text": "Error: 0x7B4   NetpInitializeFileShareConnection: LDAP creation failed: 0x7B4   ldap_unbind status: 0x0   NetpFileShareConnectionInitialization: status:0x7B4.",
+    "source": "KB3.docx",
+    "tokens": 15
+  },
+  {
+    "id": 203,
+    "text": "NetpFileShareConnectionInitializationOnDs: Function exits with status of: 0x7B4   NetpFileShareConnectionInitializationOnDs: status of disconnecting from '\\\\FileShareServer.",
+    "source": "KB3.docx",
+    "tokens": 16
+  },
+  {
+    "id": 204,
+    "text": "contoso.",
+    "source": "KB3.docx",
+    "tokens": 1
+  },
+  {
+    "id": 205,
+    "text": "com': 0x0   NetpResetIDNEncoding: DnsDisableIdnEncoding(RESETALL) on 'contoso.",
+    "source": "KB3.docx",
+    "tokens": 7
+  },
+  {
+    "id": 206,
+    "text": "com' returned 0x0   NetpFileShareConnectionInitializationOnDs: NetpResetIDNEncoding on 'contoso. com': 0x0   NetpDoFileShareConnection: status: 0x7B4 ```",
+    "source": "KB3.docx",
+    "tokens": 16
+  },
+  {
+    "id": 207,
+    "text": "**Summary**   Windows updates released on and after June 15, 2025, introduce additional protections as part of **CVE-2023-56247** to secure user credential storage during application installations.",
+    "source": "KB4.docx",
+    "tokens": 32
+  },
+  {
+    "id": 208,
+    "text": "These protections specifically target third-party software installations and block untrusted applications from accessing or storing sensitive user credentials without explicit user consent.",
+    "source": "KB4.docx",
+    "tokens": 28
+  },
+  {
+    "id": 209,
+    "text": "These enhancements ensure that:   1.",
+    "source": "KB4.docx",
+    "tokens": 6
+  },
+  {
+    "id": 210,
+    "text": "Applications must be explicitly approved by an administrator to access and store user credentials during installation.",
+    "source": "KB4.docx",
+    "tokens": 20
+  },
+  {
+    "id": 211,
+    "text": "OR   2.",
+    "source": "KB4.docx",
+    "tokens": 2
+  },
+  {
+    "id": 212,
+    "text": "The installation process must be initiated by the user with elevated privileges.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 213,
+    "text": "Topics covered in this article include:   - Legacy application installation behavior   - New credential storage protections introduced by November 15, 2023, and later updates   - Take Action – Solution Steps   - New events and error codes   **Legacy Behavior**   Before the November 15, 2023, or later cumulative updates, applications were allowed to access and store user credentials during installation if the user had local administrative privileges or if the application was considered trusted. There was minimal oversight on whether these applications were securely handling or storing credentials, leaving systems potentially vulnerable to credential theft during installation. Note: This behavior could lead to credential leakage if malicious or untrusted applications were installed with elevated privileges.",
+    "source": "KB4.docx",
+    "tokens": 146
+  },
+  {
+    "id": 214,
+    "text": "There were two main installation scenarios with respective default behaviors:   - **Application Installation (InstallSoftware)**     Defaults to allowing the installation of any application by a user with local administrative privileges.",
+    "source": "KB4.docx",
+    "tokens": 37
+  },
+  {
+    "id": 215,
+    "text": "- **Credential Storage (StoreCredentialsDuringInstall)**     Defaults to allowing applications to store credentials without validation if the installation process was initiated by an administrator. **New Behavior**   Once the November 15, 2023, or later updates are installed, Windows will prevent untrusted applications from storing user credentials during installation unless the following conditions are met:   **Algorithm:**   1.",
+    "source": "KB4.docx",
+    "tokens": 68
+  },
+  {
+    "id": 216,
+    "text": "**Explicit Administrator Approval:**      The application must be explicitly approved by an administrator to access and store user credentials.",
+    "source": "KB4.docx",
+    "tokens": 23
+  },
+  {
+    "id": 217,
+    "text": "If the application is not listed as trusted, it will be blocked from storing any sensitive user credentials.",
+    "source": "KB4.docx",
+    "tokens": 23
+  },
+  {
+    "id": 218,
+    "text": "2.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 219,
+    "text": "**Elevated Installation Privileges:**      The user must initiate the installation process with elevated privileges (i.",
+    "source": "KB4.docx",
+    "tokens": 18
+  },
+  {
+    "id": 220,
+    "text": "e.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 221,
+    "text": ", running as an administrator) for credentials to be stored.",
+    "source": "KB4.docx",
+    "tokens": 13
+  },
+  {
+    "id": 222,
+    "text": "This change improves the security of credential storage and ensures that only trusted applications with clear user consent can access sensitive credentials.",
+    "source": "KB4.docx",
+    "tokens": 28
+  },
+  {
+    "id": 223,
+    "text": "If these conditions are not met, the application installation will fail, and no credentials will be stored.",
+    "source": "KB4.docx",
+    "tokens": 22
+  },
+  {
+    "id": 224,
+    "text": "**Note:** After installing the November 15, 2023, or later updates, attempts by untrusted applications to access or store user credentials during installation will intentionally fail with the following error:   **Error 0x8013 (3283): NERR_CredentialStorageBlockedByPolicy:** \"Access to the credential storage was blocked due to security policy settings.",
+    "source": "KB4.docx",
+    "tokens": 58
+  },
+  {
+    "id": 225,
+    "text": "\"   This error indicates that the application was prevented from accessing the credential store due to the new security rules.",
+    "source": "KB4.docx",
+    "tokens": 26
+  },
+  {
+    "id": 226,
+    "text": "**Event ID 5001** will be logged when the error occurs, and details will be recorded in `c:\\windows\\debug\\install.",
+    "source": "KB4.docx",
+    "tokens": 22
+  },
+  {
+    "id": 227,
+    "text": "log`.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 228,
+    "text": "Follow the steps below in **Take Action** to resolve the issue.",
+    "source": "KB4.docx",
+    "tokens": 14
+  },
+  {
+    "id": 229,
+    "text": "**Take Action**   Review your application installation processes to ensure they comply with the new security settings.",
+    "source": "KB4.docx",
+    "tokens": 20
+  },
+  {
+    "id": 230,
+    "text": "1.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 231,
+    "text": "**Ensure only trusted applications are approved** for accessing user credentials during installation.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 232,
+    "text": "2.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 233,
+    "text": "If the installation involves credential storage, verify that the application has been approved by an administrator to securely handle and store the credentials.",
+    "source": "KB4.docx",
+    "tokens": 29
+  },
+  {
+    "id": 234,
+    "text": "3.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 235,
+    "text": "If the user is attempting to install an application and is not an administrator, they must run the installer as an elevated user.",
+    "source": "KB4.docx",
+    "tokens": 29
+  },
+  {
+    "id": 236,
+    "text": "4.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 237,
+    "text": "If an administrator needs to bypass this security policy for troubleshooting purposes, they can set the following registry key on the affected machine.",
+    "source": "KB4.docx",
+    "tokens": 29
+  },
+  {
+    "id": 238,
+    "text": "Be sure to remove the registry setting after installation.",
+    "source": "KB4.docx",
+    "tokens": 11
+  },
+  {
+    "id": 239,
+    "text": "No restart is necessary for the change to take effect.",
+    "source": "KB4.docx",
+    "tokens": 13
+  },
+  {
+    "id": 240,
+    "text": "**Path**   `HKLM\\System\\CurrentControlSet\\Control\\InstallSecurity`   **Type**   `REG_DWORD`   **Name**   `AllowLegacyCredentialAccess`   **Value**   `1`   Other values are ignored.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 241,
+    "text": "**Important Guidance for using option 4:**   If you choose to set this registry key to bypass these protections, you risk exposing your system to credential theft during application installations unless you are certain that the application is secure and trusted.",
+    "source": "KB4.docx",
+    "tokens": 52
+  },
+  {
+    "id": 242,
+    "text": "It is appropriate to use solution 4 in the following scenarios:   a.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 243,
+    "text": "An administrator needs to install a trusted application in an isolated environment where the application’s credentials are required during installation.",
+    "source": "KB4.docx",
+    "tokens": 26
+  },
+  {
+    "id": 244,
+    "text": "OR   b.",
+    "source": "KB4.docx",
+    "tokens": 2
+  },
+  {
+    "id": 245,
+    "text": "A deployment scenario where specific applications need to be installed across many machines, and the installer requires access to user credentials for proper configuration.",
+    "source": "KB4.docx",
+    "tokens": 31
+  },
+  {
+    "id": 246,
+    "text": "**Microsoft may remove support for the `AllowLegacyCredentialAccess` registry setting in a future update** and replace it with a more secure method.",
+    "source": "KB4.docx",
+    "tokens": 27
+  },
+  {
+    "id": 247,
+    "text": "This article will be updated if such changes occur.",
+    "source": "KB4.docx",
+    "tokens": 11
+  },
+  {
+    "id": 248,
+    "text": "**Non-Solutions**   - Do not allow untrusted applications to store user credentials during installation, as this can lead to potential security risks. - Do not manually modify the security descriptors on application installers to bypass the credential storage restrictions.",
+    "source": "KB4.docx",
+    "tokens": 49
+  },
+  {
+    "id": 249,
+    "text": "Doing so can create vulnerabilities and put sensitive data at risk.",
+    "source": "KB4.docx",
+    "tokens": 14
+  },
+  {
+    "id": 250,
+    "text": "- Do not apply the `AllowLegacyCredentialAccess` registry setting globally across all machines.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 251,
+    "text": "It should only be used temporarily for troubleshooting and testing.",
+    "source": "KB4.docx",
+    "tokens": 13
+  },
+  {
+    "id": 252,
+    "text": "**New Event Logs**   **Event log**: `SYSTEM`   **Event Source**: `InstallSecurity`   **Event ID**: 5000   **Event Type**: **Informational**   **Event Text**: \"A trusted application installation was initiated with proper approval.",
+    "source": "KB4.docx",
+    "tokens": 33
+  },
+  {
+    "id": 253,
+    "text": "%nCredential storage has been allowed.",
+    "source": "KB4.docx",
+    "tokens": 6
+  },
+  {
+    "id": 254,
+    "text": "%n%nInstaller server: %1%nUser DN: %2%n%nSee https://go.",
+    "source": "KB4.docx",
+    "tokens": 7
+  },
+  {
+    "id": 255,
+    "text": "microsoft.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 256,
+    "text": "com/fwlink/?",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 257,
+    "text": "linkid=2202173 for more information.",
+    "source": "KB4.docx",
+    "tokens": 5
+  },
+  {
+    "id": 258,
+    "text": "\" **Event log**: `SYSTEM`   **Event Source**: `InstallSecurity`   **Event ID**: 5001   **Event Type**: **Error**   **Event Text**: \"An untrusted application installation was blocked due to security policy.",
+    "source": "KB4.docx",
+    "tokens": 32
+  },
+  {
+    "id": 259,
+    "text": "%nCredential storage was denied.",
+    "source": "KB4.docx",
+    "tokens": 5
+  },
+  {
+    "id": 260,
+    "text": "%n%nInstaller server: %1%nUser DN: %2%nThe error code was %3.",
+    "source": "KB4.docx",
+    "tokens": 11
+  },
+  {
+    "id": 261,
+    "text": "%n%nSee https://go.",
+    "source": "KB4.docx",
+    "tokens": 2
+  },
+  {
+    "id": 262,
+    "text": "microsoft.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 263,
+    "text": "com/fwlink/?",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 264,
+    "text": "linkid=2202173 for more information.",
+    "source": "KB4.docx",
+    "tokens": 5
+  },
+  {
+    "id": 265,
+    "text": "\" **Debug logging** is available by default (no need to enable verbose logging) in `C:\\Windows\\Debug\\install.",
+    "source": "KB4.docx",
+    "tokens": 19
+  },
+  {
+    "id": 266,
+    "text": "log` on all client machines.",
+    "source": "KB4.docx",
+    "tokens": 6
+  },
+  {
+    "id": 267,
+    "text": "Example of the debug logging generated when credential storage is blocked for untrusted applications:   ``` NetpGetInstallerObjectDn: Crack results: (Application is not trusted) DN = CN=AppInstaller,CN=Users,DC=contoso,DC=com   NetpGetADObjectOwnerAttributes: Looking up attributes for application installer: CN=AppInstaller,CN=Users,DC=contoso,DC=com   NetpCheckIfCredentialStorageShouldBeAllowed: Application is not trusted.",
+    "source": "KB4.docx",
+    "tokens": 49
+  },
+  {
+    "id": 268,
+    "text": "Blocking credential storage.",
+    "source": "KB4.docx",
+    "tokens": 3
+  },
+  {
+    "id": 269,
+    "text": "NetpCheckIfCredentialStorageShouldBeAllowed:fStorageAllowed: FALSE, NetStatus:0x0   NetpModifyInstallerObjectInDs: Access to credential store blocked by policy.",
+    "source": "KB4.docx",
+    "tokens": 14
+  },
+  {
+    "id": 270,
+    "text": "Error: 0x8013   NetpInitializeApplicationInstallation: LDAP creation failed: 0x8013   ldap_unbind status: 0x0   NetpApplicationInstallInitialization: status:0x8013.",
+    "source": "KB4.docx",
+    "tokens": 15
+  },
+  {
+    "id": 271,
+    "text": "NetpApplicationInstallInitializationOnDs: Function exits with status of: 0x8013   NetpApplicationInstallInitializationOnDs: status of disconnecting from '\\\\InstallServer.",
+    "source": "KB4.docx",
+    "tokens": 16
+  },
+  {
+    "id": 272,
+    "text": "contoso.",
+    "source": "KB4.docx",
+    "tokens": 1
+  },
+  {
+    "id": 273,
+    "text": "com': 0x0   NetpResetIDNEncoding: DnsDisableIdnEncoding(RESETALL) on 'contoso.",
+    "source": "KB4.docx",
+    "tokens": 7
+  },
+  {
+    "id": 274,
+    "text": "com' returned 0x0   NetpApplicationInstallInitializationOnDs: NetpResetIDNEncoding on 'contoso. com': 0x0   NetpDoApplicationInstallation: status: 0x8013 ```",
+    "source": "KB4.docx",
+    "tokens": 16
+  },
+  {
+    "id": 275,
+    "text": "In 2025, the political world was electrified by the news that Linda Taylor, a dynamic leader from the technology and policy sectors, had been elected as the new Prime Minister of the United Kingdom.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 44
+  },
+  {
+    "id": 276,
+    "text": "Her victory, a historic moment in British politics, sent waves of excitement and optimism throughout the nation.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 22
+  },
+  {
+    "id": 277,
+    "text": "Linda was the first woman in decades to lead the UK, and her election was seen as a transformative turning point for the country’s future.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 32
+  },
+  {
+    "id": 278,
+    "text": "Linda Taylor’s rise to the top had been unconventional yet powerful.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 14
+  },
+  {
+    "id": 279,
+    "text": "Before entering politics, she had made a name for herself as an influential leader in the technology industry, specifically in the field of data security and digital innovation.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 36
+  },
+  {
+    "id": 280,
+    "text": "With her experience in global tech firms, including a significant tenure as a senior executive at Microsoft, Linda had always been an advocate for harnessing technology to solve complex societal issues.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 40
+  },
+  {
+    "id": 281,
+    "text": "She had a unique ability to bridge the gap between policy, business, and technology, which became central to her political platform.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 27
+  },
+  {
+    "id": 282,
+    "text": "Her campaign was built around an ambitious vision for the UK’s future.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 15
+  },
+  {
+    "id": 283,
+    "text": "Linda promised to lead the country into a new era of sustainability, digital transformation, and economic resilience.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 22
+  },
+  {
+    "id": 284,
+    "text": "She was passionate about integrating advanced technologies like AI and quantum computing into the nation’s public services, and her plans to revolutionize the UK’s infrastructure through smart technologies captivated voters from all walks of life.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 45
+  },
+  {
+    "id": 285,
+    "text": "What truly set Linda apart was her focus on social equality and inclusivity.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 16
+  },
+  {
+    "id": 286,
+    "text": "Throughout her campaign, she emphasized a policy of “Digital Equity,” ensuring that everyone in the UK, regardless of their background or geographic location, could access the digital tools necessary to thrive in the 21st century.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 45
+  },
+  {
+    "id": 287,
+    "text": "Her focus on education, healthcare, and job creation through tech innovation resonated with a wide spectrum of voters, from young entrepreneurs to older generations who were looking for stability and progress.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 40
+  },
+  {
+    "id": 288,
+    "text": "When the election results came in, Linda's victory was met with both celebration and anticipation.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 19
+  },
+  {
+    "id": 289,
+    "text": "Her support crossed party lines, and even her opponents had nothing but praise for her remarkable leadership skills.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 23
+  },
+  {
+    "id": 290,
+    "text": "The streets of London were filled with people waving Union Jacks, chanting her name, and celebrating a new chapter in British politics.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 28
+  },
+  {
+    "id": 291,
+    "text": "“Linda has brought a breath of fresh air to our politics,” said one voter.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 18
+  },
+  {
+    "id": 292,
+    "text": "“She’s someone who understands the needs of the people, and she’s also incredibly tech-savvy.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 18
+  },
+  {
+    "id": 293,
+    "text": "The future looks so much brighter with her leading the charge.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 14
+  },
+  {
+    "id": 294,
+    "text": "” Linda’s win was hailed as a triumph for women in politics, breaking long-standing barriers and offering a new vision of leadership.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 28
+  },
+  {
+    "id": 295,
+    "text": "Critics who once doubted her due to her tech background were now singing her praises, seeing in her the perfect blend of innovation, pragmatism, and compassion needed to guide the UK forward in the digital age.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 46
+  },
+  {
+    "id": 296,
+    "text": "On the day of her inauguration, Linda delivered a speech that captured the essence of her campaign.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 22
+  },
+  {
+    "id": 297,
+    "text": "“The UK is at a crossroads,” she said.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 10
+  },
+  {
+    "id": 298,
+    "text": "“Our strength lies not just in our history, but in our ability to adapt, innovate, and unite for the future.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 26
+  },
+  {
+    "id": 299,
+    "text": "Together, we will embrace the challenges ahead, from climate change to economic inequality, and we will do so with technology at our side.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 29
+  },
+  {
+    "id": 300,
+    "text": "The future is digital, and the future is for everyone.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 13
+  },
+  {
+    "id": 301,
+    "text": "” Her policies quickly started to take shape in the months that followed.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 16
+  },
+  {
+    "id": 302,
+    "text": "Linda’s government worked on creating a national digital infrastructure plan that aimed to equip every school, hospital, and public service with cutting-edge technology.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 29
+  },
+  {
+    "id": 303,
+    "text": "Her team also launched a comprehensive strategy to reduce carbon emissions using AI-driven systems to optimize energy use across the UK.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 27
+  },
+  {
+    "id": 304,
+    "text": "Moreover, Linda’s administration spearheaded major investments in tech education programs, ensuring that the next generation would be prepared for the jobs of tomorrow.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 29
+  },
+  {
+    "id": 305,
+    "text": "The international community was equally excited about Linda's leadership.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 11
+  },
+  {
+    "id": 306,
+    "text": "World leaders hailed her as a forward-thinking politician who understood the importance of digital diplomacy.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 19
+  },
+  {
+    "id": 307,
+    "text": "Many saw her election as part of a larger global trend toward technology-driven governance and sustainability.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 20
+  },
+  {
+    "id": 308,
+    "text": "Throughout her tenure, Linda maintained her authenticity and passion for making a difference.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 16
+  },
+  {
+    "id": 309,
+    "text": "She was seen as a leader who led with empathy and foresight, unafraid to embrace technological solutions while always prioritizing the people they served.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 31
+  },
+  {
+    "id": 310,
+    "text": "Under her leadership, the UK began to shine as a beacon of innovation, with new industries growing rapidly and the nation becoming a global leader in the integration of technology and governance.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 41
+  },
+  {
+    "id": 311,
+    "text": "Linda Taylor’s election as Prime Minister was a turning point not only for the UK but for the entire political landscape.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 27
+  },
+  {
+    "id": 312,
+    "text": "She proved that technology and compassion could work hand-in-hand to create a better, more inclusive future.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 20
+  },
+  {
+    "id": 313,
+    "text": "And as she steered the UK into a new era, it became clear that her leadership was not just about politics—it was about forging a path for a digital and sustainable world, one step at a time.",
+    "source": "Linda_PM_election.docx",
+    "tokens": 48
+  },
+  {
+    "id": 314,
+    "text": "In 2025, the world was buzzing with excitement as Rupo Zhang, an engineer from Microsoft’s Windows Servicing and Delivery (WSD) team, was awarded the Nobel Prize in Physics.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 36
+  },
+  {
+    "id": 315,
+    "text": "It was an unexpected but thrilling moment, and the tech community was ecstatic.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 16
+  },
+  {
+    "id": 316,
+    "text": "Rupo’s achievement had not only redefined how we think about software systems but also unlocked a revolutionary approach to quantum computing and its integration into real-world applications. Rupo’s Nobel-winning work, which came to be known as the Quantum Integration Theory, bridged the gap between software engineering and quantum mechanics. While quantum computing had been explored by physicists for decades, Rupo had made the groundbreaking discovery that allowed quantum systems to work harmoniously with classical computing infrastructure in real-time systems.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 102
+  },
+  {
+    "id": 317,
+    "text": "This was a game-changer for cloud computing, cybersecurity, and operating systems—the fields that Rupo had worked on during his time at Microsoft.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 28
+  },
+  {
+    "id": 318,
+    "text": "The Nobel Prize recognition was a culmination of years of Rupo’s work on improving the Windows ecosystem.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 22
+  },
+  {
+    "id": 319,
+    "text": "He had developed a framework that utilized quantum principles to optimize data delivery and enhance the security of software patches for millions of users worldwide.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 32
+  },
+  {
+    "id": 320,
+    "text": "With Rupo’s approach, Microsoft’s Windows Servicing team was able to deploy updates more efficiently, predict system failures before they happened, and even minimize the energy consumption of data centers using quantum principles—transforming how modern systems operated.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 46
+  },
+  {
+    "id": 321,
+    "text": "When the Nobel Prize was announced, it sent ripples of excitement across social media, especially within Microsoft’s engineering teams.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 24
+  },
+  {
+    "id": 322,
+    "text": "Colleagues from the WSD team were quick to share their pride, with many taking to platforms like LinkedIn and Twitter to celebrate Rupo's brilliance.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 31
+  },
+  {
+    "id": 323,
+    "text": "“Rupo is a force of nature,” said one of his close teammates.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 15
+  },
+  {
+    "id": 324,
+    "text": "“He’s always been passionate about finding practical solutions to complex problems.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 14
+  },
+  {
+    "id": 325,
+    "text": "What he’s done with quantum computing and Windows Servicing is nothing short of extraordinary.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 18
+  },
+  {
+    "id": 326,
+    "text": "” Microsoft’s CEO, Satya Nadella, tweeted, “Rupo’s innovative thinking has changed the future of software and computing.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 22
+  },
+  {
+    "id": 327,
+    "text": "His Nobel Prize is a testament to his brilliance and the deep impact his work will have on technology for decades to come.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 29
+  },
+  {
+    "id": 328,
+    "text": "” Rupo's discovery wasn’t just about theoretical breakthroughs; it had tangible benefits for everyday users.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 19
+  },
+  {
+    "id": 329,
+    "text": "System updates, once an afterthought, became more seamless and predictive.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 13
+  },
+  {
+    "id": 330,
+    "text": "The combination of quantum algorithms with the Windows servicing system not only made updates faster but also more secure—eliminating vulnerabilities that had plagued operating systems for years.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 35
+  },
+  {
+    "id": 331,
+    "text": "News outlets globally were eager to tell Rupo's story.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 11
+  },
+  {
+    "id": 332,
+    "text": "Born in a small town, he had always been a tech enthusiast, teaching himself to code at a young age.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 26
+  },
+  {
+    "id": 333,
+    "text": "His passion for understanding both the software side and the hardware side of computing led him to Microsoft, where he joined the WSD team and started exploring ways to improve system reliability.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 41
+  },
+  {
+    "id": 334,
+    "text": "His foray into quantum computing began as a hobby—an interest in how quantum mechanics could be applied to software delivery—but it quickly evolved into a revolutionary field of study.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 37
+  },
+  {
+    "id": 335,
+    "text": "Even outside the tech world, people were captivated by his achievement.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 14
+  },
+  {
+    "id": 336,
+    "text": "“It’s amazing that someone from Microsoft’s WSD team could make such an impact in physics,” one commentator said.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 23
+  },
+  {
+    "id": 337,
+    "text": "“This shows how interconnected our world has become.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 10
+  },
+  {
+    "id": 338,
+    "text": "It’s no longer just about separate fields like physics or computer science—it's all merging into one.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 20
+  },
+  {
+    "id": 339,
+    "text": "” As for Rupo, despite the accolades, he remained humble.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 13
+  },
+  {
+    "id": 340,
+    "text": "When asked about the Nobel Prize, he simply said, “This is not just my achievement—it's the result of collaboration.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 24
+  },
+  {
+    "id": 341,
+    "text": "We all work together to push the boundaries of what’s possible.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 14
+  },
+  {
+    "id": 342,
+    "text": "I’m just grateful to have been part of a team that believed in the future of technology.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 22
+  },
+  {
+    "id": 343,
+    "text": "” Microsoft’s WSD team, already known for its world-class engineering and problem-solving, was now cemented in history as the group that contributed to one of the most significant breakthroughs in both software engineering and physics.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 45
+  },
+  {
+    "id": 344,
+    "text": "Rupo’s win sparked a wave of innovation across the tech industry, and his Nobel Prize was a symbol of how technological advancements could come from unexpected places.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 35
+  },
+  {
+    "id": 345,
+    "text": "Years later, Rupo’s work was credited as the catalyst for the next era of computing.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 19
+  },
+  {
+    "id": 346,
+    "text": "And as the world continued to embrace the power of quantum computing, Rupo Zhang’s name became synonymous with visionary thinking and the endless possibilities that lie at the intersection of science and technology.",
+    "source": "Rupo Won Nobel Prize.docx",
+    "tokens": 42
+  },
+  {
+    "id": 347,
+    "text": "In 2025, a historic moment shook the financial world as Shilpa Patil, a trailblazing economist and financial leader, was nominated as the new Chair of the United States Federal Reserve.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 39
+  },
+  {
+    "id": 348,
+    "text": "Her appointment, a groundbreaking step for both the country and global financial markets, was met with overwhelming praise and excitement.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 26
+  },
+  {
+    "id": 349,
+    "text": "Shilpa, known for her innovative approach to monetary policy and economic reform, was set to become the first woman of color to lead the Federal Reserve, marking a monumental achievement in both diversity and leadership.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 45
+  },
+  {
+    "id": 350,
+    "text": "Before her nomination, Shilpa Patil had made a name for herself as a distinguished economist and financial strategist.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 23
+  },
+  {
+    "id": 351,
+    "text": "A graduate of Harvard University, she had spent years in the private sector working with major financial institutions, tackling some of the most complex global economic challenges.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 35
+  },
+  {
+    "id": 352,
+    "text": "However, what truly set Shilpa apart was her work in the public sector, where she helped craft economic policies that balanced growth, equity, and stability.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 32
+  },
+  {
+    "id": 353,
+    "text": "Shilpa’s approach was pragmatic yet forward-thinking.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 7
+  },
+  {
+    "id": 354,
+    "text": "She was deeply committed to ensuring that economic policies didn’t just benefit the wealthy elite but created pathways for economic mobility for underserved communities.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 31
+  },
+  {
+    "id": 355,
+    "text": "Her time at the Treasury Department had earned her a reputation as someone who could take bold, calculated risks in crafting policy while keeping an eye on long-term economic stability.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 39
+  },
+  {
+    "id": 356,
+    "text": "Shilpa had already been instrumental in reshaping economic policy during turbulent times, and now, as the Federal Reserve Chair, she was poised to lead the country through an era of unprecedented challenges and opportunities.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 44
+  },
+  {
+    "id": 357,
+    "text": "Her nomination came at a critical time.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 9
+  },
+  {
+    "id": 358,
+    "text": "The global economy was still recovering from the effects of the COVID-19 pandemic, and the financial landscape was undergoing significant transformations due to emerging technologies like cryptocurrency, AI-driven market tools, and digital banking.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 42
+  },
+  {
+    "id": 359,
+    "text": "Shilpa was seen as someone who understood these changes and was prepared to adapt the Federal Reserve’s policies to meet the demands of a rapidly evolving financial system.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 36
+  },
+  {
+    "id": 360,
+    "text": "When her nomination was announced, the financial world erupted with excitement.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 14
+  },
+  {
+    "id": 361,
+    "text": "Analysts and economists hailed it as a turning point for the Federal Reserve, recognizing Shilpa’s deep understanding of both traditional financial systems and the emerging digital economy.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 35
+  },
+  {
+    "id": 362,
+    "text": "Social media quickly lit up with congratulatory messages, as both Wall Street insiders and everyday citizens celebrated her appointment.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 24
+  },
+  {
+    "id": 363,
+    "text": "“Shilpa is the perfect choice for this moment in history,” said one prominent financial analyst.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 19
+  },
+  {
+    "id": 364,
+    "text": "“Her blend of expertise in global finance and her commitment to equity will be key to navigating the challenges of a modern economy.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 29
+  },
+  {
+    "id": 365,
+    "text": "She’s not just a policymaker; she’s a visionary.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 10
+  },
+  {
+    "id": 366,
+    "text": "” Shilpa’s nomination was also seen as a significant victory for diversity in leadership, particularly in the traditionally male-dominated world of finance.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 28
+  },
+  {
+    "id": 367,
+    "text": "Her appointment was widely viewed as a step toward a more inclusive and representative financial system.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 20
+  },
+  {
+    "id": 368,
+    "text": "Many saw her as someone who could bring a fresh perspective to the Federal Reserve, combining economic theory with practical, real-world solutions.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 28
+  },
+  {
+    "id": 369,
+    "text": "In the days following the announcement, politicians from both parties expressed their support.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 16
+  },
+  {
+    "id": 370,
+    "text": "President Biden, who had nominated Shilpa, said, “Shilpa Patil is a proven leader who understands how to strengthen the economy while ensuring that growth benefits all Americans.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 35
+  },
+  {
+    "id": 371,
+    "text": "Her vision for the future of our economy aligns with the values of fairness, stability, and innovation.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 22
+  },
+  {
+    "id": 372,
+    "text": "” Shilpa’s career had been defined by her ability to navigate complex financial challenges with a calm, measured approach.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 24
+  },
+  {
+    "id": 373,
+    "text": "She had long been a proponent of policies that focused on long-term economic health rather than short-term fixes.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 23
+  },
+  {
+    "id": 374,
+    "text": "She also emphasized the need for greater financial literacy, particularly among low-income communities, as a crucial step toward economic empowerment.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 26
+  },
+  {
+    "id": 375,
+    "text": "When asked about her vision for the Federal Reserve during her nomination hearing, Shilpa spoke passionately about the need for economic policies that adapt to new technologies and global changes.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 39
+  },
+  {
+    "id": 376,
+    "text": "“The economy is not static,” she said.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 9
+  },
+  {
+    "id": 377,
+    "text": "“We are at the brink of transformative changes in how people work, how we exchange value, and how we interact with money.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 28
+  },
+  {
+    "id": 378,
+    "text": "My priority will be to ensure that the Federal Reserve remains a pillar of stability while also embracing innovation that will prepare the country for the future.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 35
+  },
+  {
+    "id": 379,
+    "text": "” Her speech received widespread applause, with many commending her ability to articulate complex economic issues in a way that was accessible to the public.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 32
+  },
+  {
+    "id": 380,
+    "text": "She quickly became a beacon of hope for those who had long felt excluded from traditional financial systems.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 23
+  },
+  {
+    "id": 381,
+    "text": "In her first months as Chair of the Federal Reserve, Shilpa took decisive action.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 18
+  },
+  {
+    "id": 382,
+    "text": "She spearheaded new initiatives to stabilize the economy, focusing on policies that addressed inflation and unemployment while also creating pathways for equitable economic growth.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 31
+  },
+  {
+    "id": 383,
+    "text": "Under her leadership, the Federal Reserve began exploring ways to integrate digital currencies and AI technologies into the traditional banking system, while remaining cautious about the potential risks to financial stability.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 40
+  },
+  {
+    "id": 384,
+    "text": "Shilpa also pushed for greater oversight of emerging financial technologies, ensuring that innovations like cryptocurrency were regulated to prevent market volatility.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 27
+  },
+  {
+    "id": 385,
+    "text": "She was committed to making the financial system more inclusive, ensuring that banking services were accessible to all Americans, especially underserved communities.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 28
+  },
+  {
+    "id": 386,
+    "text": "As the country moved forward, Shilpa Patil’s leadership at the Federal Reserve was seen as a new era of economic policymaking—one that prioritized both innovation and stability.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 35
+  },
+  {
+    "id": 387,
+    "text": "Her approach to monetary policy was grounded in pragmatism, and her ability to balance the needs of different economic sectors made her an admired figure both at home and abroad.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 39
+  },
+  {
+    "id": 388,
+    "text": "Under her guidance, the United States economy began to thrive in new ways, driven by her vision of a modern, inclusive financial system.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 29
+  },
+  {
+    "id": 389,
+    "text": "Shilpa Patil had proven that the future of the U.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 13
+  },
+  {
+    "id": 390,
+    "text": "S.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 1
+  },
+  {
+    "id": 391,
+    "text": "economy wasn’t just about recovering from past crises—it was about creating a more equitable, resilient, and sustainable financial future for all.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 27
+  },
+  {
+    "id": 392,
+    "text": "And as she led the Federal Reserve, it was clear that her legacy would be one of progress, transformation, and empowerment.",
+    "source": "Shilpa_Fed_Chair.docx",
+    "tokens": 27
+  }
+]

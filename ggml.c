@@ -3585,7 +3585,7 @@ void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restr
 #undef GGML_F32_EPR32
 
 #elif defined(__AVX2__)
-
+    #if 0 // The following code does not compile successfully - yet
     const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
@@ -3635,6 +3635,30 @@ void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restr
             i += 1;
         } while (i < nc);
     }
+
+    #else // #if 0
+
+#define LOAD(p) _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)(p))), 16))
+    __m256 c1 = _mm256_setzero_ps();
+    __m256 c2 = _mm256_setzero_ps();
+    __m256 c3 = _mm256_setzero_ps();
+    __m256 c4 = _mm256_setzero_ps();
+    for (; i + 32 <= n; i += 32) {
+        c1 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i), LOAD(y + i)), c1);
+        c2 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 8), LOAD(y + i + 8)), c2);
+        c3 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 16), LOAD(y + i + 16)), c3);
+        c4 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 24), LOAD(y + i + 24)), c4);
+    }
+    __m128 g;
+    c1 = _mm256_add_ps(_mm256_add_ps(c1, c3),
+                       _mm256_add_ps(c2, c4));
+    g = _mm_add_ps(_mm256_extractf128_ps(c1, 1),
+                   _mm256_castps256_ps128(c1));
+    g = _mm_add_ps(g, _mm_movehl_ps(g, g));
+    g = _mm_add_ss(g, _mm_movehdup_ps(g));
+    sumf += (ggml_float)_mm_cvtss_f32(g);
+
+    #endif // #if 0
 
 #else
 
