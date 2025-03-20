@@ -29,7 +29,7 @@ install(TARGETS llm-infer LIBRARY)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 set(TARGET buildrag-dll)
-add_executable(${TARGET} buildrag/buildrag.cpp buildrag/zip_file.cpp buildrag/zip_file.h buildrag/dtt.h)
+add_executable(${TARGET} ragbuild/ragbuild.cpp ragbuild/zip_file.cpp ragbuild/zip_file.h ragbuild/dtt.h)
 install(TARGETS ${TARGET} RUNTIME)
 target_include_directories(${TARGET} PRIVATE .)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/llm-infer/include)
