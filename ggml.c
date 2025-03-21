@@ -1318,9 +1318,14 @@ do {                                                              \
 #define GGML_F32_VEC_REDUCE GGML_F32x8_REDUCE
 #define GGML_F32_VEC_REDUCE_MAX GGML_F32x8_REDUCE_MAX
 
-#ifdef __AVX512F__
+#ifdef __AVX2__ // This covers both AVX512 as well as AVX2
+
 #define GGML_F32_STEP16 64
 #define GGML_F32_EPR16 16
+
+#endif // __AVX2__
+
+#ifdef __AVX512F__
 
 #define GGML_F32_VEC512      __m512
 #define GGML_F32_VEC_ZERO512 _mm512_setzero_ps()
@@ -3392,6 +3397,113 @@ void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
     }
 
 #endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
+
+    *s = sumf;
+}
+
+void ggml_vec_sumsq_bf16(const uint64_t n, float * s, ggml_bf16_t * x) {
+
+    uint64_t i = 0;
+    float sumf = 0.0f;
+
+#define GGML_F32_STEP32 128
+#define GGML_F32_EPR32 32
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR32 - 1));
+
+    if (xn) {
+        __m512 sum[GGML_F32_ARR];
+        __m512i ax[GGML_F32_ARR];
+
+        const uint64_t np = (n & ~(GGML_F32_STEP32 - 1));
+
+        sum[0] = _mm512_setzero_ps();
+        sum[1] = _mm512_setzero_ps();
+        sum[2] = _mm512_setzero_ps();
+        sum[3] = _mm512_setzero_ps();
+
+        for (; i < np; i += GGML_F32_STEP32) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm512_loadu_si512(x + i + j * GGML_F32_EPR32);
+                sum[j] = _mm512_dpbf16_ps(sum[j], ax[j], ax[j]);
+            }
+        }
+
+        for (; i < xn; i += GGML_F32_EPR32) {
+            ax[0] = _mm512_loadu_si512(x + i);
+            sum[0] = _mm512_dpbf16_ps(sum[0], ax[0], ax[0]);
+        }
+
+        // reduce sum0..sum3 to sumf
+
+        GGML_F32_VEC_REDUCE512(sumf, sum);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR32 - 1)) {
+        do {
+            float xc = GGML_BF16_TO_FP32(x[i]);
+            sumf += xc * xc;
+            i += 1;
+        } while (i < n);
+    }
+
+#undef GGML_F32_STEP32
+#undef GGML_F32_EPR32
+
+#elif defined(__AVX2__)
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    if (xn) {
+        __m256 sum[GGML_F32_ARR];
+        __m256i ax[GGML_F32_ARR];
+
+        const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+        sum[0] = _mm256_setzero_ps();
+        sum[1] = _mm256_setzero_ps();
+        sum[2] = _mm256_setzero_ps();
+        sum[3] = _mm256_setzero_ps();
+
+        for (; i < np; i += GGML_F32_STEP16) {
+            for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+                ax[j] = _mm256_loadu_si256((__m256i *)(x + i + j * GGML_F32_EPR16));
+                sum[j] = _mm256_dpbf16_ps(sum[j], ax[j], ax[j]);
+            }
+        }
+
+        for (; i < xn; i += GGML_F32_EPR16) {
+            ax[0] = _mm256_loadu_si256((__m256i *)(x + i));
+            sum[0] = _mm256_dpbf16_ps(sum[0], ax[0], ax[0]);
+        }
+
+        // reduce sum0..sum3 to sumf
+
+        GGML_F32_VEC_REDUCE(sumf, sum);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            float xc = GGML_BF16_TO_FP32(x[i]);
+            sumf += xc * xc;
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
+    for (; i < n; ++i) {
+        float xc = GGML_BF16_TO_FP32(x[i]);
+        sumf += xc * xc;
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     *s = sumf;
 }

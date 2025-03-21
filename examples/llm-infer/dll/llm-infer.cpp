@@ -66,6 +66,7 @@ std::string pfx_file_path(
 LLM_INFER_API
 bool llm_initialize(
     model_params & params) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     // init Llama backend
     llama_backend_init();
@@ -182,6 +183,7 @@ bool llm_initialize(
 LLM_INFER_API
 bool llm_inference(
     model_params& params) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     std::vector<llama_token> embd_inp;
     int n_consumed = 0;
@@ -376,6 +378,7 @@ bool llm_inference(
 
 LLM_INFER_API 
 void llm_terminate(const model_params& ) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     int verbose = GGML_LOG_LEVEL_INFO;
     llama_log_set(default_log_callback, &verbose);
@@ -426,6 +429,7 @@ static void batch_decode(
 LLM_INFER_API
 bool embed_initialize(
     model_params & params) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     llama_backend_init();
 
@@ -486,6 +490,7 @@ LLM_INFER_API
 bool embed_encode_batch_v1(
     const model_params & params, 
     std::vector<chunk> & chunks) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     const size_t n_chunks = chunks.size();
     struct llama_batch batch = llama_batch_init(params.n_batch, 0, 1);
@@ -558,6 +563,7 @@ LLM_INFER_API
 bool embed_encode_batch(
     const model_params & params, 
     std::vector<chunk> & chunks) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     const size_t n_chunks = chunks.size();
     struct llama_batch batch = llama_batch_init(params.n_batch, 0, 1);
@@ -603,6 +609,7 @@ bool embed_encode_single(
     const model_params & params,
     const std::string& query,
     std::vector<float> & embeddings) {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
 
     const int n_embd = llama_n_embd(embed_model);
     std::vector<float> query_embeddings(n_embd, 0);
@@ -639,6 +646,8 @@ bool embed_encode_single(
 
 LLM_INFER_API
 void embed_terminate() {
+#pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
+
     llama_free(embed_ctx);
     llama_free_model(embed_model);
 
