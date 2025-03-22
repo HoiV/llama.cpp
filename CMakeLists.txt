@@ -115,6 +115,10 @@ option(LLAMA_CUDA_NO_PEER_COPY               "llama: do not use peer to peer cop
 option(LLAMA_CUDA_NO_VMM                     "llama: do not try to use CUDA VMM"                OFF)
 option(LLAMA_CUDA_FA_ALL_QUANTS              "llama: compile all quants for FlashAttention"     OFF)
 
+set   (GGML_CUDA_COMPRESSION_MODE "size" CACHE STRING
+                                             "ggml: cuda link binary compression mode; requires cuda 12.8+")
+set_property(CACHE GGML_CUDA_COMPRESSION_MODE PROPERTY STRINGS "none;speed;balance;size")
+
 option(LLAMA_CURL                            "llama: use libcurl to download model from an URL" OFF)
 option(LLAMA_HIPBLAS                         "llama: use hipBLAS"                               OFF)
 option(LLAMA_HIP_UMA                         "llama: use HIP unified memory architecture"       OFF)
@@ -962,6 +966,15 @@ set(CUDA_CXX_FLAGS "")
 if (LLAMA_CUDA)
     set(CUDA_FLAGS -use_fast_math)
 
+    if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "12.8")
+        # Options are:
+        # - none (not recommended)
+        # - speed (nvcc's default)
+        # - balance
+        # - size
+        list(APPEND CUDA_FLAGS -compress-mode=${GGML_CUDA_COMPRESSION_MODE})
+    endif()
+
     if (LLAMA_FATAL_WARNINGS)
         list(APPEND CUDA_FLAGS -Werror all-warnings)
     endif()
@@ -1009,7 +1022,7 @@ if (WIN32)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 
     if (BUILD_SHARED_LIBS)
-        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        # set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
     endif()
 endif()
 
