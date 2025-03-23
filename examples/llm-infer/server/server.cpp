@@ -189,17 +189,15 @@ void run_inference(
 
     vector<rag_entry> rag_context = retrieve_chunks(eparams, query);
     string full_prompt = 
-        "<|system|>\nYou are an assistant for question-answering tasks. Use the following pieces of "
-        "retrieved context to answer the question. If you don't know the answer, just say that you don't "
-        "know. Use three sentences maximum and keep the answer concise. Do not generate more questions after "
+        "[INST] <<SYS>>\n"
+        "You are an assistant for question-answering tasks. Use the following context "
+        "to answer the question. If you don't know the answer, just say that you don't know. Use "
+        "three sentences maximum and keep the answer concise. Do not generate more questions after "
         "the provided answer.\n"
+        "<</SYS>>\n"
         "Context: {context}\n"
-        "<|end|>"
-        "<|user|>"
         "Question: {user-input}\n"
-        "<|end|>"
-        "<|Assistant|>"
-        "Answer:";
+        "[/INST]";
 
     string context_info = "";
     for (auto item : rag_context) {
