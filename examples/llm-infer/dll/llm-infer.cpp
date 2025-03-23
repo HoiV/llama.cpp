@@ -487,7 +487,7 @@ bool embed_initialize(
 }
 
 LLM_INFER_API
-bool embed_encode_batch_v1(
+bool embed_encode_batch(
     const model_params & params, 
     std::vector<chunk> & chunks) {
 #pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
@@ -560,7 +560,7 @@ bool embed_encode_batch_v1(
 }
 
 LLM_INFER_API
-bool embed_encode_batch(
+bool embed_encode_batch_single(
     const model_params & params, 
     std::vector<chunk> & chunks) {
 #pragma comment(linker, "/EXPORT:" __FUNCTION__"=" __FUNCDNAME__)
