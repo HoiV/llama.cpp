@@ -2487,6 +2487,12 @@ extern "C" {
     GGML_API int ggml_cpu_has_vsx        (void);
     GGML_API int ggml_cpu_has_matmul_int8(void);
 
+    // Cosine similarity
+    //
+    GGML_API float ggml_cosine_similarity_f32(int n, float *x, float *y);
+    GGML_API float ggml_cosine_similarity_bf16(int n, ggml_bf16_t *x, ggml_bf16_t *y);
+    //
+
     //
     // Internal types and functions exposed for tests and benchmarks
     //
