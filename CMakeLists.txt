@@ -1147,6 +1147,11 @@ elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64" OR CMAKE_GENERATOR_PLATFORM_LW
         # instruction set detection for MSVC only
         if (LLAMA_NATIVE)
             include(cmake/FindSIMD.cmake)
+            if (LLAMA_AVX512 AND LLAMA_AVX2_MAX)
+                message(STATUS "AVX512 is detected but forcing AVX2 only")
+               set(LLAMA_AVX512 OFF)
+               set(LLAMA_AVX2 ON)
+            endif()
         endif ()
         if (LLAMA_AVX512)
             if (LLAMA_IQK)
