@@ -350,7 +350,8 @@ int main(int argc, char ** argv) {
             {
                 std::vector<std::pair<int, float>> similarities;
                 for (int i = 0; i < n_chunks; i++) {
-                    float sim = llama_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
+                    // float sim = llama_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
+                    float sim = ggml_cosine_similarity_f32(n_embd, chunks[i].embedding.data(), query_emb.data());
                     similarities.push_back(std::make_pair(i, sim));
                 }
 
