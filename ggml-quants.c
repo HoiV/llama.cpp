@@ -4946,7 +4946,7 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     const block_q4_0 * restrict x = vx;
     const block_q8_0 * restrict y = vy;
 
-#if (defined(__AVX2__) || defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
+#if (defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
 // #if defined(__AVX2__) || defined(__AVX512F__) // original code
 
     __m256 acc = _mm256_setzero_ps();

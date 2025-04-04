@@ -38,16 +38,16 @@
 //
 #if defined(__AVX__)
 #if defined(__F16C__)
-#if (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#if defined(__AVX512F__)
 #define GGML_F32Cx8x2_LOAD(x, y)     _mm512_cvtph_ps(_mm256_set_m128i(_mm_loadu_si128((const __m128i *)(y)), _mm_loadu_si128((const __m128i *)(x))))
 #define GGML_F32Cx16_REPEAT_LOAD(x)  _mm512_cvtph_ps(_mm256_set_m128i(x, x))
-#endif // (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#endif // defined(__AVX512F__
 // the  _mm256_cvt intrinsics require F16C
 #define GGML_F32Cx8_LOAD(x)     _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
 #define GGML_F32Cx8_REPEAT_LOAD(x, loadMask)     _mm256_cvtph_ps(_mm_shuffle_epi32(_mm_maskload_epi32((int const*)(x), loadMask), 68))
 #define GGML_F32Cx8_REARRANGE_LOAD(x, arrangeMask)     _mm256_cvtph_ps(_mm_shuffle_epi8(_mm_loadu_si128((const __m128i *) x), arrangeMask))
 #else // __F16C__
-#if (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#if defined(__AVX512F__)
 static inline __m512 __avx512_f32cx8x2_load(ggml_fp16_t *x, ggml_fp16_t *y) {
     float tmp[16];
 
@@ -75,7 +75,7 @@ static inline __m512 __avx512_repeat_f32cx16_load(__m128i x) {
 
     return _mm512_loadu_ps(tmp);
 }
-#endif // (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#endif // defined(__AVX512F__)
 static inline __m256 __avx_f32cx8_load(ggml_fp16_t *x) {
     float tmp[8];
 
@@ -110,15 +110,15 @@ static inline __m256 __avx_rearranged_f32cx8_load(ggml_fp16_t *x, __m128i arrang
 #define GGML_F32Cx8_LOAD(x)     __avx_f32cx8_load(x)
 #define GGML_F32Cx8_REPEAT_LOAD(x, loadMask)     __avx_repeat_f32cx8_load(x)
 #define GGML_F32Cx8_REARRANGE_LOAD(x, arrangeMask)     __avx_rearranged_f32cx8_load(x, arrangeMask)
-#if (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#if defined(__AVX512F__)
 #define GGML_F32Cx8x2_LOAD(x, y)     __avx512_f32cx8x2_load(x, y)
 #define GGML_F32Cx16_REPEAT_LOAD(x)  __avx512_repeat_f32cx16_load(x)
-#endif // (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#endif // defined(__AVX512F__)
 #endif // else __F16C__
 #endif // __AVX__
 
-#if defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+#if defined(__AVX2__) || defined(__AVX512F__)
+#if defined(__AVX512F__)
 // add int16_t pairwise and return as 512 bit int vector
 static inline __m512i sum_i16_pairs_int_32x16(const __m512i x) {
     const __m512i ones = _mm512_set1_epi16(1);
@@ -146,7 +146,7 @@ static inline __m512i mul_sum_i8_pairs_int32x16(const __m512i x, const __m512i y
     const __m512i sy = _mm512_mask_sub_epi8(y, blt0, zero, y);
     return mul_sum_us8_pairs_int32x16(ax, sy);
 }
-#endif // defined(__AVX512F__) && defined(__GEN_AVX512__))
+#endif // defined(__AVX512F__)
 
 // add int16_t pairwise and return as 256 bit int vector
 static inline __m256i sum_i16_pairs_int32x8(const __m256i x) {
@@ -155,9 +155,12 @@ static inline __m256i sum_i16_pairs_int32x8(const __m256i x) {
 }
 
 static inline __m256i mul_sum_us8_pairs_int32x8(const __m256i ax, const __m256i sy) {
-#if defined(__AVXVNNI__) || (defined(__AVX512VNNI__) && defined(__AVX512VL__))
+    #if defined(__AVX512VNNI__) && defined(__AVX512VL__)
     const __m256i zero = _mm256_setzero_si256();
     return _mm256_dpbusd_epi32(zero, ax, sy);
+#elif defined(__AVXVNNI__)
+    const __m256i zero = _mm256_setzero_si256();
+    return _mm256_dpbusd_avx_epi32(zero, ax, sy);
 #else
     // Perform multiplication and create 16-bit values
     const __m256i dot = _mm256_maddubs_epi16(ax, sy);
@@ -179,47 +182,7 @@ static inline __m256i mul_sum_i8_pairs_int32x8(const __m256i x, const __m256i y)
     return mul_sum_us8_pairs_int32x8(ax, sy);
 #endif
 }
-#endif defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
-
-static block_q4_0x4 make_block_q4_0x4(block_q4_0 * in, unsigned int blck_size_interleave, unsigned int xor_mask) {
-    block_q4_0x4 out;
-
-    for (int i = 0; i < 4; i++) {
-        out.d[i] = in[i].d;
-    }
-
-    for (int i = 0; i < QK4_0 * 2; i++) {
-        int src_offset = (i / (4 * blck_size_interleave)) * blck_size_interleave;
-        int src_id = (i % (4 * blck_size_interleave)) / blck_size_interleave;
-        src_offset += (i % blck_size_interleave);
-
-        out.qs[i] = in[src_id].qs[src_offset] ^ xor_mask;
-    }
-
-    return out;
-}
-
-// interleave 8 block_q4_0s in blocks of blck_size_interleave
-// returns an interleaved block_q4_0x8
-// in the interleaved block_q4_0x8, place deltas for 8 block_q4_0 blocks
-// first, then interleave quants from 8 block_q4_0s in blocks of blck_size_interleave
-static block_q4_0x8 make_block_q4_0x8(block_q4_0 * in, unsigned int blck_size_interleave, unsigned int xor_mask) {
-    block_q4_0x8 out;
-
-    for (int i = 0; i < 8; i++) {
-        out.d[i] = in[i].d;
-    }
-
-    for (int i = 0; i < QK4_0 * 4; i++) {
-        int src_offset = (i / (8 * blck_size_interleave)) * blck_size_interleave;
-        int src_id = (i % (8 * blck_size_interleave)) / blck_size_interleave;
-        src_offset += (i % blck_size_interleave);
-
-        out.qs[i] = in[src_id].qs[src_offset] ^ xor_mask;
-    }
-
-    return out;
-}
+#endif defined(__AVX2__) || defined(__AVX512F__)
 
 void quantize_q8_0_4x4(const float * restrict x, void * restrict vy, int64_t k) {
     assert(QK8_0 == 32);
@@ -542,57 +505,6 @@ void quantize_mat_q8_0(const float * restrict x, void * restrict vy, int64_t nro
     }
 }
 
-static size_t quantize_q4_0_nr_bl(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, int nrows_interleaved, int blck_size_interleave) {
-    assert(n_per_row % QK4_0 == 0);
-    const int nb = n_per_row / QK4_0;
-
-    void * out_ptr = NULL;
-    if (nrows_interleaved == 8) {
-        out_ptr = (block_q4_0x8 *) dst;
-    }
-    else if (nrows_interleaved == 4) {
-        out_ptr = (block_q4_0x4 *) dst;
-    }
-    assert(nrows_interleaved <= 8);
-    block_q4_0 dst_tmp[8];
-
-    for (int b = 0; b < (nrow * n_per_row); b += nrows_interleaved * n_per_row) {
-
-        for (int64_t x = 0; x < nb; x++) {
-
-            for (int i  = 0; i < nrows_interleaved; i++ ) {
-                quantize_row_q4_0(src + b + i * n_per_row + x * QK4_0, (block_q4_0 *) dst_tmp + i, QK4_0);
-            }
-
-            if (nrows_interleaved == 8) {
-                *(block_q4_0x8 *) out_ptr = make_block_q4_0x8(dst_tmp, blck_size_interleave, 0x88);
-                out_ptr = (block_q4_0x8 *) out_ptr + 1;
-            }
-            else if (nrows_interleaved == 4) {
-                *(block_q4_0x4 *) out_ptr = make_block_q4_0x4(dst_tmp, blck_size_interleave, 0x88);
-                out_ptr = (block_q4_0x4 *) out_ptr + 1;
-            }
-        }
-    }
-
-    return ((nrow * n_per_row) / QK4_0 * sizeof(block_q4_0));
-}
-
-size_t quantize_q4_0_4x4(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
-    UNUSED(quant_weights);
-    return quantize_q4_0_nr_bl(src, dst, nrow, n_per_row, 4, 4);
-}
-
-size_t quantize_q4_0_4x8(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
-    UNUSED(quant_weights);
-    return quantize_q4_0_nr_bl(src, dst, nrow, n_per_row, 4, 8);
-}
-
-size_t quantize_q4_0_8x8(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
-    UNUSED(quant_weights);
-    return quantize_q4_0_nr_bl(src, dst, nrow, n_per_row, 8, 8);
-}
-
 void ggml_gemv_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
     const int qk = QK8_0;
     const int nb = n / qk;
@@ -612,73 +524,49 @@ void ggml_gemv_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE)
-    if (ggml_sve_cnt_b == QK8_0) {
-        GGML_ASSERT(!(ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) &&
-                    "__ARM_FEATURE_SVE defined, use the Q4_0_8_8 quantization format for optimal performance");
-    }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
-    GGML_ASSERT(!(ggml_cpu_has_neon() && ggml_cpu_has_matmul_int8()) &&
-                "__ARM_NEON and __ARM_FEATURE_MATMUL_INT8 defined, use the Q4_0_4_8 quantization format for optimal performance");
-#elif defined(__ARM_NEON) && defined(__aarch64__) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    const void * b_ptr = vx;
-    const void * a_ptr = vy;
-    float * res_ptr = s;
+    #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_DOTPROD)
+    if (ggml_cpu_has_neon() && ggml_cpu_has_dotprod()) {
+        const block_q4_0x4 * b_ptr = (const block_q4_0x4 *) vx;
 
-    __asm__ __volatile__(
-        "movi v31.16b, #0x4\n"
-        "movi v30.16b, #0xf0\n"
-        "add %x[b_ptr], %x[b_ptr], #0x8\n"
-        "1:"  // Column loop
-        "add x22, %x[a_ptr], #0x2\n"
-        "movi v29.16b, #0x0\n"
-        "mov x21, %x[nb]\n"
-        "2:"  // Block loop
-        "ldr q28, [%x[b_ptr], #0x0]\n"
-        "ldr q27, [x22, #0x0]\n"
-        "movi v26.4s, #0x0\n"
-        "sub x20, x22, #0x2\n"
-        "ldr q25, [x22, #0x10]\n"
-        "ldr q24, [%x[b_ptr], #0x10]\n"
-        "sub x21, x21, #0x1\n"
-        "add x22, x22, #0x22\n"
-        "ldr q23, [%x[b_ptr], #0x20]\n"
-        "ldr q22, [%x[b_ptr], #0x30]\n"
-        "ld1r { v21.8h }, [x20]\n"
-        "ldr q20, [%x[b_ptr], #-0x8]\n"
-        "sshl v16.16b, v28.16b, v31.16b\n"
-        "and v28.16b, v28.16b, v30.16b\n"
-        "sshl v19.16b, v24.16b, v31.16b\n"
-        "and v24.16b, v24.16b, v30.16b\n"
-        "add %x[b_ptr], %x[b_ptr], #0x48\n"
-        "sshl v18.16b, v23.16b, v31.16b\n"
-        "and v23.16b, v23.16b, v30.16b\n"
-        ".inst 0x4f9be21a  // sdot v26.4s, v16.16b, v27.4b[0]\n"
-        "sshl v17.16b, v22.16b, v31.16b\n"
-        "and v22.16b, v22.16b, v30.16b\n"
-        "fcvtl v21.4s, v21.4h\n"
-        "fcvtl v16.4s, v20.4h\n"
-        ".inst 0x4f99e39a  // sdot v26.4s, v28.16b, v25.4b[0]\n"
-        "fmul v16.4s, v16.4s, v21.4s\n"
-        ".inst 0x4fbbe27a  // sdot v26.4s, v19.16b, v27.4b[1]\n"
-        ".inst 0x4fb9e31a  // sdot v26.4s, v24.16b, v25.4b[1]\n"
-        ".inst 0x4f9bea5a  // sdot v26.4s, v18.16b, v27.4b[2]\n"
-        ".inst 0x4f99eafa  // sdot v26.4s, v23.16b, v25.4b[2]\n"
-        ".inst 0x4fbbea3a  // sdot v26.4s, v17.16b, v27.4b[3]\n"
-        ".inst 0x4fb9eada  // sdot v26.4s, v22.16b, v25.4b[3]\n"
-        "scvtf v26.4s, v26.4s, #0x4\n"
-        "fmla v29.4s, v26.4s, v16.4s\n"
-        "cbnz x21, 2b\n"
-        "sub %x[nc], %x[nc], #0x4\n"
-        "str q29, [%x[res_ptr], #0x0]\n"
-        "add %x[res_ptr], %x[res_ptr], #0x10\n"
-        "cbnz %x[nc], 1b\n"
-        : [b_ptr] "+&r" (b_ptr), [res_ptr] "+&r" (res_ptr), [nc] "+&r" (nc)
-        : [a_ptr] "r" (a_ptr), [nb] "r" (nb)
-        : "memory", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "x20", "x21", "x22"
-    );
+        for (int c = 0; c < nc; c += ncols_interleaved) {
+            const block_q8_0 * a_ptr = (const block_q8_0 *) vy;
+            float32x4_t acc = vdupq_n_f32(0);
+            for (int b = 0; b < nb; b++) {
+                int8x16_t b0 = vld1q_s8((const int8_t *) b_ptr->qs);
+                int8x16_t b1 = vld1q_s8((const int8_t *) b_ptr->qs + 16);
+                int8x16_t b2 = vld1q_s8((const int8_t *) b_ptr->qs + 32);
+                int8x16_t b3 = vld1q_s8((const int8_t *) b_ptr->qs + 48);
+                float16x4_t bd = vld1_f16((const __fp16 *) b_ptr->d);
+
+                int8x16_t a0 = vld1q_s8(a_ptr->qs);
+                int8x16_t a1 = vld1q_s8(a_ptr->qs + qk/2);
+                float16x4_t ad = vld1_dup_f16((const __fp16 *) &a_ptr->d);
+
+                int32x4_t ret = vdupq_n_s32(0);
+
+                ret = vdotq_laneq_s32(ret, b0 << 4, a0, 0);
+                ret = vdotq_laneq_s32(ret, b1 << 4, a0, 1);
+                ret = vdotq_laneq_s32(ret, b2 << 4, a0, 2);
+                ret = vdotq_laneq_s32(ret, b3 << 4, a0, 3);
+
+                ret = vdotq_laneq_s32(ret, b0 & 0xf0U, a1, 0);
+                ret = vdotq_laneq_s32(ret, b1 & 0xf0U, a1, 1);
+                ret = vdotq_laneq_s32(ret, b2 & 0xf0U, a1, 2);
+                ret = vdotq_laneq_s32(ret, b3 & 0xf0U, a1, 3);
+
+                acc = vfmaq_f32(acc, vcvtq_n_f32_s32(ret, 4),
+                                vmulq_f32(vcvt_f32_f16(ad), vcvt_f32_f16(bd)));
+                a_ptr++;
+                b_ptr++;
+            }
+            vst1q_f32(s, acc);
+            s += ncols_interleaved;
+        }
+        return;
+    }
+
 #else
+
     float sumf[4];
     int sumi;
 
@@ -702,7 +590,8 @@ void ggml_gemv_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * 
         }
         for (int j = 0; j < ncols_interleaved; j++) s[x * ncols_interleaved + j] = sumf[j];
     }
-#endif
+
+#endif // #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_DOTPROD)
 }
 
 void ggml_gemv_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
@@ -724,79 +613,54 @@ void ggml_gemv_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE)
-    if (ggml_sve_cnt_b == QK8_0) {
-        GGML_ASSERT(!(ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) &&
-                    "__ARM_FEATURE_SVE defined, use the Q4_0_8_8 quantization format for optimal performance");
-    }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    const void * b_ptr = vx;
-    const void * a_ptr = vy;
-    float * res_ptr = s;
+    #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_DOTPROD)
+    if (ggml_cpu_has_neon() && ggml_cpu_has_dotprod()) {
+        const block_q4_0x4 * b_ptr = (const block_q4_0x4 *) vx;
 
-    __asm__ __volatile__(
-        "movi v2.16b, #0x4\n"
-        "movi v1.16b, #0xf0\n"
-        "add %x[b_ptr], %x[b_ptr], #0x8\n"
-        "1:"  // Column loop
-        "add x23, %x[a_ptr], #0x2\n"
-        "movi v0.16b, #0x0\n"
-        "mov x22, %x[nb]\n"
-        "2:"  // Block loop
-        "ldr q31, [%x[b_ptr], #0x0]\n"
-        "ldr q30, [%x[b_ptr], #0x10]\n"
-        "mov x21, x23\n"
-        "movi v29.4s, #0x0\n"
-        "ldr q28, [%x[b_ptr], #0x20]\n"
-        "ldr q27, [%x[b_ptr], #0x30]\n"
-        "movi v26.4s, #0x0\n"
-        "sub x20, x23, #0x2\n"
-        "ld1r { v25.8h }, [x20]\n"
-        "ldr q24, [%x[b_ptr], #-0x8]\n"
-        "sub x22, x22, #0x1\n"
-        "add x23, x23, #0x22\n"
-        "ld1r { v23.2d }, [x21], #0x8\n"
-        "sshl v22.16b, v31.16b, v2.16b\n"
-        "sshl v16.16b, v30.16b, v2.16b\n"
-        "add %x[b_ptr], %x[b_ptr], #0x48\n"
-        "ld1r { v21.2d }, [x21], #0x8\n"
-        "sshl v20.16b, v28.16b, v2.16b\n"
-        "sshl v19.16b, v27.16b, v2.16b\n"
-        "ld1r { v18.2d }, [x21], #0x8\n"
-        "ld1r { v17.2d }, [x21], #0x8\n"
-        "and v31.16b, v31.16b, v1.16b\n"
-        "and v30.16b, v30.16b, v1.16b\n"
-        ".inst 0x4e9796dd  // sdot v29.4s, v22.16b, v23.16b\n"
-        ".inst 0x4e97961a  // sdot v26.4s, v16.16b, v23.16b\n"
-        "and v28.16b, v28.16b, v1.16b\n"
-        "and v27.16b, v27.16b, v1.16b\n"
-        "fcvtl v25.4s, v25.4h\n"
-        "fcvtl v16.4s, v24.4h\n"
-        ".inst 0x4e95969d  // sdot v29.4s, v20.16b, v21.16b\n"
-        ".inst 0x4e95967a  // sdot v26.4s, v19.16b, v21.16b\n"
-        "fmul v16.4s, v16.4s, v25.4s\n"
-        ".inst 0x4e9297fd  // sdot v29.4s, v31.16b, v18.16b\n"
-        ".inst 0x4e9297da  // sdot v26.4s, v30.16b, v18.16b\n"
-        ".inst 0x4e91979d  // sdot v29.4s, v28.16b, v17.16b\n"
-        ".inst 0x4e91977a  // sdot v26.4s, v27.16b, v17.16b\n"
-        "addp v29.4s, v29.4s, v26.4s\n"
-        "scvtf v29.4s, v29.4s, #0x4\n"
-        "fmla v0.4s, v29.4s, v16.4s\n"
-        "cbnz x22, 2b\n"
-        "sub %x[nc], %x[nc], #0x4\n"
-        "str q0, [%x[res_ptr], #0x0]\n"
-        "add %x[res_ptr], %x[res_ptr], #0x10\n"
-        "cbnz %x[nc], 1b\n"
-        : [b_ptr] "+&r" (b_ptr), [res_ptr] "+&r" (res_ptr), [nc] "+&r" (nc)
-        : [a_ptr] "r" (a_ptr), [nb] "r" (nb)
-        : "memory", "v0", "v1", "v2", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "x20", "x21", "x22", "x23"
-    );
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    GGML_ASSERT((ggml_cpu_has_sve() || ggml_cpu_has_matmul_int8()) &&
-                "__ARM_FEATURE_SVE and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 quantization format for optimal "
-                "performance");
+        for (int c = 0; c < nc; c += ncols_interleaved) {
+            const block_q8_0 * a_ptr = (const block_q8_0 *) vy;
+            float32x4_t acc = vdupq_n_f32(0);
+            for (int b = 0; b < nb; b++) {
+                int8x16_t b0 = vld1q_s8((const int8_t *) b_ptr->qs);
+                int8x16_t b1 = vld1q_s8((const int8_t *) b_ptr->qs + 16);
+                int8x16_t b2 = vld1q_s8((const int8_t *) b_ptr->qs + 32);
+                int8x16_t b3 = vld1q_s8((const int8_t *) b_ptr->qs + 48);
+                float16x4_t bd = vld1_f16((const __fp16 *) b_ptr->d);
+
+                int8x16_t a0 = (int8x16_t) vld1q_dup_s64((const int64_t *) a_ptr->qs);
+                int8x16_t a1 = (int8x16_t) vld1q_dup_s64((const int64_t *) a_ptr->qs + 1);
+                int8x16_t a2 = (int8x16_t) vld1q_dup_s64((const int64_t *) a_ptr->qs + 2);
+                int8x16_t a3 = (int8x16_t) vld1q_dup_s64((const int64_t *) a_ptr->qs + 3);
+                float16x4_t ad = vld1_dup_f16((const __fp16 *) &a_ptr->d);
+
+                int32x4_t ret0 = vdupq_n_s32(0);
+                int32x4_t ret1 = vdupq_n_s32(0);
+
+                ret0 = vdotq_s32(ret0, b0 << 4, a0);
+                ret1 = vdotq_s32(ret1, b1 << 4, a0);
+                ret0 = vdotq_s32(ret0, b2 << 4, a1);
+                ret1 = vdotq_s32(ret1, b3 << 4, a1);
+
+                ret0 = vdotq_s32(ret0, b0 & 0xf0U, a2);
+                ret1 = vdotq_s32(ret1, b1 & 0xf0U, a2);
+                ret0 = vdotq_s32(ret0, b2 & 0xf0U, a3);
+                ret1 = vdotq_s32(ret1, b3 & 0xf0U, a3);
+
+                int32x4_t ret = vpaddq_s32(ret0, ret1);
+
+                acc = vfmaq_f32(acc, vcvtq_n_f32_s32(ret, 4),
+                        vmulq_f32(vcvt_f32_f16(ad), vcvt_f32_f16(bd)));
+                a_ptr++;
+                b_ptr++;
+            }
+            vst1q_f32(s, acc);
+            s += ncols_interleaved;
+        }
+        return;
+    }
+
 #else
+
     float sumf[4];
     int sumi;
 
@@ -820,7 +684,8 @@ void ggml_gemv_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * 
         }
         for (int j = 0; j < ncols_interleaved; j++) s[x * ncols_interleaved + j] = sumf[j];
     }
-#endif
+
+#endif // #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_DOTPROD)
 }
 
 void ggml_gemv_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
@@ -842,9 +707,11 @@ void ggml_gemv_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    if (ggml_sve_cnt_b == QK8_0) {
-        const void * b_ptr = vx;
+#if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__)
+
+#if defined(__ARM_FEATURE_SVE)
+if (ggml_cpu_has_sve() && ggml_cpu_get_sve_cnt() == QK8_0) {
+    const void * b_ptr = vx;
         const void * a_ptr = vy;
         float * res_ptr = s;
 
@@ -918,15 +785,10 @@ void ggml_gemv_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
                     "__ARM_FEATURE_SVE for vector size of 256-bits and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 "
                     "quantization format for optimal performance");
     }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
-    GGML_ASSERT(ggml_cpu_has_sve() &&
-                "__ARM_FEATURE_SVE not defined, use the Q4_0_4_8 quantization format for optimal performance");
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    GGML_ASSERT((ggml_cpu_has_sve() || ggml_cpu_has_matmul_int8()) &&
-                "__ARM_FEATURE_SVE and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 quantization format for optimal "
-                "performance");
+#endif // #if defined(__ARM_FEATURE_SVE)
+
 #elif defined(__AVX2__)
+
     // Lookup table to convert signed nibbles to signed bytes
     __m256i signextendlut = _mm256_castsi128_si256(_mm_set_epi8(-1, -2, -3, -4, -5, -6, -7, -8, 7, 6, 5, 4, 3, 2, 1, 0));
     signextendlut = _mm256_permute2f128_si256(signextendlut, signextendlut, 0);
@@ -1016,7 +878,9 @@ void ggml_gemv_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
             _mm256_storeu_ps(s + (y * nr + x * 8), acc_row);
         }
     }
+
 #else
+
     float sumf[8];
     int sumi;
 
@@ -1040,7 +904,8 @@ void ggml_gemv_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
         }
         for (int j = 0; j < ncols_interleaved; j++) s[x * ncols_interleaved + j] = sumf[j];
     }
-#endif
+
+#endif ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__)
 }
 
 void ggml_gemm_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
@@ -1063,22 +928,15 @@ void ggml_gemm_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8)
-    if (ggml_sve_cnt_b == QK8_0) {
-        GGML_ASSERT(!(ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) &&
-                    "__ARM_FEATURE_SVE defined, use the Q4_0_8_8 quantization format for optimal performance");
-    }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
-    GGML_ASSERT(!(ggml_cpu_has_neon() && ggml_cpu_has_matmul_int8()) &&
-                "__ARM_NEON and __ARM_FEATURE_MATMUL_INT8 defined, use the Q4_0_4_8 quantization format for optimal performance");
-#elif defined(__ARM_NEON) && defined(__aarch64__) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    const void * b_ptr = vx;
-    const void * a_ptr = vy;
-    float * res_ptr = s;
-    size_t res_stride = bs * sizeof(float);
+#if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON)
 
-    __asm__ __volatile__(
+    if (ggml_cpu_has_neon() && ggml_cpu_has_dotprod()) {
+        const void * b_ptr = vx;
+        const void * a_ptr = vy;
+        float * res_ptr = s;
+        size_t res_stride = bs * sizeof(float);
+
+        __asm__ __volatile__(
         "mov x10, %x[nr]\n"
         "mov x9, #0x88\n"
         "cmp x10, #0x10\n"
@@ -1527,8 +1385,11 @@ void ggml_gemm_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * 
         : [a_ptr] "+&r" (a_ptr), [res_ptr] "+&r" (res_ptr)
         : [b_ptr] "r" (b_ptr), [nr] "r" (nr), [nb] "r" (nb), [res_stride] "r" (res_stride), [nc] "r" (nc)
         : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "x9", "x10", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"
-    );
+        );
+    }
+
 #else
+
     float sumf[4][4];
     int sumi;
 
@@ -1561,7 +1422,8 @@ void ggml_gemm_q4_0_4x4_q8_0(int n, float * restrict s, size_t bs, const void * 
             }
         }
     }
-#endif
+
+#endif // #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON)
 }
 
 void ggml_gemm_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
@@ -1584,19 +1446,15 @@ void ggml_gemm_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8)
-    if (ggml_sve_cnt_b == QK8_0) {
-        GGML_ASSERT(!(ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) &&
-                    "__ARM_FEATURE_SVE defined, use the Q4_0_8_8 quantization format for optimal performance");
-    }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    const void * b_ptr = vx;
-    const void * a_ptr = vy;
-    float * res_ptr = s;
-    size_t res_stride = bs * sizeof(float);
+#if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
 
-    __asm__ __volatile__(
+    if (ggml_cpu_has_neon() && ggml_cpu_has_matmul_int8()) {
+        const void * b_ptr = vx;
+        const void * a_ptr = vy;
+        float * res_ptr = s;
+        size_t res_stride = bs * sizeof(float);
+
+        __asm__ __volatile__(
         "mov x10, %x[nr]\n"
         "mov x9, #0x88\n"
         "cmp x10, #0x10\n"
@@ -1985,12 +1843,11 @@ void ggml_gemm_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * 
         : [a_ptr] "+&r" (a_ptr), [res_ptr] "+&r" (res_ptr)
         : [b_ptr] "r" (b_ptr), [nr] "r" (nr), [nb] "r" (nb), [res_stride] "r" (res_stride), [nc] "r" (nc)
         : "cc", "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "x9", "x10", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28"
-    );
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    GGML_ASSERT((ggml_cpu_has_sve() || ggml_cpu_has_matmul_int8()) &&
-                "__ARM_FEATURE_SVE and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 quantization format for optimal "
-                "performance");
+        );
+    }
+
 #else
+
     float sumf[4][4];
     int sumi;
 
@@ -2023,7 +1880,8 @@ void ggml_gemm_q4_0_4x8_q8_0(int n, float * restrict s, size_t bs, const void * 
             }
         }
     }
-#endif
+
+#endif // #if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__) && defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
 }
 
 void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, const void * restrict vy, int nr, int nc) {
@@ -2046,8 +1904,10 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
     UNUSED(ncols_interleaved);
     UNUSED(blocklen);
 
-#if defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8) && ! ((defined(_MSC_VER)) && ! defined(__clang__))
-    if (ggml_sve_cnt_b == QK8_0) {
+#if ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__)
+
+#if defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8)
+    if (ggml_cpu_has_sve() && ggml_cpu_has_matmul_int8() && ggml_cpu_get_sve_cnt() == QK8_0) {
         const void * b_ptr = vx;
         const void * a_ptr = vy;
         float * res_ptr = s;
@@ -2455,27 +2315,11 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
             : [b_ptr] "r" (b_ptr), [nr] "r" (nr), [nb] "r" (nb), [res_stride] "r" (res_stride), [nc] "r" (nc)
             : "cc", "memory", "p0", "p1", "x9", "x10", "x11", "x12", "x13", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "z0", "z1", "z2", "z3", "z4", "z5", "z6", "z7", "z8", "z9", "z10", "z11", "z12", "z13", "z14", "z15", "z16", "z17", "z18", "z19", "z20", "z21", "z22", "z23", "z24", "z25", "z26", "z27", "z28", "z29", "z30", "z31"
         );
-        return;
     }
-    else if (ggml_cpu_has_neon() && ggml_cpu_has_matmul_int8()) {
-        GGML_ASSERT((ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) &&
-                    "__ARM_FEATURE_SVE for vector size of 256-bits not defined, use the Q4_0_4_8 quantization format for optimal "
-                    "performance");
-    }
-    else if (ggml_cpu_has_neon()) {
-        GGML_ASSERT(((ggml_cpu_has_sve() && (ggml_sve_cnt_b == QK8_0)) || ggml_cpu_has_matmul_int8()) &&
-                    "__ARM_FEATURE_SVE for vector size of 256-bits and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 "
-                    "quantization format for optimal performance");
-    }
-#endif
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
-    GGML_ASSERT(ggml_cpu_has_sve() &&
-                "__ARM_FEATURE_SVE not defined, use the Q4_0_4_8 quantization format for optimal performance");
-#elif defined(__ARM_NEON) && defined(__aarch64__)
-    GGML_ASSERT((ggml_cpu_has_sve() || ggml_cpu_has_matmul_int8()) &&
-                "__ARM_FEATURE_SVE and __ARM_FEATURE_MATMUL_INT8 not defined, use the Q4_0_4_4 quantization format for optimal "
-                "performance");
-#elif defined(__AVX2__) || (defined(__AVX512F__) && defined(__GEN_AVX512__))
+#endif // defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8)
+
+#elif defined(__AVX2__) || defined(__AVX512F__)
+
     {
         const block_q4_0x8 * b_ptr_start = (const block_q4_0x8 *)vx;
         const block_q8_0x4 * a_ptr_start = (const block_q8_0x4 *)vy;
@@ -2491,7 +2335,7 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
         __m256i requiredOrder = _mm256_set_epi32(3, 2, 1, 0, 7, 6, 5, 4);
         int64_t xstart = 0;
         int anr = nr - nr%16; // Used to align nr with boundary of 16
-    #if defined(__AVX512F__) && defined(__GEN_AVX512__)
+    #if defined(__AVX512F__)
         int anc = nc - nc%16; // Used to align nc with boundary of 16
         // Mask to mask out nibbles from packed bytes expanded to 512 bit length
         const __m512i m4bexpanded = _mm512_set1_epi8(0x0F);
@@ -3226,7 +3070,9 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
         }
         return;
     }
+
 #else
+
     float sumf[4][8];
     int sumi;
 
@@ -3259,5 +3105,137 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
             }
         }
     }
-#endif
+
+#endif ! ((defined(_MSC_VER)) && ! defined(__clang__)) && defined(__aarch64__)
+}
+
+// interleave 8 block_q4_0s in blocks of blck_size_interleave
+// returns an interleaved block_q4_0x8
+// in the interleaved block_q4_0x8, place deltas for 8 block_q4_0 blocks
+// first, then interleave quants from 8 block_q4_0s in blocks of blck_size_interleave
+static block_q4_0x8 make_block_q4_0x8(block_q4_0 * in, unsigned int blck_size_interleave) {
+    block_q4_0x8 out;
+
+    for (int i = 0; i < 8; i++) {
+        out.d[i] = in[i].d;
+    }
+
+    const int end = QK4_0 * 4 / blck_size_interleave;
+    const uint64_t xor_mask = 0x8888888888888888ULL;
+
+    for (int i = 0; i < end; ++i) {
+        int src_id = i % 8;
+        int src_offset = (i / 8) * blck_size_interleave;
+        int dst_offset = i * blck_size_interleave;
+
+        uint64_t elems;
+        memcpy(&elems, &in[src_id].qs[src_offset], sizeof(uint64_t));
+        elems ^= xor_mask;
+        memcpy(&out.qs[dst_offset], &elems, sizeof(uint64_t));
+    }
+
+    return out;
+}
+
+static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block, const void * restrict data, size_t data_size) {
+    GGML_ASSERT(t->type == GGML_TYPE_Q4_0);
+    GGML_ASSERT(interleave_block == 8);
+
+    block_q4_0x8 * dst = (block_q4_0x8*)t->data;
+    const block_q4_0 * src = (const block_q4_0*) data;
+    block_q4_0 dst_tmp[8];
+    int nrow = t->ne[1]; // Number of rows
+    int nrows_interleaved = 8;
+    int nblocks = t->ne[0] / QK4_0;
+
+    GGML_ASSERT(data_size == nrow * nblocks * sizeof(block_q4_0));
+
+    if (nrow % nrows_interleaved != 0 || t->ne[0] % 8 != 0) {
+        return -1;
+    }
+
+    for (int b = 0; b < nrow; b += nrows_interleaved) {
+        for (int64_t x = 0; x < nblocks; x++) {
+            for (int i  = 0; i < nrows_interleaved; i++ ) {
+                dst_tmp[i] = src[x + i * nblocks];
+            }
+            *dst++ = make_block_q4_0x8(dst_tmp, interleave_block);
+        }
+        src += nrows_interleaved * nblocks;
+    }
+    return 0;
+
+    GGML_UNUSED(data_size);
+}
+
+// Prepare for optimized kernels if applicable
+void ggml_aarch64_repack_tensor(struct ggml_tensor * cur, enum ggml_type repack_type, const void * restrict data, size_t data_size) {
+    if (cur->type == repack_type) {
+        memcpy(cur->data, data, data_size);
+        return;
+    }
+
+    if (cur->type == GGML_TYPE_Q4_0) {
+        switch (repack_type) {
+            case GGML_TYPE_Q4_0_8_8:
+                repack_q4_0_to_q4_0_8_bl(cur, 8, data, data_size);
+                break;
+            default:
+                GGML_ASSERT("Unsupported type");
+        }
+    } else {
+        GGML_ASSERT("Unsupported type");
+    }
+}
+
+enum ggml_type ggml_aarch64_get_optimal_repack_type(const struct ggml_tensor * cur) {
+    if (cur->type == GGML_TYPE_Q4_0) {
+        if (ggml_cpu_has_avx2()) {
+            return GGML_TYPE_Q4_0_8_8;
+        }
+    }
+
+    return cur->type;
+}
+
+static size_t quantize_q4_0_nr_bl(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, int nrows_interleaved, int blck_size_interleave) {
+    assert(n_per_row % QK4_0 == 0);
+    const int nb = n_per_row / QK4_0;
+
+    void * out_ptr = NULL;
+    if (nrows_interleaved == 8) {
+        out_ptr = (block_q4_0x8 *) dst;
+    }
+    else if (nrows_interleaved == 4) {
+        out_ptr = (block_q4_0x4 *) dst;
+    }
+    assert(nrows_interleaved <= 8);
+    block_q4_0 dst_tmp[8];
+
+    for (int b = 0; b < (nrow * n_per_row); b += nrows_interleaved * n_per_row) {
+
+        for (int64_t x = 0; x < nb; x++) {
+
+            for (int i  = 0; i < nrows_interleaved; i++ ) {
+                quantize_row_q4_0(src + b + i * n_per_row + x * QK4_0, (block_q4_0 *) dst_tmp + i, QK4_0);
+            }
+
+            if (nrows_interleaved == 8) {
+                *(block_q4_0x8 *) out_ptr = make_block_q4_0x8(dst_tmp, blck_size_interleave);
+                out_ptr = (block_q4_0x8 *) out_ptr + 1;
+            }
+            else if (nrows_interleaved == 4) {
+                GGML_ASSERT("Unsupported Q4_0_4_X format type");
+                // *(block_q4_0x4 *) out_ptr = make_block_q4_0x4(dst_tmp, blck_size_interleave);
+                // out_ptr = (block_q4_0x4 *) out_ptr + 1;
+            }
+        }
+    }
+
+    return ((nrow * n_per_row) / QK4_0 * sizeof(block_q4_0));
+}
+
+size_t quantize_q4_0_8x8(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
+    UNUSED(quant_weights);
+    return quantize_q4_0_nr_bl(src, dst, nrow, n_per_row, 8, 8);
 }

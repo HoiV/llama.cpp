@@ -277,6 +277,24 @@ static void generate_metadata_json(
     }
 }
 
+bool __embed_initialize(model_params & eparams)
+{    
+    __try {
+        // Initialize sentencepiece model for embeddings creation
+        if (!embed_initialize(eparams)) {
+            printf("Initialiazation of embedding model '%s' failed\n", eparams.model_name.c_str());
+            return false;
+        }
+    } __except (GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ? 
+            EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+            printf("embed_initialize(): Failed with invalid instruction exception \n"
+                   "                 (no AVX512 support with this processor)\n");
+            return false;
+    }
+        
+    return true;
+}
+
 void test_run(
     const model_params & eparams) {
     // Reopen the database and iterate through every chunk and look
@@ -444,9 +462,7 @@ int main(int argc, char *argv[]) {
     vector<chunk> rag_chunks = semantic_chunking(eparams, rag_docs);
     printf("%s: total chunks generated - %zd - chunk size %d\n", __func__, rag_chunks.size(), eparams.chunk_size);
 
-    // Initialize sentencepiece model for embeddings creation
-    if (!embed_initialize(eparams)) {
-        printf("Initialiazation of embedding model '%s' failed\n", eparams.model_name.c_str());
+    if (!__embed_initialize(eparams)) {
         return -1;
     }
 
