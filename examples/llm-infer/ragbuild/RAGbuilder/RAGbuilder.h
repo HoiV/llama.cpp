@@ -42,6 +42,7 @@ struct RagMetadata {
     int documentCount;
     int docxCount;
     int txtCount;
+    int logCount;
     int pdfCount;
     int unsupportedCount;
     int failedCount;
@@ -94,9 +95,11 @@ private:
     // Create a temporary directory for storing files
     std::string CreateTemporaryDirectory();
 
-    // Create chunks from a document
+    // Create chunks from a document using basic or semantic chunking
     std::vector<chunk> ChunkDocument(
-        _In_ const rag_entry& document
+        _In_ const rag_entry& document,
+        _In_ bool useSemanticChunking = false,
+        _In_ float similarityThreshold = 0.7f
     );
 
     // Generate embeddings for chunks
@@ -118,6 +121,21 @@ private:
 
     // Extract text from different document types
     std::string ExtractTextFromFile(
+        _In_ const std::string& filePath
+    );
+
+    // Extract text for text based file eg. txt, log
+    std::string ExtractTextBasedFile(
+        _In_ const std::string& filePath
+    );
+
+    // Extract text for PDF file
+    std::string ExtractPDFFile(
+        _In_ const std::string& filePath
+    );
+
+    // Extract text for Docx file
+    std::string ExtractDocxFile(
         _In_ const std::string& filePath
     );
 

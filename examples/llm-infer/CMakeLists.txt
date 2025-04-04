@@ -40,6 +40,18 @@ target_link_libraries(${TARGET} PRIVATE common llama llm-infer ${CMAKE_THREAD_LI
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
+set(TARGET ragBuilder-dll)
+add_executable(${TARGET} ragbuild/ragBuilder/llm.cpp ragbuild/ragBuilder/RAGBuilder.cpp ragbuild/ragBuilder/RAGHelper.cpp ragbuild/ragBuilder/Debug.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+target_include_directories(${TARGET} PRIVATE .)
+target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/llm-infer/dll)
+target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/llm-infer/include)
+target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/llm-infer/include/hnswlib)
+target_include_directories(${TARGET} PUBLIC ../../common)
+target_link_libraries(${TARGET} PRIVATE common llama llm-infer ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+
 set(TARGET server-dll)
 add_executable(${TARGET} server/server.cpp)
 install(TARGETS ${TARGET} RUNTIME)

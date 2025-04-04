@@ -43,6 +43,9 @@ To be implemented:
 #include <chrono>
 #include <algorithm>
 
+constexpr size_t LARGE_FILE_THRESHOLD = 1024 * 1024 * 1024; // 1GB
+constexpr size_t DEFAULT_CHUNK_SIZE = 512; // Default chunk size for text processing
+
 namespace fs = std::filesystem;
 
 /*++
@@ -61,12 +64,12 @@ Return Value:
 
 --*/
 RAGBuilder::RAGBuilder()
-    : m_chunkSize(128),
+    : m_chunkSize(DEFAULT_CHUNK_SIZE),
       m_initialized(false),
       m_outputDirectory("."),
-      m_indexPath("./rag_index.bin"),
-      m_chunksPath("./chunks.json"),
-      m_metadataPath("./metadata.json")
+      m_indexPath("./ragdb/rag_index.bin"),
+      m_chunksPath("./ragdb/chunks.json"),
+      m_metadataPath("./ragdb/metadata.json")
 {
     // Initialize metadata with zeroes
     memset(&m_metadata, 0, sizeof(RagMetadata));
@@ -300,7 +303,8 @@ RAGBuilder::ProcessDocumentDirectory(
 
                 if (fileExtension == ".docx" ||
                     fileExtension == ".txt" ||
-                    fileExtension == ".pdf")
+                    fileExtension == ".pdf" ||
+                    fileExtension == ".log" )
                 {
                     if (!ProcessDocument(filePath, nullptr)) 
                     {
@@ -459,8 +463,12 @@ RAGBuilder::ProcessDocument(
         else if (fileExtension == ".txt") 
         {
             m_metadata.txtCount++;
-        } 
-        else if (fileExtension == ".pdf") 
+        }
+        else if (fileExtension == ".log") 
+        {
+            m_metadata.logCount++;
+        }
+        else if (fileExtension == ".pdf")
         {
             m_metadata.pdfCount++;
         } 
@@ -488,6 +496,156 @@ RAGBuilder::ProcessDocument(
 
 Routine Description:
 
+    Extracts text content from a document file eg. txt file, log file    
+
+Arguments:
+
+    filePath - Path to the document file.
+
+Return Value:
+
+    std::string containing the extracted text based file.
+
+--*/
+std::string
+RAGBuilder::ExtractTextBasedFile(
+    _In_ const std::string& filePath
+)
+{
+    Debug::Log("Extracting text from file: " + filePath);
+
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+        Debug::LogError("Failed to open file: " + filePath);
+        return "";
+    }
+
+    // Get file size and reset position to beginning
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // Read entire file into buffer
+    std::vector<char> buffer(fileSize);
+    if (!file.read(buffer.data(), fileSize))
+    {
+        Debug::LogError("Error reading file: " + filePath);
+        return "";
+    }
+
+    // Check for UTF-8 BOM (EF BB BF)
+    if (fileSize >= 3 &&
+        static_cast<unsigned char>(buffer[0]) == 0xEF &&
+        static_cast<unsigned char>(buffer[1]) == 0xBB &&
+        static_cast<unsigned char>(buffer[2]) == 0xBF)
+    {
+        Debug::Log("Detected UTF-8 encoding with BOM");
+        return std::string(buffer.begin() + 3, buffer.end());
+    }
+
+    // Check for UTF-16LE BOM (FF FE)
+    if (fileSize >= 2 &&
+        static_cast<unsigned char>(buffer[0]) == 0xFF
+        && static_cast<unsigned char>(buffer[1]) == 0xFE)
+    {
+        Debug::Log("Detected UTF-16 Little-Endian encoding with BOM");
+
+        // Create a wide string from the buffer (skipping BOM)
+        const wchar_t* wideData = reinterpret_cast<const wchar_t*>(buffer.data() + 2);
+        size_t wideLength = (fileSize - 2) / 2;
+        std::wstring wideStr(wideData, wideLength);
+
+        // Convert to UTF-8 using StringUtils helper
+        return WideToUtf8(wideStr);
+    }
+
+    // Check for UTF-16BE BOM (FE FF)
+    if (fileSize >= 2 &&
+        static_cast<unsigned char>(buffer[0]) == 0xFE &&
+        static_cast<unsigned char>(buffer[1]) == 0xFF)
+    {
+        Debug::Log("Detected UTF-16 Big-Endian encoding with BOM");
+
+        // Need to swap bytes for BE to create proper wide string
+        std::wstring wideStr;
+        wideStr.reserve((fileSize - 2) / 2);
+
+        for (long long i = 2; i < fileSize; i += 2)
+        {
+            if (i + 1 < fileSize)
+            {
+                wchar_t wc = (static_cast<unsigned char>(buffer[i]) << 8) | static_cast<unsigned char>(buffer[i + 1]);
+                wideStr.push_back(wc);
+            }
+        }
+
+        // Convert to UTF-8 using StringUtils helper
+        return WideToUtf8(wideStr);
+    }
+
+    // No BOM detected, assume UTF-8
+    Debug::Log("No BOM detected, assuming UTF-8 encoding");
+    return std::string(buffer.begin(), buffer.end());
+}
+
+/*++
+
+Routine Description:
+
+    Extracts text content from PDF file
+
+Arguments:
+
+    filePath - Path to the document file.
+
+Return Value:
+
+    std::string containing the extracted PDF file.
+
+--*/
+std::string
+RAGBuilder::ExtractPDFFile(
+    _In_ const std::string& filePath
+)
+{
+    // Use external tool for PDF files
+    Debug::Log("PDF extraction requires external document handling tools");
+    // For the prototype, we'll pretend it worked but return placeholder text
+    return "This is placeholder text for PDF file: " + fs::path(filePath).filename().string();
+}
+
+/*++
+
+Routine Description:
+
+    Extracts text content from Docx file
+
+Arguments:
+
+    filePath - Path to the document file.
+
+Return Value:
+
+    std::string containing the extracted Docx file.
+
+--*/
+std::string
+RAGBuilder::ExtractDocxFile(
+    _In_ const std::string& filePath
+)
+{
+    // Use external tool for DOCX files
+    // This would need to be implemented separately
+    Debug::Log("DOCX extraction requires external document handling tools");
+    // For the prototype, we'll pretend it worked but return placeholder text
+    return "This is placeholder text for DOCX file: " + fs::path(filePath).filename().string();
+}
+
+
+/*++
+
+Routine Description:
+
     Extracts text content from a document file.
     Currently supports basic text extraction, can be extended for various formats.
 
@@ -509,42 +667,36 @@ RAGBuilder::ExtractTextFromFile(
     std::transform(fileExtension.begin(), fileExtension.end(), fileExtension.begin(),
                   [](unsigned char c) { return std::tolower(c); });
 
+    // Error out if file size is larger (> 1GB)
+    size_t fileSize = fs::file_size(filePath);
+    if (fileSize >= LARGE_FILE_THRESHOLD)
+    {
+        Debug::LogError("File size exceeds the maximum limit (1GB) for in-memory loading" + std::to_string(fileSize));
+        return "";
+    }
+
     //
     // !FIXME! - Rupo Zhang 3/24/2025 
     // For now, we need to incorporate proper implementation for DOCX and PDF extraction.
     // it is all place holder except the text (.txt) file.
     //
 
-    if (fileExtension == ".txt") 
+    if (fileExtension == ".txt" ||
+        fileExtension == ".log")
     {
-        // Read text file directly
-        std::ifstream file(filePath);
-        if (!file.is_open()) 
-        {
-            Debug::LogError("Failed to open text file: " + filePath);
-            return "";
-        }
-        
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        return buffer.str();
-    } 
-    else if (fileExtension == ".docx") 
-    {
-        // Use external tool for DOCX files
-        // This would need to be implemented separately
-        Debug::Log("DOCX extraction requires external document handling tools");
-        // For the prototype, we'll pretend it worked but return placeholder text
-        return "This is placeholder text for DOCX file: " + fs::path(filePath).filename().string();
-    } 
-    else if (fileExtension == ".pdf") 
-    {
-        // Use external tool for PDF files
-        Debug::Log("PDF extraction requires external document handling tools");
-        // For the prototype, we'll pretend it worked but return placeholder text
-        return "This is placeholder text for PDF file: " + fs::path(filePath).filename().string();
+        return ExtractTextBasedFile(filePath);
     }
-    
+
+    if (fileExtension == ".docx")
+    {
+        return ExtractDocxFile(filePath);
+    }
+
+    if (fileExtension == ".pdf")
+    {
+        return ExtractPDFFile(filePath);
+    }
+
     // Unsupported file type
     Debug::LogError("Unsupported file type for text extraction: " + fileExtension);
     return "";
@@ -555,19 +707,38 @@ RAGBuilder::ExtractTextFromFile(
 Routine Description:
 
     Creates chunks from a document for processing and embedding.
+    Implements both basic chunking and semantic chunking approaches.
 
 Arguments:
 
     document - The document to chunk.
+    useSemanticChunking - Whether to use semantic chunking (default: false)
+    similarityThreshold - Threshold for semantic similarity (default: 0.7)
 
 Return Value:
 
     std::vector<chunk> containing the document chunks.
 
+Note:
+
+    Rupo Zhang 3/21/2025:
+    The chunking process involves splitting the document into smaller segments
+    based on either semantic similarity or basic size constraints. The semantic
+    chunking uses sentence embeddings to determine the similarity, which calls
+    embed_encode_single() to generate the embeddings for each sentence. that requires
+    major computation, it is best to have a GPU accelerated model for that.
+
+    Future plans:
+      Split the RAG DB construciotn to the AI Server role so that the heavy lifting
+      can be done in the server side along side the LLM inference.
+
+
 --*/
 std::vector<chunk>
 RAGBuilder::ChunkDocument(
-    _In_ const rag_entry& document
+    _In_ const rag_entry& document,
+    _In_ bool useSemanticChunking,
+    _In_ float similarityThreshold
 )
 {
     std::vector<chunk> chunks;
@@ -581,85 +752,198 @@ RAGBuilder::ChunkDocument(
     
     const std::string& texts = document.textdata;
     
-    // Create a new chunk
-    chunk currentChunk = {document.filename, "", {}, {}};
-    
-    // Define sentence separators
-    const std::string separators = ".!?";
-    
+    // Extract sentences regardless of chunking method
+    std::vector<std::string> sentences;
+    const std::string separators = ".!?,";
     size_t start = 0;
     size_t end = 0;
     
-    // Split by sentences
+    // Split input text into sentences
     while ((end = texts.find_first_of(separators, start)) != std::string::npos) 
     {
-        // Extract the sentence
-        std::string textData = texts.substr(start, end - start + 1);
-        
-        // Check if adding this would exceed chunk size
-        if (currentChunk.textdata.size() + textData.size() > (size_t)m_chunkSize) 
+        // Extract the sentence including the terminating punctuation
+        std::string sentenceText = texts.substr(start, end - start + 1);
+        if (!sentenceText.empty())
         {
-            // Current chunk is large enough, add it to the list
-            if (!currentChunk.textdata.empty()) 
-            {
-                chunks.push_back(currentChunk);
-                // Create a new chunk with this sentence
-                currentChunk.textdata = textData;
-            } 
-            else 
-            {
-                // This single sentence is larger than chunk size, add it anyway
-                currentChunk.textdata = textData;
-                chunks.push_back(currentChunk);
-                currentChunk.textdata = "";
-            }
-        } 
-        else 
-        {
-            // Add sentence to current chunk
-            currentChunk.textdata += textData;
+            sentences.push_back(sentenceText);
         }
-        
-        // Move to next position after the separator
         start = end + 1;
     }
     
-    // Handle any remaining text
+    // Add any remaining text as the final sentence
     if (start < texts.size()) 
     {
         std::string remainingText = texts.substr(start);
-        
-        if (currentChunk.textdata.size() + remainingText.size() > (size_t)m_chunkSize) 
+        if (!remainingText.empty())
         {
-            // Current chunk is getting too large
-            if (!currentChunk.textdata.empty()) 
-            {
-                chunks.push_back(currentChunk);
-                currentChunk.textdata = "";
-            }
-            
-            // Process remaining text in chunks
-            size_t pos = 0;
-            while (pos < remainingText.size()) 
-            {
-                size_t length = std::min((size_t)m_chunkSize, remainingText.size() - pos);
-                currentChunk.textdata = remainingText.substr(pos, length);
-                chunks.push_back(currentChunk);
-                currentChunk.textdata = "";
-                pos += length;
-            }
-        } 
-        else 
-        {
-            // Add remaining text to current chunk
-            currentChunk.textdata += remainingText;
+            sentences.push_back(remainingText);
         }
     }
     
-    // Add the last chunk if it's not empty
-    if (!currentChunk.textdata.empty()) 
+    if (sentences.empty())
     {
-        chunks.push_back(currentChunk);
+        Debug::Log("No sentences extracted from document: " + document.filename);
+        return chunks;
+    }
+    
+    // Choose between semantic chunking and basic chunking
+    if (useSemanticChunking)
+    {
+        Debug::Log("Using semantic chunking for document: " + document.filename);
+        
+        try 
+        {
+            // Calculate embeddings for each sentence
+            std::vector<std::vector<float>> sentenceEmbeddings;
+            sentenceEmbeddings.reserve(sentences.size());
+            
+            for (const auto& sentence : sentences)
+            {
+                std::vector<float> embedding;
+                if (!embed_encode_single(m_params, sentence, embedding))
+                {
+                    Debug::LogError("Failed to generate embedding for sentence");
+                    continue;
+                }
+                sentenceEmbeddings.push_back(std::move(embedding));
+            }
+            
+            // Helper function to calculate cosine similarity between two embeddings
+            auto calculateCosineSimilarity = [](const std::vector<float>& emb1, const std::vector<float>& emb2) -> float {
+                float dotProduct = 0.0f;
+                float norm1 = 0.0f;
+                float norm2 = 0.0f;
+                
+                for (size_t i = 0; i < emb1.size(); i++) {
+                    dotProduct += emb1[i] * emb2[i];
+                    norm1 += emb1[i] * emb1[i];
+                    norm2 += emb2[i] * emb2[i];
+                }
+                
+                // Avoid division by zero
+                if (norm1 == 0.0f || norm2 == 0.0f) return 0.0f;
+                
+                return dotProduct / (std::sqrt(norm1) * std::sqrt(norm2));
+            };
+            
+            // Create chunks based on semantic similarity and size
+            std::vector<std::string> currentChunk;
+            size_t currentLength = 0;
+            
+            for (size_t i = 0; i < sentences.size(); i++) 
+            {
+                const std::string& sentence = sentences[i];
+                size_t sentenceLength = sentence.length();
+                
+                if (currentLength + sentenceLength > (size_t)m_chunkSize && !currentChunk.empty()) 
+                {
+                    // Current chunk would exceed size limit, finalize it
+                    std::string chunkText;
+                    for (const auto& s : currentChunk) {
+                        chunkText += s;
+                    }
+                    chunk newChunk = {document.filename, chunkText, {}, {}};
+                    chunks.push_back(newChunk);
+                    
+                    currentChunk.clear();
+                    currentChunk.push_back(sentence);
+                    currentLength = sentenceLength;
+                } 
+                else 
+                {
+                    if (i > 0 && !currentChunk.empty()) 
+                    {
+                        // Check semantic similarity with previous sentence
+                        float similarity = calculateCosineSimilarity(
+                            sentenceEmbeddings[i], 
+                            sentenceEmbeddings[i-1]
+                        );
+                        
+                        Debug::Log("Sentence similarity: " + std::to_string(similarity) + 
+                                " (threshold: " + std::to_string(similarityThreshold) + ")");
+                        
+                        if (similarity < similarityThreshold) 
+                        {
+                            // Semantic break detected, finalize current chunk
+                            std::string chunkText;
+                            for (const auto& s : currentChunk) {
+                                chunkText += s;
+                            }
+                            chunk newChunk = {document.filename, chunkText, {}, {}};
+                            chunks.push_back(newChunk);
+                            
+                            currentChunk.clear();
+                            currentChunk.push_back(sentence);
+                            currentLength = sentenceLength;
+                        } 
+                        else 
+                        {
+                            // Add to current chunk
+                            currentChunk.push_back(sentence);
+                            currentLength += sentenceLength;
+                        }
+                    } 
+                    else 
+                    {
+                        // First sentence or empty chunk
+                        currentChunk.push_back(sentence);
+                        currentLength += sentenceLength;
+                    }
+                }
+            }
+            
+            // Add the final chunk if not empty
+            if (!currentChunk.empty()) 
+            {
+                std::string chunkText;
+                for (const auto& s : currentChunk) {
+                    chunkText += s;
+                }
+                chunk newChunk = {document.filename, chunkText, {}, {}};
+                chunks.push_back(newChunk);
+            }
+            
+            Debug::Log("Created " + std::to_string(chunks.size()) + " semantic chunks from document: " + document.filename);
+        }
+        catch (const std::exception& e) 
+        {
+            Debug::LogError("Error during semantic chunking: " + std::string(e.what()) + 
+                          ", falling back to basic chunking");
+            useSemanticChunking = false;
+        }
+    }
+
+    // Use basic chunking as fallback or if semantic chunking was not requested
+    if (!useSemanticChunking)
+    {
+        Debug::Log("Using basic chunking for document: " + document.filename);
+        
+        // Basic chunking approach based only on size
+        std::string currentChunk;
+        
+        for (const auto& sentence : sentences)
+        {
+            // If adding this sentence would exceed the chunk size and we already have content,
+            // create a new chunk
+            if ((currentChunk.length() + sentence.length() > (size_t)m_chunkSize) && !currentChunk.empty())
+            {
+                chunk newChunk = {document.filename, currentChunk, {}, {}};
+                chunks.push_back(newChunk);
+                currentChunk = "";
+            }
+            
+            // Add the sentence to the current chunk
+            currentChunk += sentence;
+        }
+        
+        // Add the final chunk if not empty
+        if (!currentChunk.empty())
+        {
+            chunk newChunk = {document.filename, currentChunk, {}, {}};
+            chunks.push_back(newChunk);
+        }
+        
+        Debug::Log("Created " + std::to_string(chunks.size()) + " basic chunks from document: " + document.filename);
     }
     
     return chunks;
@@ -739,6 +1023,7 @@ RAGBuilder::GenerateEmbeddings(
     return true;
 }
 
+
 /*++
 
 Routine Description:
@@ -783,10 +1068,10 @@ RAGBuilder::BuildDatabase(
     // Collection of all chunks across all documents
     std::vector<chunk> allChunks;
     
-    // Process each document into chunks
+    // Process each document into chunks - using basic chunking by default
     for (size_t i = 0; i < m_documents.size(); i++) 
     {
-        std::vector<chunk> documentChunks = ChunkDocument(m_documents[i]);
+        std::vector<chunk> documentChunks = ChunkDocument(m_documents[i], false);
         Debug::Log("Document " + m_documents[i].filename + ": " + 
                   std::to_string(documentChunks.size()) + " chunks");
         
@@ -1029,6 +1314,7 @@ RAGBuilder::SaveMetadata(
         nlohmann::json documentTypes;
         documentTypes["docx"] = m_metadata.docxCount;
         documentTypes["txt"] = m_metadata.txtCount;
+        documentTypes["log"] = m_metadata.logCount;
         documentTypes["pdf"] = m_metadata.pdfCount;
         documentTypes["unsupported"] = m_metadata.unsupportedCount;
         documentTypes["failed"] = m_metadata.failedCount;
