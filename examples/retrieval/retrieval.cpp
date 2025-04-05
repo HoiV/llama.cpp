@@ -4,11 +4,28 @@
 #include <algorithm>
 #include <fstream>
 
+/* Retrieval */
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+void llindex_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    GGML_UNUSED(text);
+
+    ggml_log_level llindex_log_level = (ggml_log_level)0 /* GGML_LOG_LEVEL_NONE */;
+    if (user_data != nullptr) {
+        llindex_log_level = *(ggml_log_level *)user_data;
+    }
+
+    if (level == llindex_log_level) {
+        fputs(text, stdout);
+    }
+}
+
 static void print_usage(int argc, char ** argv, const gpt_params & params) {
     gpt_params_print_usage(argc, argv, params);
 
     LOG_TEE("\nexample usage:\n");
-    LOG_TEE("\n    %s --model ./models/bge-base-en-v1.5-f16.gguf --top-k 3 --context-file README.md --context-file License --chunk-size 100 --chunk-separator .\n", argv[0]);
+    LOG_TEE("\n    %s --model ./models/bge-base-en-v1.5-f16.gguf --context-file quotes.txt --chunk-size 1\n", argv[0]);
     LOG_TEE("\n");
 }
 
@@ -57,7 +74,6 @@ static std::vector<chunk> chunk_file(const std::string & filename, int chunk_siz
             }
             current = current.substr(pos + chunk_separator.size());
         }
-
     }
     // add leftover data to last chunk
     if (current_chunk.textdata.size() > 0) {
@@ -69,6 +85,13 @@ static std::vector<chunk> chunk_file(const std::string & filename, int chunk_siz
             chunks.back().textdata += current_chunk.textdata;
         }
     }
+    // if there is more data left then add it in as last chunk
+    if (current.size() > 0) {
+        current_chunk.filepos = filepos;
+        current_chunk.filename = filename;
+        current_chunk.textdata += current;
+        chunks.push_back(current_chunk);
+    }
     f.close();
     return chunks;
 }
@@ -76,16 +99,16 @@ static std::vector<chunk> chunk_file(const std::string & filename, int chunk_siz
 static void batch_add_seq(llama_batch & batch, const std::vector<int32_t> & tokens, llama_seq_id seq_id) {
     size_t n_tokens = tokens.size();
     for (size_t i = 0; i < n_tokens; i++) {
-        llama_batch_add(batch, tokens[i], i, { seq_id }, true);
+        llama_batch_add(batch, tokens[i], (llama_pos) i, { seq_id }, true);
     }
 }
 
-static void batch_decode(llama_context * ctx, llama_batch & batch, float * output, int n_seq, int n_embd) {
+static void batch_decode(llama_context * ctx, llama_batch & batch, float * output, int /* n_seq */, int n_embd) {
     // clear previous kv_cache values (irrelevant for embeddings)
     llama_kv_cache_clear(ctx);
 
     // run model
-    fprintf(stderr, "%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
+    // fprintf(stderr, "%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
     if (llama_decode(ctx, batch) < 0) {
         fprintf(stderr, "%s : failed to decode\n", __func__);
     }
@@ -111,12 +134,20 @@ static void batch_decode(llama_context * ctx, llama_batch & batch, float * outpu
 }
 
 int main(int argc, char ** argv) {
+    ggml_time_init();
+
     gpt_params params;
 
     if (!gpt_params_parse(argc, argv, params)) {
         print_usage(argc, argv, params);
         return 1;
     }
+
+    llama_log_set(llindex_log_callback, &(params.verbosity));
+
+    // prepare CPU related configurations
+
+    printf("%s: Actual using: %d threads\n", __func__, params.n_threads);
 
     // For BERT models, batch size must be equal to ubatch size
     params.n_ubatch = params.n_batch;
@@ -131,9 +162,9 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-    print_build_info();
+    int64_t t_main_start = ggml_time_us();
 
-    printf("processing files:\n");
+    printf("processing files: ");
     for (auto & context_file : params.context_files) {
         printf("%s\n", context_file.c_str());
     }
@@ -143,7 +174,7 @@ int main(int argc, char ** argv) {
         std::vector<chunk> file_chunk = chunk_file(context_file, params.chunk_size, params.chunk_separator);
         chunks.insert(chunks.end(), file_chunk.begin(), file_chunk.end());
     }
-    printf("Number of chunks: %ld\n", chunks.size());
+    printf("Number of chunks: %lld\n", chunks.size());
 
     llama_backend_init();
     llama_numa_init(params.numa);
@@ -173,14 +204,18 @@ int main(int argc, char ** argv) {
     }
 
     // print system information
+    if (params.verbosity)
     {
         fprintf(stderr, "\n");
         fprintf(stderr, "%s\n", gpt_params_get_system_info(params).c_str());
     }
 
     // max batch size
-    const uint64_t n_batch = params.n_batch;
+    const uint32_t n_batch = params.n_batch;
     GGML_ASSERT(params.n_batch >= params.n_ctx);
+
+    printf("%s: Tokenizing data...\n", __func__);
+    int64_t t_tokenization_start = ggml_time_us();
 
     // tokenize the prompts and trim
     for (auto & chunk : chunks) {
@@ -197,6 +232,8 @@ int main(int argc, char ** argv) {
         chunk.tokens = inp;
     }
 
+    int64_t t_tokenization_stop = ggml_time_us();
+
     // tokenization stats
     if (params.verbose_prompt) {
         for (int i = 0; i < (int) chunks.size(); i++) {
@@ -209,8 +246,11 @@ int main(int argc, char ** argv) {
         }
     }
 
+    printf("%s: Creating Embeddings...\n", __func__);
+    int64_t t_embeddings_start = ggml_time_us();
+
     // initialize batch
-    const int n_chunks = chunks.size();
+    const size_t n_chunks = chunks.size();
     struct llama_batch batch = llama_batch_init(n_batch, 0, 1);
 
     // allocate output
@@ -236,6 +276,10 @@ int main(int argc, char ** argv) {
             s = 0;
         }
 
+        if ((k % 50) == 0) {
+            printf("- Processing %d/%zd items\r", k, n_chunks);
+        }
+
         // add to batch
         batch_add_seq(batch, inp, s);
         s += 1;
@@ -245,6 +289,8 @@ int main(int argc, char ** argv) {
     float * out = emb + p * n_embd;
     batch_decode(ctx, batch, out, s, n_embd);
 
+    int64_t t_embeddings_stop = ggml_time_us();
+
     // save embeddings to chunks
     for (int i = 0; i < n_chunks; i++) {
         chunks[i].embedding = std::vector<float>(emb + i * n_embd, emb + (i + 1) * n_embd);
@@ -252,48 +298,101 @@ int main(int argc, char ** argv) {
         chunks[i].tokens.clear();
     }
 
-    // start loop, receive query and return top k similar chunks based on cosine similarity
-    std::string query;
-    while (true) {
-        printf("Enter query: ");
-        std::getline(std::cin, query);
-        std::vector<int32_t> query_tokens = llama_tokenize(ctx, query, true);
+    struct llama_batch query_batch = llama_batch_init(n_batch, 0, 1);
 
-        struct llama_batch query_batch = llama_batch_init(n_batch, 0, 1);
-        batch_add_seq(query_batch, query_tokens, 0);
+    printf("%s: Querying loop starts...\n", __func__);
+    // start loop, read each query and return top-k or top similar chunk(s) 
+    // based on cosine similarity
+    int errors = 0;
 
-        std::vector<float> query_emb(n_embd, 0);
-        batch_decode(ctx, query_batch, query_emb.data(), 1, n_embd);
+    int item_count = 0;
+    for (auto & context_file : params.context_files) {
+        std::ifstream cpfile(context_file);
+        if (!cpfile.is_open()) {
+            printf("[%s]: failed to open [%s]\n", __func__, context_file.c_str());
+            return false;
+        }
 
-        llama_batch_clear(query_batch);
+        std::string query;
+        int64_t t_query_start = ggml_time_us();
 
-        // compute cosine similarities
-        {
-            std::vector<std::pair<int, float>> similarities;
-            for (int i = 0; i < n_chunks; i++) {
-                float sim = llama_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
-                similarities.push_back(std::make_pair(i, sim));
-            }
+        while (std::getline(cpfile, query)) {
+            std::vector<int32_t> query_tokens = llama_tokenize(ctx, query, true);
 
-            // sort similarities
-            std::sort(similarities.begin(), similarities.end(), [](const std::pair<int, float> & a, const std::pair<int, float> & b) {
-                return a.second > b.second;
-            });
+            batch_add_seq(query_batch, query_tokens, 0);
 
-            printf("Top %d similar chunks:\n", params.sparams.top_k);
-            for (int i = 0; i < std::min(params.sparams.top_k, (int) chunks.size()); i++) {
-                printf("filename: %s\n", chunks[similarities[i].first].filename.c_str());
-                printf("filepos: %lld\n", (long long int) chunks[similarities[i].first].filepos);
-                printf("similarity: %f\n", similarities[i].second);
-                printf("textdata:\n%s\n", chunks[similarities[i].first].textdata.c_str());
-                printf("--------------------\n");
+            std::vector<float> query_emb(n_embd, 0);
+            batch_decode(ctx, query_batch, query_emb.data(), 1, n_embd);
+
+            llama_batch_clear(query_batch);
+
+            // compute cosine similarities
+            {
+                std::vector<std::pair<int, float>> similarities;
+                for (int i = 0; i < n_chunks; i++) {
+                    float sim = llama_embd_similarity_cos(chunks[i].embedding.data(), query_emb.data(), n_embd);
+                    similarities.push_back(std::make_pair(i, sim));
+                }
+
+                // sort similarities
+                std::sort(similarities.begin(), similarities.end(), [](const std::pair<int, float> & a, const std::pair<int, float> & b) {
+                    return a.second > b.second;
+                });
+
+#if 0
+                // print top candidate
+                printf("query: %s\n", query.c_str());
+                printf("filename: %s\n", chunks[similarities[0].first].filename.c_str());
+                printf("filepos: %lld\n", (long long int) chunks[similarities[0].first].filepos);
+                printf("similarity: %f\n", similarities[0].second);
+                printf("textdata:\n%s\n", chunks[similarities[0].first].textdata.c_str());            
+#endif
+                if ((chunks[similarities[0].first].textdata.find(query) == std::string::npos) &&
+                    (query.find(chunks[similarities[0].first].textdata) == std::string::npos)) {
+                    if (params.verbosity) {
+                        printf("ERROR encountered on the following item: \n"
+                            "s1 = [%s]\n"
+                            "s2 = [%s]\n", 
+                            query.c_str(),
+                            chunks[similarities[0].first].textdata.c_str());
+                    }
+                    errors++;
+                }
+                if ((++item_count % 50) == 0) {
+                    printf("- Processed %d items\r", item_count);
+                }
             }
         }
+
+        int64_t t_query_stop = ggml_time_us();
+        printf("Total items processed: %d\n", item_count);
+        printf("Query time             = %6.2fs (%5.2fms per item)\n", 
+            (t_query_stop - t_query_start) / (1000.0 * 1000.0), 
+            (t_query_stop - t_query_start) / (item_count * 1000.0));
     }
 
-    // clean up
+    printf("Tokenization time      = %6.2fms(%5.2fms per chunk)\n", 
+        (t_tokenization_stop - t_tokenization_start) / 1000.0, 
+        (t_tokenization_stop - t_tokenization_start) / (chunks.size() * 1000.0));
+    printf("Create Embeddings time = %6.2fs (%5.2fms per chunk)\n", 
+        (t_embeddings_stop - t_embeddings_start) / (1000.0 * 1000.0), 
+        (t_embeddings_stop - t_embeddings_start) / (chunks.size() * 1000.0));
+    printf("Errors                 = %3d\n", errors);
+
+    params.verbosity = GGML_LOG_LEVEL_INFO;
+    llama_log_set(llindex_log_callback, &(params.verbosity));
     llama_print_timings(ctx);
+
+    // clean up
+    llama_batch_free(query_batch);
     llama_free(ctx);
     llama_free_model(model);
     llama_backend_free();
+
+    const auto t_main_end = ggml_time_us();
+    printf("\n\ntotal elapsed time %7.2fsec\n\n", (double)(t_main_end - t_main_start) / (1000. * 1000.)); 
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data(t_main_end - t_main_start);
+#endif // GGML_TENSOR_OP_PERF
 }
