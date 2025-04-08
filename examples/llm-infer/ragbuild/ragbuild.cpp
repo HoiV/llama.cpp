@@ -57,6 +57,73 @@ struct document_stats {
     string type;
 };
 
+string WideToUtf8(
+    _In_ const wstring& wide) {
+
+    if (wide.empty()) return std::string();
+    
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wide.data(), (int)wide.size(), 
+                                          NULL, 0, NULL, NULL);
+    string utf8(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), (int)wide.size(), 
+                        &utf8[0], size_needed, NULL, NULL);
+    return utf8;
+}
+
+string ConvertToUtf8(
+    const string& buffer) {
+    
+    size_t string_size = buffer.length();
+
+    // Check for UTF-8 BOM (EF BB BF)
+    if (string_size >= 3 &&
+        static_cast<unsigned char>(buffer[0]) == 0xEF &&
+        static_cast<unsigned char>(buffer[1]) == 0xBB &&
+        static_cast<unsigned char>(buffer[2]) == 0xBF) {
+        printf("    Detected UTF-8 encoding with BOM\n");
+        return string(buffer.begin() + 3, buffer.end());
+    }
+
+    // Check for UTF-16LE BOM (FF FE)
+    if (string_size >= 2 &&
+        static_cast<unsigned char>(buffer[0]) == 0xFF
+        && static_cast<unsigned char>(buffer[1]) == 0xFE) {
+        printf("    Detected UTF-16 Little-Endian encoding with BOM\n");
+
+        // Create a wide string from the buffer (skipping BOM)
+        const wchar_t* wideData = reinterpret_cast<const wchar_t*>(buffer.data() + 2);
+        size_t wideLength = (string_size - 2) / 2;
+        wstring wideStr(wideData, wideLength);
+
+        // Convert to UTF-8 using StringUtils helper
+        return WideToUtf8(wideStr);
+    }
+
+    // Check for UTF-16BE BOM (FE FF)
+    if (string_size >= 2 &&
+        static_cast<unsigned char>(buffer[0]) == 0xFE &&
+        static_cast<unsigned char>(buffer[1]) == 0xFF) {
+        printf("    Detected UTF-16 Big-Endian encoding with BOM\n");
+
+        // Need to swap bytes for BE to create proper wide string
+        wstring wideStr;
+        wideStr.reserve((string_size - 2) / 2);
+
+        for (long long i = 2; i < string_size; i += 2) {
+            if (i + 1 < string_size) {
+                wchar_t wc = (static_cast<unsigned char>(buffer[i]) << 8) | static_cast<unsigned char>(buffer[i + 1]);
+                wideStr.push_back(wc);
+            }
+        }
+
+        // Convert to UTF-8 using StringUtils helper
+        return WideToUtf8(wideStr);
+    }
+
+    printf("    Detected regular UTF8 text file\n");
+    return string(buffer.begin(), buffer.end());
+}
+
 static vector<chunk> chunk_file_by_separators(
     const rag_entry & rag_entry, 
     int chunk_size = 128) {
@@ -81,7 +148,22 @@ static vector<chunk> chunk_file_by_separators(
 
         if (current_chunk.textdata.size() > chunk_size) {
             // Flush current chunk as it is large enough
-            chunks.push_back(current_chunk);
+            size_t pos = 0;
+            std::string remaining_text = current_chunk.textdata.substr(pos);
+            while (pos < remaining_text.size()) {
+                size_t len = min(chunk_size, (int)(remaining_text.size() - pos));
+                if (len < (chunk_size / 5)) {
+                    // do not break up chunks with length within 20% of chunk-size
+                    current_chunk.textdata = remaining_text;
+                    chunks.push_back(current_chunk);
+                    len = remaining_text.size();
+                } else {
+                    current_chunk.textdata = remaining_text.substr(pos, len);
+                    chunks.push_back(current_chunk);
+                }
+                pos += len;
+            }
+
             // Reset for next chunk
             current_chunk.textdata = textdata;
         } else {
@@ -100,8 +182,15 @@ static vector<chunk> chunk_file_by_separators(
             size_t pos = 0;
             while (pos < remaining_text.size()) {
                 size_t len = min(chunk_size, (int)(remaining_text.size() - pos));
-                current_chunk.textdata = remaining_text.substr(pos, len);
-                chunks.push_back(current_chunk);
+                if (len < (chunk_size / 5)) {
+                    // do not break up chunks with length within 20% of chunk-size
+                    current_chunk.textdata = remaining_text;
+                    chunks.push_back(current_chunk);
+                    len = remaining_text.size();
+                } else {
+                    current_chunk.textdata = remaining_text.substr(pos, len);
+                    chunks.push_back(current_chunk);
+                }
                 pos += len;
             }
         } else {
@@ -446,6 +535,43 @@ int main(int argc, char *argv[]) {
                     "docx"
                 };
                 alldocs_stat.push_back(doc_stat);
+
+            } else if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+                rag_current.filename = "" + entry.path().stem().string() + ".txt";
+                auto start = std::chrono::high_resolution_clock::now();
+                std::ifstream file(entry.path(), std::ios::binary | std::ios::ate);
+                if (!file.is_open()) {
+                    printf("Failed to open file: %s\n", entry.path().c_str());
+                }
+
+                // Get file size and reset position to beginning
+                std::streamsize fileSize = file.tellg();
+                file.seekg(0, std::ios::beg);
+
+                // Read entire file into buffer
+                std::string buffer(fileSize, '\0');
+                if (!file.read(buffer.data(), fileSize)) {
+                    printf("Error reading file: %s\n", entry.path().c_str());
+                }
+
+                std::string texts = ConvertToUtf8(buffer);
+
+                auto end = std::chrono::high_resolution_clock::now();
+                rag_current.textdata = texts;
+
+                rag_docs.push_back(rag_current);
+
+                std::chrono::duration<double> duration = end - start;
+                meta_stats.document_txt_count++;
+                document_stats doc_stat = {
+                    rag_current.filename,
+                    entry.path().string(),
+                    0,
+                    (double) duration.count(),
+                    texts.size(),
+                    "txt"
+                };
+                alldocs_stat.push_back(doc_stat);
             }
         }
     } catch (const fs::filesystem_error& e) {
@@ -476,7 +602,8 @@ int main(int argc, char *argv[]) {
     std::chrono::duration<double> embed_duration = embed_end - embed_start;
     cout << "Emdedding time taken: " << embed_duration.count() << " seconds" << std::endl;
 
-    int max_elements = 10000;   // Maximum number of elements, should be known beforehand
+    // Maximum number of elements, should be known beforehand
+    int max_elements = rag_chunks.size() + 1024;
 
     // if dataset is big and memory is a concern then NHSW need to be chosen. 
     // As well as in NMSLIB, we chose the M parameter. The 4 <= M <= 64 is 

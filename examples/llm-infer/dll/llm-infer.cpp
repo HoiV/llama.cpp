@@ -78,7 +78,7 @@ bool llm_initialize(
     llama_model_params common_model_params = llama_model_default_params();
 
 #ifdef GGML_USE_CUDA
-    #pragma message("++++++++ Support both CUDA and CPU")
+    #pragma message("++++++++ Support both CUDA and CPU for LLM inference")
     if ((ggml_backend_cuda_get_device_count() != 0) && (params.force_cpu_mode == 0)) {
         // if there is a GPU then make use of it
         common_model_params.n_gpu_layers = 999;
@@ -437,6 +437,17 @@ bool embed_initialize(
 
     // initialize the model
    llama_model_params llama_model_params = llama_model_default_params();
+
+#ifdef GGML_USE_CUDA
+    #pragma message("++++++++ Support both CUDA and CPU for embeddings")
+    if ((ggml_backend_cuda_get_device_count() != 0) && (params.force_cpu_mode == 0)) {
+        // if there is a GPU then make use of it
+        llama_model_params.n_gpu_layers = 999;
+    } else {
+        // either there is no GPU or no CPU forcing function
+        llama_model_params.n_gpu_layers = 0;
+    }
+#endif // GGML_USE_CUDA
 
    embed_model = llama_load_model_from_file(params.model_name.c_str(), llama_model_params);
    if (embed_model == NULL) {
