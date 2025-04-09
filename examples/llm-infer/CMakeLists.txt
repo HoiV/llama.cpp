@@ -41,7 +41,7 @@ target_compile_features(${TARGET} PRIVATE cxx_std_17)
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 set(TARGET ragBuilder-dll)
-add_executable(${TARGET} ragbuild/RAGbuilder/llm.cpp ragbuild/RAGbuilder/RAGBuilder.cpp ragbuild/RAGbuilder/RAGHelper.cpp ragbuild/RAGbuilder/Debug.cpp)
+add_executable(${TARGET} ragbuild/RAGbuilder/llm.cpp ragbuild/RAGbuilder/RAGbuilder.cpp ragbuild/RAGbuilder/RAGHelper.cpp ragbuild/RAGbuilder/Debug.cpp)
 install(TARGETS ${TARGET} RUNTIME)
 target_include_directories(${TARGET} PRIVATE .)
 target_include_directories(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/examples/llm-infer/dll)
