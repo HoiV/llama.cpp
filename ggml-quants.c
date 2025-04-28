@@ -4932,7 +4932,7 @@ static inline __m128i get_scale_shuffle(int i) {
 }
 #endif
 
-void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
     const uint64_t qk = QK8_0;
     const uint64_t nb = n / qk;
 
@@ -4946,8 +4946,147 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     const block_q4_0 * restrict x = vx;
     const block_q8_0 * restrict y = vy;
 
-#if (defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
-// #if defined(__AVX2__) || defined(__AVX512F__) // original code
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m512 acc = _mm512_setzero_ps();
+    const __m512i zero512 = _mm512_setzero_si512();
+
+    const __m256i offset = _mm256_set1_epi8(8);
+    const __m256i m4 = _mm256_set1_epi8(0xf);
+
+    //
+    // Process odd quant first if there is one.
+    //
+
+    uint64_t i = 0;
+
+    if (nb & 1) {
+
+        //
+        // Compute combined scale for the block.
+        //
+
+        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[0].d) * GGML_FP16_TO_FP32(y[0].d));
+
+        //
+        // Get the q4_0 quant vector with nibbles in the [0..15] interval, and convert to
+        // bytes in the [-8..+7] interval.
+        //
+
+        __m128i tmp1 = _mm_loadu_si128((const __m128i *)x[0].qs);
+        __m128i tmp2 = _mm_srli_epi16(tmp1, 4);
+        __m256i qx = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
+        qx = _mm256_and_si256(m4, qx);
+        qx = _mm256_sub_epi8(qx, offset);
+
+        //
+        // Get the q8_0 quant vector.
+        //
+
+        __m256i qy = _mm256_loadu_si256((const __m256i *)y[0].qs);
+
+        //
+        // Get the absolute value of qx.
+        //
+
+        const __m256i ax = _mm256_sign_epi8(qx, qx);
+
+        //
+        // Get the signed value of qy. 
+        //
+
+        const __m256i sy = _mm256_sign_epi8(qy, qx);
+
+        //
+        // mul (ax * sy) + 0 directly to epi32.
+        //
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+        //
+
+        const __m256i zero256 = _mm256_setzero_si256();
+        const __m256i summed_pairs = _mm256_dpbusd_epi32(zero256, ax, sy);
+        const __m256 q = _mm256_cvtepi32_ps(summed_pairs);
+
+        //
+        // Multiply q with scale and insert in overall accumulation which is zero
+        // at this point.
+        //
+
+        __m256 partial_acc = _mm256_mul_ps(d, q);
+        acc = _mm512_insertf32x8(acc, partial_acc, 0);
+
+        i = 1;
+    }
+
+    //
+    // Process remaining quant pairs.
+    //
+
+    for (; i < nb; i += 2) {
+
+        //
+        // Compute combined scale for two quant blocks.
+        //
+
+        const __m256 d0 = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
+        const __m256 d1 = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i + 1].d) * GGML_FP16_TO_FP32(y[i + 1].d));
+        __m512 d = _mm512_castps256_ps512(d0);
+        d = _mm512_insertf32x8(d, d1, 1);
+
+        //
+        // Compute the dot product of two quant blocks and accumulate.
+        //
+        // Get the q4_0 quant vectors with nibbles in the [0..15] interval, and convert to
+        // bytes in the [-8..+7] interval.
+        //
+
+        __m128i tmp1 = _mm_loadu_si128((const __m128i *)x[i].qs);
+        __m128i tmp2 = _mm_srli_epi16(tmp1, 4);
+        __m256i qxl = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
+        qxl = _mm256_and_si256(m4, qxl);
+        qxl = _mm256_sub_epi8(qxl, offset);
+        const __m256i axl = _mm256_sign_epi8(qxl, qxl);
+
+        tmp1 = _mm_loadu_si128((const __m128i *)x[i + 1].qs);
+        tmp2 = _mm_srli_epi16(tmp1, 4);
+        __m256i qxh = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
+        qxh = _mm256_and_si256(m4, qxh);
+        qxh = _mm256_sub_epi8(qxh, offset);
+        const __m256i axh = _mm256_sign_epi8(qxh, qxh);
+
+        __m512i ax = _mm512_castsi256_si512(axl);
+        ax = _mm512_inserti32x8(ax, axh, 1);
+
+        //
+        // Get the q8_0 quant vectors.
+        //
+
+        const __m256i qyl = _mm256_loadu_si256((const __m256i *)y[i].qs);
+        const __m256i qyh = _mm256_loadu_si256((const __m256i *)y[i + 1].qs);
+        const __m256i syl = _mm256_sign_epi8(qyl, qxl);
+        const __m256i syh = _mm256_sign_epi8(qyh, qxh);
+        __m512i sy = _mm512_castsi256_si512(syl);
+        sy = _mm512_inserti32x8(sy, syh, 1);
+
+        //
+        // mul (ax * sy) + 0 directly to epi32
+        //
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+        //
+
+        const __m512i summed_pairs = _mm512_dpbusd_epi32(zero512, ax, sy);
+        const __m512 q = _mm512_cvtepi32_ps(summed_pairs);
+
+        //
+        // Multiply q with scale and accumulate.
+        //
+
+        acc = _mm512_fmadd_ps(d, q, acc);
+    }
+
+    *s = hsum_float_16(acc);
+
+#elif defined(__AVX2__)
 
     __m256 acc = _mm256_setzero_ps();
     __m256i zero256 = _mm256_setzero_si256();
@@ -5010,66 +5149,6 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 
     *s = hsum_float_8(acc);
 
-#elif defined(__AVX2__) // remains here for __clang__
-
-    // Initialize accumulator with zeros
-    __m256 acc = _mm256_setzero_ps();
-
-    // Main loop
-    for (int i = 0; i < nb; ++i) {
-        /* Compute combined scale for the block */
-        const __m256 d = _mm256_set1_ps( GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d) );
-
-        __m256i qx = bytes_from_nibbles_32(x[i].qs);
-
-        // Now we have a vector with bytes in [ 0 .. 15 ] interval. Offset them into [ -8 .. +7 ] interval.
-        const __m256i off = _mm256_set1_epi8( 8 );
-        qx = _mm256_sub_epi8( qx, off );
-
-        __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
-
-        const __m256 q = mul_sum_i8_pairs_float(qx, qy);
-
-        /* Multiply q with scale and accumulate */
-        acc = _mm256_fmadd_ps( d, q, acc );
-    }
-
-    *s = hsum_float_8(acc);
-
-#elif defined(__AVX__) // remains here for __clang__
-
-    // Initialize accumulator with zeros
-    __m256 acc = _mm256_setzero_ps();
-
-    // Main loop
-    for (int i = 0; i < nb; ++i) {
-        // Compute combined scale for the block
-        const __m256 d = _mm256_set1_ps( GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d) );
-
-        const __m128i lowMask = _mm_set1_epi8(0xF);
-        const __m128i off = _mm_set1_epi8(8);
-
-        const __m128i tmp = _mm_loadu_si128((const __m128i *)x[i].qs);
-
-        __m128i bx_0 = _mm_and_si128(lowMask, tmp);
-        __m128i by_0 = _mm_loadu_si128((const __m128i *)y[i].qs);
-        bx_0 = _mm_sub_epi8(bx_0, off);
-        const __m128i i32_0 = mul_sum_i8_pairs(bx_0, by_0);
-
-        bx_0 = _mm_and_si128(lowMask, _mm_srli_epi64(tmp, 4));
-        by_0 = _mm_loadu_si128((const __m128i *)(y[i].qs + 16));
-        bx_0 = _mm_sub_epi8(bx_0, off);
-        const __m128i i32_1 = mul_sum_i8_pairs(bx_0, by_0);
-
-        // Convert int32_t to float
-        __m256 p = _mm256_cvtepi32_ps(MM256_SET_M128I(i32_0, i32_1));
-
-        // Apply the scale, and accumulate
-        acc = _mm256_add_ps(_mm256_mul_ps( d, p ), acc);
-    }
-
-    *s = hsum_float_8(acc);
-
 #else
 
     // scalar
@@ -5090,7 +5169,7 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * restrict s, size_t bs, const void * r
 
     *s = sumf;
 
-#endif // defined(__AVX2__) || defined(__AVX512F__)
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
 
 }
 
@@ -6397,7 +6476,7 @@ void ggml_vec_dot_q5_1_q8_1(int n, float * restrict s, size_t bs, const void * r
 #endif
 }
 
-void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+void ggml_vec_dot_q8_0_q8_0(const int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
     const uint64_t qk = QK8_0;
     const uint64_t nb = n / qk;
 
@@ -6411,8 +6490,116 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
     const block_q8_0 * restrict x = vx;
     const block_q8_0 * restrict y = vy;
 
-#if (defined(__AVX2__) || defined(__AVX512F__)) && !defined(__clang__) // clang generates errors for _mm256_dpbusd_epi32()
-// #if defined(__AVX2__) || defined(__AVX512F__) // original code for both AVX2 and AVX512
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m512 acc = _mm512_setzero_ps();
+    const __m512i zero512 = _mm512_setzero_si512();
+
+    //
+    // Process odd quant first if there is one.
+    //
+
+    uint64_t i = 0;
+
+    if (nb & 1) {
+
+        //
+        // Compute combined scale for quant block.
+        //
+
+        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[0].d) * GGML_FP16_TO_FP32(y[0].d));
+
+        //
+        // Compute the dot product of quant block and accumulate.
+        //
+
+        __m256i qx = _mm256_loadu_si256((const __m256i *)x[0].qs);
+        __m256i qy = _mm256_loadu_si256((const __m256i *)y[0].qs);
+
+        //
+        // Get the absolute values of qx.
+        //
+
+        const __m256i ax = _mm256_sign_epi8(qx, qx);
+
+        //
+        // Get the signed values of qy.
+        //
+
+        const __m256i sy = _mm256_sign_epi8(qy, qx);
+
+        //
+        // mul (ax * sy) + 0 directly to epi32
+        //
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+        //
+
+        const __m256i zero256 = _mm256_setzero_si256();
+        const __m256i summed_pairs = _mm256_dpbusd_epi32(zero256, ax, sy);
+        const __m256 q = _mm256_cvtepi32_ps(summed_pairs);
+
+        //
+        // Multiply q with scale and insert in overall accumulation.
+        //
+
+        __m256 partial_acc = _mm256_mul_ps(d, q);
+        acc = _mm512_insertf32x8(acc, partial_acc, 0);
+
+        i = 1;
+    }
+
+    //
+    // Process remaing quant pairs.
+    //
+
+    for (; i < nb; i += 2) {
+
+        //
+        // Compute combined scale for two quant blocks.
+        //
+
+        const __m256 d0 = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
+        const __m256 d1 = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i + 1].d) * GGML_FP16_TO_FP32(y[i + 1].d));
+        __m512 d = _mm512_castps256_ps512(d0);
+        d = _mm512_insertf32x8(d, d1, 1);
+
+        //
+        // Compute the dot product of two quant blocks and accumulate.
+        //
+
+        const __m256i qxl = _mm256_loadu_si256((const __m256i *)x[i].qs);
+        const __m256i qxh = _mm256_loadu_si256((const __m256i *)x[i + 1].qs);
+        const __m256i axl = _mm256_sign_epi8(qxl, qxl);
+        const __m256i axh = _mm256_sign_epi8(qxh, qxh);
+        __m512i ax = _mm512_castsi256_si512(axl);
+        ax = _mm512_inserti32x8(ax, axh, 1);
+
+        const __m256i qyl = _mm256_loadu_si256((const __m256i *)y[i].qs);
+        const __m256i qyh = _mm256_loadu_si256((const __m256i *)y[i + 1].qs);
+        const __m256i syl = _mm256_sign_epi8(qyl, qxl);
+        const __m256i syh = _mm256_sign_epi8(qyh, qxh);
+        __m512i sy = _mm512_castsi256_si512(syl);
+        sy = _mm512_inserti32x8(sy, syh, 1);
+
+        //
+        // mul (ax * sy) + 0 directly to epi32
+        //
+        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+        //
+
+        const __m512i summed_pairs = _mm512_dpbusd_epi32(zero512, ax, sy);
+        const __m512 q = _mm512_cvtepi32_ps(summed_pairs);
+
+        //
+        // Multiply q with scale and accumulate.
+        //
+
+        acc = _mm512_fmadd_ps(d, q, acc);
+    }
+
+    *s = hsum_float_16(acc);
+
+#elif defined(__AVX2__)
 
     __m256 acc = _mm256_setzero_ps();
     __m256i zero256 = _mm256_setzero_si256();
@@ -6455,30 +6642,6 @@ void ggml_vec_dot_q8_0_q8_0(int n, float * restrict s, size_t bs, const void * r
         //
 
         acc = _mm256_fmadd_ps(d, q, acc);
-    }
-
-    *s = hsum_float_8(acc);
-
-#elif defined(__AVX2__) || defined(__AVX__) // remains here for __clang__
-
-    // Initialize accumulator with zeros
-    __m256 acc = _mm256_setzero_ps();
-
-    // Main loop
-    for (int i = 0; i < nb; ++i) {
-        // Compute combined scale for the block
-        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
-        __m256i qx = _mm256_loadu_si256((const __m256i *)x[i].qs);
-        __m256i qy = _mm256_loadu_si256((const __m256i *)y[i].qs);
-
-        const __m256 q = mul_sum_i8_pairs_float(qx, qy);
-
-        // Multiply q with scale and accumulate
-#if defined(__AVX2__)
-        acc = _mm256_fmadd_ps( d, q, acc );
-#else
-        acc = _mm256_add_ps( _mm256_mul_ps( d, q ), acc );
-#endif
     }
 
     *s = hsum_float_8(acc);
