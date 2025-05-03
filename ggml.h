@@ -2494,8 +2494,8 @@ extern "C" {
 
     // Cosine similarity
     //
-    GGML_API float ggml_cosine_similarity_f32(int n, float *x, float *y);
-    GGML_API float ggml_cosine_similarity_bf16(int n, ggml_bf16_t *x, ggml_bf16_t *y);
+    GGML_API float ggml_cosine_similarity_f32(const int n, const float *x, const float *y);
+    GGML_API float ggml_cosine_similarity_bf16(const int n, const ggml_bf16_t *x, const ggml_bf16_t *y);
     //
 
     //

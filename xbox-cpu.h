@@ -110,6 +110,25 @@ xb_set_thread_affinity (
     return false;
 }
 
+bool
+xb_set_thread_priority (
+    uint32_t ith
+    )
+{
+
+    //
+    // Set the priority of the current thread to THREAD_PRIORITY_TIME_CRITICAL.
+    //
+
+    if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)) {
+        return true;
+
+    } else {
+        printf("failed to set thread %d priority\n", ith);
+        return false;
+    }
+}
+
 char * ggml_cache_type[4] = {
     "null",
     "data",

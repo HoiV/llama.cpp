@@ -3238,82 +3238,6 @@ void ggml_vec_normsq_f32(const uint64_t n, float * s, const float mean, float * 
     *s =sumf;
 }
 
-void ggml_vec_sqrt_f32(const uint64_t n, float * y, const float * x) {
-
-    uint64_t i = 0;
-
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
-
-    __m512 ax[GGML_F32_ARR];
-
-    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
-
-    for (; i < np; i += GGML_F32_STEP16) {
-        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
-            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
-            ax[j] = _mm512_sqrt_ps(ax[j]);
-            _mm512_storeu_ps((y + i + j * GGML_F16_EPR16), ax[j]);
-        }
-    }
-
-    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
-
-    for (; i < xn; i += GGML_F32_EPR16) {
-        ax[0] = _mm512_loadu_ps(x + i);
-        ax[0] = _mm512_sqrt_ps(ax[0]);
-        _mm512_storeu_ps((y + i), ax[0]);
-    }
-
-    // leftovers
-
-    if (n & (GGML_F32_EPR16 - 1)) {
-        do {
-            y[i]  = sqrtf(x[i]);
-            i += 1;
-        } while (i < n);
-    }
-
-#elif defined(__AVX2__)
-
-    __m256 ax[GGML_F32_ARR];
-
-    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
-
-    for (; i < np; i += GGML_F32_STEP) {
-        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
-            ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
-            ax[j] = _mm256_sqrt_ps(ax[j]);
-            _mm256_storeu_ps((y + i + j * GGML_F16_EPR), ax[j]);
-        }
-    }
-
-    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
-
-    for (; i < xn; i += GGML_F32_EPR) {
-        ax[0] = _mm256_loadu_ps(x + i);
-        ax[0] = _mm256_sqrt_ps(ax[0]);
-        _mm256_storeu_ps((y + i), ax[0]);
-    }
-
-    // leftovers
-
-    if (n & (GGML_F32_EPR - 1)) {
-        do {
-            y[i]  = sqrtf(x[i]);
-            i += 1;
-        } while (i < n);
-    }
-
-#else
-
-    for (i = 0; i < n; ++i) {
-        y[i] = sqrtf(x[i]);
-    }
-
-#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
-
-}
-
 void ggml_vec_sum_f32(const uint64_t n, float * s, const float * x) {
     float sumf = 0.0f;
 
@@ -3614,37 +3538,27 @@ void ggml_vec_sumsq_bf16(const uint64_t n, float * s, ggml_bf16_t * x) {
     *s = sumf;
 }
 
-float ggml_cosine_similarity_f32(int n, float *x, float *y) {
-    float denom_x;
-    float denom_y;
-    float dot;
-
-    ggml_vec_dot_f32(n, &dot, 0, x, 0, y, 0, 1);
-    ggml_vec_sumsq_f32(n, &denom_x, x);
-    ggml_vec_sumsq_f32(n, &denom_y, y);
-    return dot / sqrtf(denom_x * denom_y);
-}
-
 void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc) {
-   assert(nrc == 1);
-   UNUSED(nrc);
-   UNUSED(bx);
-   UNUSED(by);
-   UNUSED(bs);
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
 
+    const uint64_t nc = n;
+    uint64_t i = 0;
     float sumf = 0.0f;
-    int64_t i = 0;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+    const uint64_t xn = (nc & ~(GGML_F32_EPR16 - 1));
 
     if (xn) {
         __m512 sum[GGML_F32_ARR];
         __m512 ax[GGML_F32_ARR];
         __m512 ay[GGML_F32_ARR];
 
-        const int64_t np = (n & ~(GGML_F32_STEP16 - 1));
+        const uint64_t np = (nc & ~(GGML_F32_STEP16 - 1));
 
         sum[0] = _mm512_setzero_ps();
         sum[1] = _mm512_setzero_ps();
@@ -3653,7 +3567,7 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
 
         if (np) {
             do {
-              for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+              for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
                   ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
                   ay[j] = _mm512_loadu_ps(y + i + j * GGML_F32_EPR16);
                   sum[j] = _mm512_fmadd_ps(ax[j], ay[j], sum[j]); 
@@ -3673,27 +3587,29 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
         }
 
         // reduce sum0..sum3 to sumf
+
         GGML_F32_VEC_REDUCE512(sumf, sum);
     }
 
     // leftovers
-    if (n & (GGML_F32_EPR16 - 1)) {
+
+    if (nc & (GGML_F32_EPR16 - 1)) {
         do {
             sumf += x[i] * y[i];
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #elif defined(__AVX2__)
 
-    const int64_t xn = (n & ~(GGML_F32_EPR - 1));
+    const uint64_t xn = (nc & ~(GGML_F32_EPR - 1));
 
     if (xn) {
-         __m256 sum[GGML_F32_ARR];
+        __m256 sum[GGML_F32_ARR];
         __m256 ax[GGML_F32_ARR];
         __m256 ay[GGML_F32_ARR];
 
-       const int64_t np = (n & ~(GGML_F32_STEP - 1));
+        const uint64_t np = (nc & ~(GGML_F32_STEP - 1));
 
         sum[0] = _mm256_setzero_ps();
         sum[1] = _mm256_setzero_ps();
@@ -3702,7 +3618,7 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
 
         if (np) {
             do {
-                for (int64_t j = 0; j < GGML_F32_ARR; j++) {
+                for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
                     ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
                     ay[j] = _mm256_loadu_ps(y + i + j * GGML_F32_EPR);
                     sum[j] = _mm256_fmadd_ps(ax[j], ay[j], sum[j]);
@@ -3722,21 +3638,22 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F32_VEC_REDUCE(sumf, sum);
     }
 
     // leftovers
-    if (n & (GGML_F32_EPR - 1)) {
+
+    if (nc & (GGML_F32_EPR - 1)) {
         do {
             sumf += x[i] * y[i];
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #else
 
-    // scalar
-    for (int64_t i = 0; i < n; ++i) {
+    for (; i < nc; ++i) {
         sumf += x[i] * y[i];
     }
 
@@ -3745,14 +3662,14 @@ void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * 
     *s = sumf;
 }
 
-float ggml_cosine_similarity_bf16(int n, ggml_bf16_t *x, ggml_bf16_t *y) {
+float ggml_cosine_similarity_f32(const int n, const float *x,  const float *y) {
     float denom_x;
     float denom_y;
     float dot;
 
-    ggml_vec_dot_bf16(n, &dot, 0, x, 0, y, 0, 1);
-    ggml_vec_sumsq_bf16(n, &denom_x, x);
-    ggml_vec_sumsq_bf16(n, &denom_y, y);
+    ggml_vec_dot_f32(n, &dot, 0, x, 0, y, 0, 1);
+    ggml_vec_sumsq_f32(n, &denom_x, x);
+    ggml_vec_sumsq_f32(n, &denom_y, y);
     return dot / sqrtf(denom_x * denom_y);
 }
 
@@ -3903,6 +3820,17 @@ void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, ggml_bf16_t *
     *s = sumf;
 }
 
+float ggml_cosine_similarity_bf16(const int n, const ggml_bf16_t *x, const ggml_bf16_t *y) {
+    float denom_x;
+    float denom_y;
+    float dot;
+
+    ggml_vec_dot_bf16(n, &dot, 0, x, 0, y, 0, 1);
+    ggml_vec_sumsq_bf16(n, &denom_x, x);
+    ggml_vec_sumsq_bf16(n, &denom_y, y);
+    return dot / sqrtf(denom_x * denom_y);
+}
+
 void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
@@ -3910,12 +3838,13 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
     UNUSED(by);
     UNUSED(bs);
 
-     float sumf = 0.0;
-    int64_t i = 0;
+    const uint64_t nc = n;
+    uint64_t i = 0;
+    float sumf = 0.0;
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    const int64_t xn = (n & ~(GGML_F16_EPR16 - 1));
+    const uint64_t xn = (nc & ~(GGML_F16_EPR16 - 1));
 
     if (xn) {
         __m512 sum[GGML_F16_ARR];
@@ -3927,11 +3856,11 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
         sum[2] = _mm512_setzero_ps();
         sum[3] = _mm512_setzero_ps();
 
-        const int64_t np = (n & ~(GGML_F16_STEP16 - 1));
+        const uint64_t np = (nc & ~(GGML_F16_STEP16 - 1));
 
         if (np) {
             do {
-                for (int64_t j = 0; j < GGML_F16_ARR; j++) {
+                for (uint64_t j = 0; j < GGML_F16_ARR; j++) {
                     ax[j] = _mm512_cvtph_ps(_mm256_loadu_si256((__m256i const *)(x + i + j * GGML_F16_EPR16)));
                     ay[j] = _mm512_cvtph_ps(_mm256_loadu_si256((__m256i const *)(y + i + j * GGML_F16_EPR16)));
                     sum[j] = _mm512_fmadd_ps(ax[j], ay[j], sum[j]);
@@ -3951,20 +3880,22 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F16_VEC_REDUCE512(sumf, sum);
     }
 
     // leftovers
-    if (n & (GGML_F16_EPR16 - 1)) {
+
+    if (nc & (GGML_F16_EPR16 - 1)) {
         do {
             sumf += GGML_FP16_TO_FP32(x[i]) * GGML_FP16_TO_FP32(y[i]);
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #elif defined(__AVX2__)
 
-    const int64_t xn = (n & ~(GGML_F16_EPR - 1));
+    const uint64_t xn = (nc & ~(GGML_F16_EPR - 1));
 
     if (xn) {
         __m256 sum[GGML_F16_ARR];
@@ -3976,11 +3907,11 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
         sum[2] = _mm256_setzero_ps();
         sum[3] = _mm256_setzero_ps();
 
-        const int64_t np = (n & ~(GGML_F16_STEP - 1));
+        const uint64_t np = (nc & ~(GGML_F16_STEP - 1));
 
         if (np) {
             do {
-                for (int64_t j = 0; j < GGML_F16_ARR; j++) {
+                for (uint64_t j = 0; j < GGML_F16_ARR; j++) {
                     ax[j] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i *)(x + i + j * GGML_F16_EPR)));
                     ay[j] = _mm256_cvtph_ps(_mm_loadu_si128((__m128i *)(y + i + j * GGML_F16_EPR)));
                     sum[j] = _mm256_fmadd_ps(ax[j], ay[j], sum[j]);
@@ -4000,21 +3931,22 @@ void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp1
         }
 
         // reduce sum0..sum3 to sum0
+
         GGML_F16_VEC_REDUCE(sumf, sum);
     }
 
     // leftovers
-    if (n & (GGML_F16_EPR - 1)) {
 
+    if (nc & (GGML_F16_EPR - 1)) {
         do {
             sumf += (GGML_FP16_TO_FP32(x[i])*GGML_FP16_TO_FP32(y[i]));
             i += 1;
-        } while (i < n);
+        } while (i < nc);
     }
 
 #else
 
-    for (int64_t i = 0; i < n; ++i) {
+    for (; i < nc; ++i) {
         sumf += GGML_FP16_TO_FP32(x[i]) * GGML_FP16_TO_FP32(y[i]);
     }
 
@@ -4284,61 +4216,6 @@ void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml
 #endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
 
     *s = sumf;
-}
-
-// compute GGML_VEC_DOT_UNROLL dot products at once
-// xs - x row stride in bytes
-inline static void ggml_vec_dot_f16_unroll(const int n, const int xs, float * restrict s, void * restrict xv, ggml_fp16_t * restrict y) {
-    ggml_float sumf[GGML_VEC_DOT_UNROLL] = { 0.0 };
-
-    ggml_fp16_t * restrict x[GGML_VEC_DOT_UNROLL];
-
-    for (int i = 0; i < GGML_VEC_DOT_UNROLL; ++i) {
-        x[i] = (ggml_fp16_t *) ((char *) xv + i*xs);
-    }
-
-#if defined(GGML_SIMD)
-    const int np = (n & ~(GGML_F16_STEP - 1));
-
-    GGML_F16_VEC sum[GGML_VEC_DOT_UNROLL][GGML_F16_ARR] = { { GGML_F16_VEC_ZERO } };
-
-    GGML_F16_VEC ax[GGML_F16_ARR];
-    GGML_F16_VEC ay[GGML_F16_ARR];
-
-    for (int i = 0; i < np; i += GGML_F16_STEP) {
-        for (int j = 0; j < GGML_F16_ARR; j++) {
-            ay[j] = GGML_F16_VEC_LOAD(y + i + j*GGML_F16_EPR, j);
-
-            for (int k = 0; k < GGML_VEC_DOT_UNROLL; ++k) {
-                ax[j] = GGML_F16_VEC_LOAD(x[k] + i + j*GGML_F16_EPR, j);
-
-                sum[k][j] = GGML_F16_VEC_FMA(sum[k][j], ax[j], ay[j]);
-            }
-        }
-    }
-
-    // reduce sum0..sum3 to sum0
-    for (int k = 0; k < GGML_VEC_DOT_UNROLL; ++k) {
-        GGML_F16_VEC_REDUCE(sumf[k], sum[k]);
-    }
-
-    // leftovers
-    for (int i = np; i < n; ++i) {
-        for (int j = 0; j < GGML_VEC_DOT_UNROLL; ++j) {
-            sumf[j] += (ggml_float)(GGML_FP16_TO_FP32(x[j][i])*GGML_FP16_TO_FP32(y[i]));
-        }
-    }
-#else
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < GGML_VEC_DOT_UNROLL; ++j) {
-            sumf[j] += (ggml_float)(GGML_FP16_TO_FP32(x[j][i])*GGML_FP16_TO_FP32(y[i]));
-        }
-    }
-#endif
-
-    for (int i = 0; i < GGML_VEC_DOT_UNROLL; ++i) {
-        s[i] = sumf[i];
-    }
 }
 
 void ggml_vec_mad_f32(const uint64_t n, float * restrict y, const float * restrict x, const float v) {
@@ -4743,7 +4620,81 @@ void ggml_vec_sqr_f32(const int n, float * y, const float * x)
     ggml_vec_mul_f32(n, y, x, x);
 }
 
-void ggml_vec_sqrt_f32(const uint64_t n, float* y, const float* x);
+void ggml_vec_sqrt_f32(const uint64_t n, float * y, const float * x) {
+
+    uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m512 ax[GGML_F32_ARR];
+
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ax[j] = _mm512_sqrt_ps(ax[j]);
+            _mm512_storeu_ps((y + i + j * GGML_F16_EPR16), ax[j]);
+        }
+    }
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ax[0] = _mm512_sqrt_ps(ax[0]);
+        _mm512_storeu_ps((y + i), ax[0]);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            y[i]  = sqrtf(x[i]);
+            i += 1;
+        } while (i < n);
+    }
+
+#elif defined(__AVX2__)
+
+    __m256 ax[GGML_F32_ARR];
+
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
+
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
+            ax[j] = _mm256_sqrt_ps(ax[j]);
+            _mm256_storeu_ps((y + i + j * GGML_F16_EPR), ax[j]);
+        }
+    }
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = _mm256_loadu_ps(x + i);
+        ax[0] = _mm256_sqrt_ps(ax[0]);
+        _mm256_storeu_ps((y + i), ax[0]);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR - 1)) {
+        do {
+            y[i]  = sqrtf(x[i]);
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
+    for (i = 0; i < n; ++i) {
+        y[i] = sqrtf(x[i]);
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+}
 
 inline static void ggml_vec_log_f32(const int n, float * y, const float * x) { for (int i = 0; i < n; ++i) y[i] = logf(x[i]);}
 
@@ -5233,7 +5184,7 @@ inline static void ggml_vec_sum_bf16_ggf(const int n, float * s, const ggml_bf16
     *s = sum;
 }
 
-void ggml_vec_max_f32(const uint32_t n, float * s, const float * x) {
+void ggml_vec_max_f32(const int32_t n, float * s, const float * x) {
 
     uint64_t nc = n;
     uint64_t i = 0;
@@ -6032,7 +5983,7 @@ struct ggml_state {
 };
 
 // global state
-static struct ggml_state g_state;
+static struct ggml_state g_state = {0};
 static atomic_flag g_state_barrier = ATOMIC_FLAG_INIT;
 
 // barrier via spin lock
@@ -6042,8 +5993,7 @@ inline static void ggml_critical_section_start(void) {
     }
 }
 
-// TODO: make this somehow automatically executed
-//       some sort of "sentry" mechanism
+// Release spin lock
 inline static void ggml_critical_section_end(void) {
     atomic_flag_clear(&g_state_barrier);
 }
@@ -6959,7 +6909,7 @@ struct ggml_tensor * ggml_set_i32 (struct ggml_tensor * tensor, int32_t value) {
             } break;
         case GGML_TYPE_BF16:
             {
-                assert(tensor->nb[0] == sizeof(ggml_fp16_t));
+                assert(tensor->nb[0] == sizeof(ggml_bf16_t));
                 for (int i = 0; i < n; i++) {
                     ggml_vec_set_bf16(nc, (ggml_bf16_t *)(data + i*n1), GGML_FP32_TO_BF16(value));
                 }
@@ -22411,6 +22361,16 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         .generation = (void *)&shared->generation_tb
     };
 
+    //
+    // Attempt to set thread priority.
+    //
+    // N.B. The priority of the master thread is only set once during initialization.
+    //
+
+    if (!ith && xb_set_thread_priority(ith)) {
+        // printf("work thread %d priority set to TIME_CRITICAL\n", ith);
+    }
+
 #if 0
     //
     // Attempt to set thread affinity.
@@ -22560,13 +22520,30 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             atomic_int * generation = &shared->generation_db;
 
             //
+            // Compute tensor wait start time.
+            //
+            // N.B. The tensor wait time computation is not perfectly synchronized, but
+            //      it is close and provides meaningful data. The computation is performed
+            //      by the zeroth thread which is always involved in the computation of
+            //      the tensor and does maximum work.
+            //
+    
+#ifdef GGML_TENSOR_OP_PERF
+
+            int64_t wait_cycles = 0;
+            if (!ith) {
+                wait_cycles = ReadTimeStampCounter();
+            }
+    
+#endif // GGML_TENSOR_OP_PERF
+
+            //
             // Add one to the barrier value and check if this is the last thread to
             // arrive.
             //
 
             int generation_old = *generation;
-            int pn_threads = atomic_fetch_add(barrier, 1);
-            if (pn_threads == (n_threads - 1)) {
+            if (atomic_fetch_add(barrier, 1) == (n_threads - 1)) {
 
                 //
                 // This is the last thread - reset barrier and increment the generation.
@@ -22578,38 +22555,28 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             } else {
 
                 //
-                // Wait for all threads to arrive.
+                // Wait for remaining threads to arrive.
                 //
-                // N.B. The first thread to arrive computes the wait time since it will
-                //      start waiting before all other threads and its wait will complete
-                //      when the wait is completed for all threads, i.e., it waits the
-                //      longest and determines the total wait time.
-                // 
-    
-#ifdef GGML_TENSOR_OP_PERF
-    
-                int64_t wait_cycles = 0;
-                if (!pn_threads) {
-                    wait_cycles = ReadTimeStampCounter();
-                }
-    
-#endif // GGML_TENSOR_OP_PERF
-    
+
                 do {
                     YieldProcessor();
                 } while (*generation == generation_old);
-    
+            }
+
+            //
+            // Compute the tensor wait end time and update the tensor wait statistics.
+            //
+
 #ifdef GGML_TENSOR_OP_PERF
     
-                if (!pn_threads) {
-                    wait_cycles = ReadTimeStampCounter() - wait_cycles;
-                    tensor_wait_cycles += wait_cycles;
-                    tensor_wait_count += 1;
-                }
+            if (!ith) {
+                wait_cycles = ReadTimeStampCounter() - wait_cycles;
+                tensor_wait_cycles += wait_cycles;
+                tensor_wait_count += 1;
+            }
     
 #endif // GGML_TENSOR_OP_PERF
 
-            }
         }
     }
 
@@ -22927,7 +22894,9 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 
 #ifdef GGML_TENSOR_OP_PERF
+
     atomic_fetch_add(&thread_create_count, n_threads - 1);
+
 #endif // GGML_TENSOR_OP_PERF
 
     //
@@ -22982,8 +22951,10 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #endif
 
 #ifdef GGML_TENSOR_OP_PERF
+
             t1 = ggml_time_us() - t1;
             atomic_fetch_add64(&thread_create_time, t1);
+
 #endif // GGML_TENSOR_OP_PERF
 
         }
@@ -23909,7 +23880,7 @@ static enum ggml_opt_result ggml_opt_adam(
                 for (int64_t i = 0; i < nx; ++i) {
                     sum += (ggml_float)(g[i]*g[i]);
                 }
-                ggml_float norm = sqrt(sum);
+                ggml_float norm = sqrtf(sum);
                 if (norm > (ggml_float) gclip) {
                     gnorm = (float) ((ggml_float) gclip / norm);
                 }
