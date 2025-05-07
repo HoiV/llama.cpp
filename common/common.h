@@ -155,6 +155,7 @@ struct gpt_params {
     std::string custom_p_file        = "";  // custom prompts input file
     std::string pfx_cache_dir        = "./llama_cache"; // default prefix cache directory
     std::string pfx_cache_file       = "default";  // prefix cache file 
+    std::string vector_db_file       = "";  // vector database file for llindex
 
     std::vector<std::string> in_files;   // all input files
     std::vector<std::string> antiprompt; // strings upon which more user input is prompted (a.k.a. reverse prompts)
@@ -217,8 +218,8 @@ struct gpt_params {
     bool custom_prompts_on = false; // custom prompts are available
     bool use_prefix_cache  = false; // use prefix cache if it exists and create one if it is not present
     bool use_omp           = false; // use open MP threading
-    bool no_query          = false; // no query mode for llindex
     bool use_proc_affinity = false; // use process affinity
+    bool query_mode        = false; // use query mode (for llindex)
 
     bool cpumask[32]       = {false}; // CPU affinity mask
     bool cpumask_present   = false;   // true if cpumask is specified

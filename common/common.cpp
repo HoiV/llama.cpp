@@ -487,6 +487,14 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.custom_p_file = argv[i];
         return true;
     }
+    if (arg == "-db" || arg == "--vector-db") {
+        if (++i >= argc) {
+            invalid_param = true;
+            return true;
+        }
+        params.vector_db_file = argv[i];
+        return true;
+    }
     if (arg == "-omp") {
         params.use_omp = true;
         return true;
@@ -1673,8 +1681,8 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.chunk_separator = argv[i];
         return true;
     }
-    if (arg == "-nq") {
-        params.no_query = true;
+    if (arg == "--query") {
+        params.query_mode = true;
         return true;
     }
     if (arg == "--junk") {
