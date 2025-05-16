@@ -5189,7 +5189,8 @@ void ggml_vec_dot_q4_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     const block_q8_0 * restrict y = vy;
 
     // Initialize accumulator with zeros
-#if defined(__AVX512BF16__)
+#if defined(__AVX512BF16__) || defined(__AVX512F__)
+#pragma message("Build AVX512 " __FUNCTION__)
     __m256 acc = _mm256_setzero_ps();
     __m128 zerovec = _mm_setzero_ps();
     const __m256i off = _mm256_set1_epi8( 8 );
@@ -5250,6 +5251,7 @@ void ggml_vec_dot_q4_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     }
     *s = hsum_float_8(acc);
 #elif defined(__AVX2__)
+#pragma message("=============== Build AVX2 " __FUNCTION__)
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
     // Main loop
@@ -5272,6 +5274,7 @@ void ggml_vec_dot_q4_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     }
     *s = hsum_float_8(acc);
 #elif defined(__AVX__)
+#pragma message("=============== Build AVX512 " __FUNCTION__)
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
 
@@ -6685,7 +6688,8 @@ void ggml_vec_dot_q8_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     const block_q8_0 * restrict y = vy;
 
 
-#if defined(__AVX512BF16__)
+#if defined(__AVX512BF16__) || defined(__AVX512F__)
+#pragma message("Build AVX512 " __FUNCTION__)
     __m256 acc = _mm256_setzero_ps();
     __m128 zerovec = _mm_setzero_ps();
     int nbmod = nb - (nb % 4);
