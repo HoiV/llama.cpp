@@ -1355,6 +1355,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_BLAS}      ${GGML_HEADERS_BLAS}
             ${GGML_SOURCES_LLAMAFILE} ${GGML_HEADERS_LLAMAFILE}
             ggml-aarch64.c            ggml-aarch64.h
+            ggml-repack.c             ggml-repack.h
             )
 
 target_include_directories(ggml PUBLIC . ${LLAMA_EXTRA_INCLUDES})

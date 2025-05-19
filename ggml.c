@@ -6,6 +6,7 @@
 #include "ggml.h"
 
 #include "ggml-aarch64.h"
+#include "ggml-repack.h"
 
 #if defined(GGML_USE_RYZENAI)
 #include "ggml-ryzenai.h"
@@ -1127,6 +1128,22 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .vec_dot                  = ggml_vec_dot_q8_0_b16_q8_0_b16,
         .vec_dot_type             = GGML_TYPE_Q8_0_B16,
         .nrows                    = 1,
+    },
+    [GGML_TYPE_Q4_K_8_8] = {
+        .type_name                = "q4_K_8x8",
+        .blck_size                = QK_K,
+        .type_size                = sizeof(block_q4_K),
+        .is_quantized             = true,
+        .to_float                 = NULL,
+        .from_float               = NULL,
+        .from_float_reference     = NULL,
+        .vec_dot                  = NULL,
+        .vec_dot_type             = GGML_TYPE_Q8_K,
+        .nrows                    = 1,
+        .ncols                    = 8,
+        .blck_size_interleave     = 8,
+        .gemv                     = ggml_gemv_q4_K_8x8_q8_K,
+        .gemm                     = ggml_gemm_q4_K_8x8_q8_K,
     },
 };
 
@@ -15366,6 +15383,7 @@ void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src1 = dst->src[1];
 
     const enum ggml_type src0_type = src0->type;
+    const enum ggml_type src1_type = src1->type;
 
     const int ith = params->ith;
     const int nth = params->nth;
@@ -15423,7 +15441,7 @@ void ggml_compute_forward_mul_mat(
 
     // we don't support permuted src0 or src1
     GGML_ASSERT(nb00 == ggml_type_size(type));
-    GGML_ASSERT(nb10 == ggml_type_size(src1->type));
+    GGML_ASSERT(nb10 == ggml_type_size(src1_type));
 
     // dst cannot be transposed or permuted
     GGML_ASSERT(nb0 == sizeof(float));
@@ -15456,7 +15474,7 @@ void ggml_compute_forward_mul_mat(
 #if GGML_Q4_0_8_8
 
     if ((gemm != NULL) && (gemv != NULL)) {
-        if (src1->type != vec_dot_type) {
+        if (src1_type != vec_dot_type) {
             char * wdata = params->wdata;
     
             const size_t nbw1 = ggml_row_size(vec_dot_type, ne10);
@@ -15491,7 +15509,6 @@ void ggml_compute_forward_mul_mat(
         //
 
         ggml_wait_for_done(params);
-
     }
 
 #endif // GGML_Q4_0_8_8
@@ -15503,7 +15520,7 @@ void ggml_compute_forward_mul_mat(
 
     if ((gemm != NULL) && (gemv != NULL)) {
         if (ggml_n_dims(src0) == 2) {
-            const void *src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+            const void *src1_wdata = (src1_type == vec_dot_type) ? src1->data : params->wdata;
             const size_t src1_col_stride = ggml_is_contiguous(src1) || src1->type != vec_dot_type ? ggml_row_size(vec_dot_type, ne10) : nb11;
             int64_t src0_start = (ith * ne01) / nth;
             int64_t src0_end   = ((ith + 1) * ne01) / nth;
@@ -15535,7 +15552,6 @@ void ggml_compute_forward_mul_mat(
     // ggml_vec_dot_t vec_dot = type_traits[src0_type].vec_dot;
     // enum ggml_type const vec_dot_type = type_traits[src0_type].vec_dot_type;
 
-    const enum ggml_type src1_type = src1->type;
     const bool init_mat = ((vec_dot_type != src1_type) &&
                            (vec_dot_type != GGML_TYPE_F16));
 
@@ -22435,6 +22451,26 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             int64_t tensor_t0 = 0;
 
             if (!ith) {
+                //
+                // repack tensor if applicable
+                //
+
+                struct ggml_tensor * src0 = node->src[0];
+                if (!src0->is_repacked) {
+                    const struct ggml_tensor * src1 = node->src[1];
+                    if ((op == GGML_OP_MUL_MAT) && (src1->type == GGML_TYPE_F32)) {
+
+                        //
+                        // try to repack tensor into a more optimized format
+                        //
+
+                        enum ggml_type src0_type = ggml_repack_tensor(src0);
+                        if (src0->is_repacked) {
+                            src0->type = src0_type;
+                        }
+                    }
+                }
+
                 tensor_t0 = ggml_time_us();
             }
     

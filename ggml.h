@@ -442,6 +442,9 @@ extern "C" {
         GGML_TYPE_Q4_0_8_8 = 33,
         GGML_TYPE_Q4_0_B16 = 34,
         GGML_TYPE_Q8_0_B16 = 35,
+        GGML_TYPE_Q4_K_8_8 = 36,
+        GGML_TYPE_Q4_0_K   = 37,
+        GGML_TYPE_Q8_0_K   = 38,
         GGML_TYPE_COUNT,
     };
 
@@ -658,7 +661,7 @@ extern "C" {
         struct {
             int n_tasks : 16;
             int is_skipped : 8;
-            int reserved : 8;
+            int is_repacked : 8;
         };
 
         // performance - not used but required for size and alignment

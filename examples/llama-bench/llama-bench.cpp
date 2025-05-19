@@ -208,6 +208,7 @@ struct cmd_params {
     bool process_affinity;
     bool openmp;
     bool verbose;
+    ggml_tensor_repacking_mode_t repacking_mode;
     bool warmup_run;
     output_formats output_format;
     output_formats output_format_stderr;
@@ -241,6 +242,7 @@ static const cmd_params cmd_params_defaults = {
     /* process_affinity     */ false,
     /* openmp               */ false,
     /* verbose              */ false,
+    /* repacking_mode       */ TENSOR_REPACKING_MODE_NONE,
     /* warmup_run           */ false,
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
@@ -279,6 +281,7 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -oe, --output-err <csv|json|md|sql> (default: %s)\n", output_format_str(cmd_params_defaults.output_format_stderr));
     printf("  -affin, --process_affinity          (default: %s)\n", cmd_params_defaults.process_affinity ? "1" : "0");
     printf("  -omp, --openmp                      (default: %s)\n", cmd_params_defaults.openmp ? "1" : "0");
+    printf("  -repack <0|1|2>                     (default: %s)\n", (cmd_params_defaults.repacking_mode == 0) ? "0" : (cmd_params_defaults.repacking_mode == 1) ? "1" : "2");
     printf("  -warm, --warmup_run                 (default: %s)\n", cmd_params_defaults.warmup_run ? "1" : "0");
     printf("  -v, --verbose                       (default: %s)\n", cmd_params_defaults.verbose ? "1" : "0");
     printf("\n");
@@ -329,6 +332,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
     params.numa = cmd_params_defaults.numa;
     params.process_affinity = cmd_params_defaults.process_affinity;
     params.openmp = cmd_params_defaults.openmp;
+    params.repacking_mode = cmd_params_defaults.repacking_mode;
     params.warmup_run = cmd_params_defaults.warmup_run;
     memset(&params.cpumask, 0, sizeof(params.cpumask));
     params.cpumask_present = cmd_params_defaults.cpumask_present;
@@ -567,6 +571,18 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
             params.process_affinity = true;
         } else if (arg == "-omp" || arg == "--openmp") {
             params.openmp = true;
+        } else if (arg == "-repack" || arg == "--repack_scheme") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            int repacking_mode = std::stoi(argv[i]);
+            switch (repacking_mode) {
+                case 0: params.repacking_mode = TENSOR_REPACKING_MODE_NONE; break;
+                case 1: params.repacking_mode = TENSOR_REPACKING_MODE_GGML; break;
+                case 2: params.repacking_mode = TENSOR_REPACKING_MODE_XBOX; break;
+                default: invalid_param = true; break;
+            }
         } else if (arg == "-warm" || arg == "--warmup_run") {
             params.warmup_run = true;
         } else if (arg == "-C" || arg == "--cpu-mask") {
@@ -1418,8 +1434,6 @@ int main(int argc, char ** argv) {
 
     cmd_params params = parse_cmd_params(argc, argv);
 
-    const int64_t t_main_start = ggml_time_us();
-
     // initialize llama.cpp
     if (!params.verbose) {
         llama_log_set(llama_null_log_callback, NULL);
@@ -1462,6 +1476,10 @@ int main(int argc, char ** argv) {
 
     llama_model * lmodel = nullptr;
     const cmd_params_instance * prev_inst = nullptr;
+
+    const int64_t t_main_start = ggml_time_ms();
+    printf("Set repacking mode to %d\n", params.repacking_mode);
+    ggml_set_tensor_repacking_mode(params.repacking_mode);
 
     for (const auto & inst : params_instances) {
         // keep the same model between tests when possible
@@ -1571,6 +1589,13 @@ int main(int argc, char ** argv) {
         llama_free(ctx);
     }
 
+    int64_t t_elapsed = ggml_time_ms() - t_main_start;
+    printf("\n\n=== Elapsed time: %8.2fs\n", t_elapsed / 1000.0);
+
+#ifdef GGML_TENSOR_OP_PERF
+    print_tensor_op_perf_data(t_elapsed);
+#endif // GGML_TENSOR_OP_PERF
+
     llama_free_model(lmodel);
 
     if (p) {
@@ -1582,11 +1607,6 @@ int main(int argc, char ** argv) {
     }
 
     llama_backend_free();
-
-#ifdef GGML_TENSOR_OP_PERF
-    const int64_t t_main_end = ggml_time_us() - t_main_start;
-    print_tensor_op_perf_data(t_main_end);
-#endif // GGML_TENSOR_OP_PERF
 
     return 0;
 }

@@ -3,6 +3,7 @@
 
 #include "ggml.h"
 #include "ggml-backend.h"
+#include "ggml-repack.h"
 
 #include <stddef.h>
 #include <stdint.h>
