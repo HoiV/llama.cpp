@@ -59,6 +59,8 @@ struct xbapp_params {
     ggml_log_level log_level           = (ggml_log_level)0;
     bool cpumask[32]                   = {false}; // for specifying custom CPU mask for process affinity
     bool cpumask_present               = false; // default is false
+    ggml_tensor_repacking_mode_t 
+        repacking_mode                 = TENSOR_REPACKING_MODE_NONE; // default is none
 };
 
 

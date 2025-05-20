@@ -4967,6 +4967,84 @@ static block_q4_0x8 make_block_q4_0x8(block_q4_0 * in, unsigned int blck_size_in
     return out;
 }
 
+static block_q4_Kx8 make_block_q4_Kx8(block_q4_K * in, unsigned int blck_size_interleave) {
+    block_q4_Kx8 out;
+    //Delta(scale) and dmin values of the eight Q4_K structures are copied onto the output interleaved structure
+    for (int i = 0; i < 8; i++) {
+        // out.d[i] = in[i].GGML_COMMON_AGGR_U.GGML_COMMON_AGGR_S.d;
+        out.d[i] = in[i].d;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        // out.dmin[i] = in[i].GGML_COMMON_AGGR_U.GGML_COMMON_AGGR_S.dmin;
+        out.dmin[i] = in[i].dmin;
+    }
+
+    const int end = QK_K * 4 / blck_size_interleave;
+
+    // Interleave Q4_K quants by taking 8 bytes at a time
+    for (int i = 0; i < end; ++i) {
+        int src_id = i % 8;
+        int src_offset = (i / 8) * blck_size_interleave;
+        int dst_offset = i * blck_size_interleave;
+
+        uint64_t elems;
+        memcpy(&elems, &in[src_id].qs[src_offset], sizeof(uint64_t));
+        memcpy(&out.qs[dst_offset], &elems, sizeof(uint64_t));
+    }
+
+    // The below logic is designed so as to unpack and rearrange scales and mins values in Q4_K
+    // Currently the Q4_K structure has 8 scales and 8 mins packed in 12 bytes ( 6 bits for each value)
+    // The output Q4_Kx8 structure has 96 bytes
+    // Every 12 byte is packed such that it contains scales and mins for corresponding sub blocks from Q4_K structure
+    // For eg - First 12 bytes contains 8 scales and 8 mins - each of first sub block from different Q4_K structures
+    uint8_t s[8], m[8];
+
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 8; j++) {
+            s[j] = in[j].scales[i] & 63;
+            m[j] = in[j].scales[i + 4] & 63;
+        }
+
+        out.scales[i * 12]      = (s[0] & 63) + ((s[4] & 48) << 2);
+        out.scales[i * 12 + 1]  = (s[1] & 63) + ((s[5] & 48) << 2);
+        out.scales[i * 12 + 2]  = (s[2] & 63) + ((s[6] & 48) << 2);
+        out.scales[i * 12 + 3]  = (s[3] & 63) + ((s[7] & 48) << 2);
+        out.scales[i * 12 + 4]  = (m[0] & 63) + ((m[4] & 48) << 2);
+        out.scales[i * 12 + 5]  = (m[1] & 63) + ((m[5] & 48) << 2);
+        out.scales[i * 12 + 6]  = (m[2] & 63) + ((m[6] & 48) << 2);
+        out.scales[i * 12 + 7]  = (m[3] & 63) + ((m[7] & 48) << 2);
+        out.scales[i * 12 + 8]  = (s[4] & 15) + ((m[4] & 15) << 4);
+        out.scales[i * 12 + 9]  = (s[5] & 15) + ((m[5] & 15) << 4);
+        out.scales[i * 12 + 10] = (s[6] & 15) + ((m[6] & 15) << 4);
+        out.scales[i * 12 + 11] = (s[7] & 15) + ((m[7] & 15) << 4);
+
+    }
+
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 8; j++) {
+            s[j] = ((in[j].scales[i] & 192) >> 2) | (in[j].scales[i+8] & 15);
+            m[j] = ((in[j].scales[i + 4] & 192) >> 2) | ((in[j].scales[i+8] & 240) >> 4);
+        }
+
+        out.scales[i * 12 + 48] = (s[0] & 63) + ((s[4] & 48) << 2);
+        out.scales[i * 12 + 49] = (s[1] & 63) + ((s[5] & 48) << 2);
+        out.scales[i * 12 + 50] = (s[2] & 63) + ((s[6] & 48) << 2);
+        out.scales[i * 12 + 51] = (s[3] & 63) + ((s[7] & 48) << 2);
+        out.scales[i * 12 + 52] = (m[0] & 63) + ((m[4] & 48) << 2);
+        out.scales[i * 12 + 53] = (m[1] & 63) + ((m[5] & 48) << 2);
+        out.scales[i * 12 + 54] = (m[2] & 63) + ((m[6] & 48) << 2);
+        out.scales[i * 12 + 55] = (m[3] & 63) + ((m[7] & 48) << 2);
+        out.scales[i * 12 + 56] = (s[4] & 15) + ((m[4] & 15) << 4);
+        out.scales[i * 12 + 57] = (s[5] & 15) + ((m[5] & 15) << 4);
+        out.scales[i * 12 + 58] = (s[6] & 15) + ((m[6] & 15) << 4);
+        out.scales[i * 12 + 59] = (s[7] & 15) + ((m[7] & 15) << 4);
+
+    }
+
+    return out;
+}
+
 static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block, const void * restrict data, size_t data_size) {
     GGML_ASSERT(t->type == GGML_TYPE_Q4_0);
     GGML_ASSERT(interleave_block == 8);
@@ -4998,30 +5076,71 @@ static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block,
     GGML_UNUSED(data_size);
 }
 
+static int repack_q4_K_to_q4_K_8_bl(struct ggml_tensor * t, int interleave_block, const void * GGML_RESTRICT data, size_t data_size) {
+    GGML_ASSERT(t->type == GGML_TYPE_Q4_K);
+    GGML_ASSERT(interleave_block == 8);
+    int nrows_interleaved = 8;
+
+    block_q4_Kx8 * dst = (block_q4_Kx8*)t->data;
+    const block_q4_K * src = (const block_q4_K*) data;
+    block_q4_K dst_tmp[8];
+    int nrow = ggml_nrows(t);
+    int nblocks = t->ne[0] / QK_K;
+
+    GGML_ASSERT(data_size == nrow * nblocks * sizeof(block_q4_K));
+
+    if (t->ne[1] % nrows_interleaved != 0 || t->ne[0] % 8 != 0) {
+        return -1;
+    }
+
+    for (int b = 0; b < nrow; b += nrows_interleaved) {
+        for (int64_t x = 0; x < nblocks; x++) {
+            for (int i  = 0; i < nrows_interleaved; i++ ) {
+                dst_tmp[i] = src[x + i * nblocks];
+            }
+            *dst++ = make_block_q4_Kx8(dst_tmp, interleave_block);
+        }
+        src += nrows_interleaved * nblocks;
+    }
+    return 0;
+
+    GGML_UNUSED(data_size);
+}
+
 // Prepare for optimized kernels if applicable
-void ggml_aarch64_repack_tensor(struct ggml_tensor * cur, enum ggml_type repack_type, const void * restrict data, size_t data_size) {
+bool ggml_aarch64_repack_tensor(struct ggml_tensor * cur, enum ggml_type repack_type, const void * restrict data, size_t data_size) {
     if (cur->type == repack_type) {
         memcpy(cur->data, data, data_size);
-        return;
+        return true;
     }
 
     if (cur->type == GGML_TYPE_Q4_0) {
-        switch (repack_type) {
-            case GGML_TYPE_Q4_0_8_8:
-                repack_q4_0_to_q4_0_8_bl(cur, 8, data, data_size);
-                break;
-            default:
-                GGML_ASSERT("Unsupported type");
+        if (repack_type == GGML_TYPE_Q4_0_8_8) {
+            if (repack_q4_0_to_q4_0_8_bl(cur, 8, data, data_size) != 0) {
+                return false;
+            }
+        }
+    } else if (cur->type == GGML_TYPE_Q4_K) {
+        if (repack_type == GGML_TYPE_Q4_K_8_8) {
+            if (repack_q4_K_to_q4_K_8_bl(cur, 8, data, data_size) != 0) {
+                return false;
+            }
         }
     } else {
         GGML_ASSERT("Unsupported type");
     }
+
+    return true;
 }
 
 enum ggml_type ggml_aarch64_get_optimal_repack_type(const struct ggml_tensor * cur) {
     if (cur->type == GGML_TYPE_Q4_0) {
         if (ggml_cpu_has_avx2()) {
             return GGML_TYPE_Q4_0_8_8;
+        }
+    } else if (cur->type == GGML_TYPE_Q4_K) {
+        if (ggml_cpu_has_avx2()) {
+            return GGML_TYPE_Q4_K_8_8;
         }
     }
 

@@ -19,7 +19,8 @@ extern "C" {
 typedef enum {
     TENSOR_REPACKING_MODE_NONE = 0,
     TENSOR_REPACKING_MODE_GGML = 1,
-    TENSOR_REPACKING_MODE_XBOX = 2
+    TENSOR_REPACKING_MODE_XBOX = 2,
+    TENSOR_REPACKING_MODE_MAX  = 3
 } ggml_tensor_repacking_mode_t;
 
 typedef struct {

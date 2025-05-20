@@ -1801,7 +1801,16 @@ struct llama_mmap {
             throw std::runtime_error(format("CreateFileMappingA failed: %s", llama_format_win_err(error).c_str()));
         }
 
+#ifndef GGML_TENSOR_OP_PERF
         addr = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+#else
+        // 
+        // to allow repacking if needed but original mapped file is preserved
+        //
+
+        addr = MapViewOfFile(hMapping, FILE_MAP_COPY, 0, 0, 0);
+#endif
+
         DWORD error = GetLastError();
         CloseHandle(hMapping);
 

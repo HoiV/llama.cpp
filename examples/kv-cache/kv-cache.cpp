@@ -98,7 +98,7 @@ namespace console {
             fflush(out);
         }
     }
-}
+} // namespace console
 
 bool processCustomPromptsFromFile(xbapp_params& xbparams) {
     std::ifstream cpfile(xbparams.custom_p_file);
@@ -267,6 +267,25 @@ int main(int argc, char** argv) {
                     print_usage(argc, argv);
                     return 1;
                 }
+            } else if (strcmp(argv[i], "-repack") == 0) {
+                if (i + 1 < argc) {
+                    try {
+                        int32_t repacking_mode = std::stoi(argv[++i]);
+                        if (repacking_mode >= (int32_t) TENSOR_REPACKING_MODE_MAX) {
+                            printf("%s: repacking mode %d is invalid (should be less than %d)\n",
+                                repacking_mode, (uint32_t) TENSOR_REPACKING_MODE_MAX);
+                            return 1;
+                        } else {
+                            xbparams.repacking_mode = (ggml_tensor_repacking_mode_t) repacking_mode;
+                        }
+                    } catch (...) {
+                        print_usage(argc, argv);
+                        return 1;
+                    }
+                } else {
+                    print_usage(argc, argv);
+                    return 1;
+                }
             } else if (strcmp(argv[i], "-n") == 0) {
                 if (i + 1 < argc) {
                     try {
@@ -363,6 +382,10 @@ int main(int argc, char** argv) {
             n_threads = 4;
         }
         xbparams.n_threads = n_threads;
+    }
+
+    if (xbparams.repacking_mode != TENSOR_REPACKING_MODE_NONE) {
+        ggml_set_tensor_repacking_mode(xbparams.repacking_mode);
     }
 
 #ifdef GGML_USE_OPENMP

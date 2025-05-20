@@ -705,7 +705,7 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
 void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
-void ggml_vec_dot_bf16(int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, const size_t bx, const ggml_bf16_t * restrict y, size_t by, int nrc);
 void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
 void ggml_vec_dot_bf16_f32(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
@@ -3454,7 +3454,7 @@ void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
     *s = sumf;
 }
 
-void ggml_vec_sumsq_bf16(const uint64_t n, float * s, ggml_bf16_t * x) {
+void ggml_vec_sumsq_bf16(const uint64_t n, float * s, const ggml_bf16_t * x) {
 
     uint64_t i = 0;
     float sumf = 0.0f;
@@ -3690,7 +3690,7 @@ float ggml_cosine_similarity_f32(const int n, const float *x,  const float *y) {
     return dot / sqrtf(denom_x * denom_y);
 }
 
-void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, ggml_bf16_t * restrict x, size_t bx, ggml_bf16_t * restrict y, size_t by, int nrc) {
+void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const ggml_bf16_t * restrict y, size_t by, int nrc) {
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -15379,14 +15379,50 @@ void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
 
-    const struct ggml_tensor * src0 = dst->src[0];
+    struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
-    const enum ggml_type src0_type = src0->type;
+    enum ggml_type src0_type = src0->type;
     const enum ggml_type src1_type = src1->type;
 
     const int ith = params->ith;
     const int nth = params->nth;
+
+    if ((!src0->is_repacked) || (src1_type != GGML_TYPE_F32)) {
+        if ((src0_type == GGML_TYPE_Q4_0) ||
+            (src0_type == GGML_TYPE_Q8_0) || 
+            (src0_type == GGML_TYPE_Q4_K)) {
+
+            //
+            // repack tensor if applicable
+            //
+
+            if (!ith) {
+                if (!src0->is_repacked) {
+                    src0_type = ggml_repack_tensor(src0);
+                    if (src0->is_repacked) {
+                        //
+                        // update the new type
+                        //
+
+                        src0->type = src0_type;
+                    }
+                }
+            }
+
+            //
+            // Wait until repacking process is done (if any)
+            //
+
+            ggml_wait_for_done(params);
+        }
+
+        //
+        // refresh for all threads if the type has changed through repacking
+        // 
+    
+        src0_type = src0->type;
+    }
 
 #ifdef GGML_TENSOR_OP_PERF
     int64_t vec_dot_src0_t0 = 0;
@@ -22451,26 +22487,6 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             int64_t tensor_t0 = 0;
 
             if (!ith) {
-                //
-                // repack tensor if applicable
-                //
-
-                struct ggml_tensor * src0 = node->src[0];
-                if (!src0->is_repacked) {
-                    const struct ggml_tensor * src1 = node->src[1];
-                    if ((op == GGML_OP_MUL_MAT) && (src1->type == GGML_TYPE_F32)) {
-
-                        //
-                        // try to repack tensor into a more optimized format
-                        //
-
-                        enum ggml_type src0_type = ggml_repack_tensor(src0);
-                        if (src0->is_repacked) {
-                            src0->type = src0_type;
-                        }
-                    }
-                }
-
                 tensor_t0 = ggml_time_us();
             }
     
