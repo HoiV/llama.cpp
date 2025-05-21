@@ -1044,6 +1044,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .type_size                = sizeof(block_q8_K),
         .is_quantized             = true,
         .from_float               = (ggml_from_float_t)quantize_row_q8_K,
+        .from_float_to_mat        = quantize_mat_q8_K,
     },
     [GGML_TYPE_BF16] = {
         .type_name                = "bf16",
@@ -1144,6 +1145,30 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .blck_size_interleave     = 8,
         .gemv                     = ggml_gemv_q4_K_8x8_q8_K,
         .gemm                     = ggml_gemm_q4_K_8x8_q8_K,
+    },
+    [GGML_TYPE_Q4_0_K] = {
+        .type_name                = "q4_0_K",
+        .blck_size                = QK_K,
+        .type_size                = sizeof(block_q4_0_K),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_q4_0,
+        .from_float               = quantize_row_q4_0,
+        .from_float_reference     = quantize_row_q4_0,
+        .vec_dot                  = xx_vec_dot_q4_0_K_q8_0_K,
+        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .nrows                    = 1,
+    },
+    [GGML_TYPE_Q8_0_K] = {
+        .type_name                = "q8_0_K",
+        .blck_size                = QK_K,
+        .type_size                = sizeof(block_q8_0_K),
+        .is_quantized             = true,
+        .to_float                 = NULL,
+        .from_float               = NULL,
+        .from_float_reference     = NULL,
+        .vec_dot                  = xx_vec_dot_q8_0_K_q8_0_K,
+        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .nrows                    = 1,
     },
 };
 
@@ -15402,7 +15427,7 @@ void ggml_compute_forward_mul_mat(
                     src0_type = ggml_repack_tensor(src0);
                     if (src0->is_repacked) {
                         //
-                        // update the new type
+                        // update new tensor type
                         //
 
                         src0->type = src0_type;
@@ -15506,9 +15531,6 @@ void ggml_compute_forward_mul_mat(
 
 #endif
 
-#define GGML_Q4_0_8_8 1
-#if GGML_Q4_0_8_8
-
     if ((gemm != NULL) && (gemv != NULL)) {
         if (src1_type != vec_dot_type) {
             char * wdata = params->wdata;
@@ -15547,12 +15569,8 @@ void ggml_compute_forward_mul_mat(
         ggml_wait_for_done(params);
     }
 
-#endif // GGML_Q4_0_8_8
-
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
-
-#if GGML_Q4_0_8_8
 
     if ((gemm != NULL) && (gemv != NULL)) {
         if (ggml_n_dims(src0) == 2) {
@@ -15577,8 +15595,6 @@ void ggml_compute_forward_mul_mat(
             return;
         }
     }
-
-#endif // GGML_Q4_0_8_8
 
 #if 1 // ORG_ALGO for distributing work over the nth cores
 

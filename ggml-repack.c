@@ -180,10 +180,18 @@ void
 xx_vec_dot_q4_0_K_q8_0_K (
     const uint64_t n,
     float * s,
+    size_t bs,
     const block_q4_0_K * x,
-    const block_q8_0_K * y
+    size_t bx,
+    const block_q8_0_K * y,
+    size_t by,
+    int nrc
     )
 {
+    GGML_UNUSED(bs);
+    GGML_UNUSED(bx);
+    GGML_UNUSED(by);
+    GGML_UNUSED(nrc);
 
     const uint64_t nb = n / QK_K;
 
@@ -258,10 +266,18 @@ void
 xx_vec_dot_q8_0_K_q8_0_K (
     const uint64_t n,
     float * s,
-    const block_q8_0_K * x,
-    const block_q8_0_K * y
+    size_t bs,
+    const block_q4_0_K * x,
+    size_t bx,
+    const block_q8_0_K * y,
+    size_t by,
+    int nrc
     )
 {
+    GGML_UNUSED(bs);
+    GGML_UNUSED(bx);
+    GGML_UNUSED(by);
+    GGML_UNUSED(nrc);
 
     const uint64_t nb = n / QK_K;
 
@@ -330,9 +346,12 @@ bool ggml_xbox_repack_tensor (
     size_t data_size
     )
 {
-    block_q4_0 * q40x = tensor->data;
+    block_q4_0 * q40x = src_data;
     block_q4_0_K q4kx_tmp;
     block_q4_0_K * q4kx = tensor->data;
+    block_q8_0 * q80x = src_data;
+    block_q8_0_K q8kx_tmp;
+    block_q8_0_K *q8kx = tensor->data;
 
     GGML_ASSERT(tensor->type != repack_type);
     GGML_ASSERT(sizeof(block_q4_0) == sizeof(bock_q4_0_K));
@@ -342,12 +361,21 @@ bool ggml_xbox_repack_tensor (
         return false;
     }
 
-    size_t quants_count = data_size / QK_K;
+    size_t blocks_count = data_size / QK_K;
 
-    for (int i = 0; i < quants_count; i++) {
-        make_q4_0_k_quant(&q4kx_tmp, q40x + i * (QK_K / QK4_0));
-        memcpy(q4kx + i, &q4kx_tmp, sizeof(block_q4_0_K));
+    if (repack_type == GGML_TYPE_Q4_0_K) {
+        for (int i = 0; i < blocks_count; i++) {
+            make_q4_0_k_quant(&q4kx_tmp, q40x + i * (QK_K / QK4_0));
+            memcpy(q4kx + i, &q4kx_tmp, sizeof(block_q4_0_K));
+        }
+    } else if (repack_type == GGML_TYPE_Q8_0_K) {
+        for (int i = 0; i < blocks_count; i++) {
+            make_q8_0_k_quant(&q8kx_tmp, q80x + i * (QK_K / QK8_0));
+            memcpy(q8kx + i, &q8kx_tmp, sizeof(block_q8_0_K));
+        }
     }
+
+    return true;
 }
 
 enum ggml_type ggml_repack_tensor (
@@ -382,19 +410,23 @@ enum ggml_type ggml_repack_tensor (
 
             if (type != repack_type) {
                 size_t data_size = ggml_nbytes(tensor);
+#if 1
                 void *src_data = malloc(data_size);
                 if (src_data == NULL) {
                     return type;
                 }
                 memcpy(src_data, tensor->data, data_size);
-
+#else                
+                void *src_data = tensor->data;
+#endif
                 if (ggml_aarch64_repack_tensor(tensor, repack_type, src_data, data_size)) {
-                    // printf("*** converting tensor %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
+                    // printf("*** repacking tensor GGML mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
                     tensor->is_repacked = true;
                     type = repack_type;
                 }
-                
+#if 1
                 free(src_data);
+#endif
             }
 
             break;
@@ -406,25 +438,31 @@ enum ggml_type ggml_repack_tensor (
 
             if (type == GGML_TYPE_Q4_0) {
                 repack_type = GGML_TYPE_Q4_0_K;
-            }
-            else if (type == GGML_TYPE_Q8_0) {
+            } else if (type == GGML_TYPE_Q8_0) {
+                printf("Q8_0 data size %zd\n", ggml_nbytes(tensor));
                 repack_type = GGML_TYPE_Q8_0_K;
             }
 
             if (type != repack_type) {
                 size_t data_size = ggml_nbytes(tensor);
+#if 1
                 void *src_data = malloc(data_size);
                 if (src_data == NULL) {
                     return type;
                 }
                 memcpy(src_data, tensor->data, data_size);
+#else                
+                void *src_data = tensor->data;
+#endif
 
                 if (ggml_xbox_repack_tensor(tensor, repack_type, src_data, data_size)) {
+                    // printf("*** repacking tensor Xbox mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
                     tensor->is_repacked = true;
                     type = repack_type;
                 }
-
+#if 1
                 free(src_data);
+#endif
             }
 
             break;

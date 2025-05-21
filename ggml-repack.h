@@ -39,6 +39,9 @@ void ggml_set_tensor_repacking_mode(ggml_tensor_repacking_mode_t type);
 
 enum ggml_type ggml_repack_tensor(struct ggml_tensor *tensor);
 
+// vec_dot routines for Xbox repacked tensors
+void xx_vec_dot_q4_0_K_q8_0_K(const uint64_t n, float * s, size_t bs, const block_q4_0_K * x, size_t bx, const block_q8_0_K * y, size_t by, int nrc);
+void xx_vec_dot_q8_0_K_q8_0_K(const uint64_t n, float * s, size_t bs, const block_q4_0_K * x, size_t bx, const block_q8_0_K * y, size_t by, int nrc);
 
 #ifdef __cplusplus
 }
