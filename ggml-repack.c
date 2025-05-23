@@ -410,23 +410,13 @@ enum ggml_type ggml_repack_tensor (
 
             if (type != repack_type) {
                 size_t data_size = ggml_nbytes(tensor);
-#if 1
-                void *src_data = malloc(data_size);
-                if (src_data == NULL) {
-                    return type;
-                }
-                memcpy(src_data, tensor->data, data_size);
-#else                
                 void *src_data = tensor->data;
-#endif
+
                 if (ggml_aarch64_repack_tensor(tensor, repack_type, src_data, data_size)) {
                     // printf("*** repacking tensor GGML mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
                     tensor->is_repacked = true;
                     type = repack_type;
                 }
-#if 1
-                free(src_data);
-#endif
             }
 
             break;
@@ -445,24 +435,13 @@ enum ggml_type ggml_repack_tensor (
 
             if (type != repack_type) {
                 size_t data_size = ggml_nbytes(tensor);
-#if 1
-                void *src_data = malloc(data_size);
-                if (src_data == NULL) {
-                    return type;
-                }
-                memcpy(src_data, tensor->data, data_size);
-#else                
                 void *src_data = tensor->data;
-#endif
 
                 if (ggml_xbox_repack_tensor(tensor, repack_type, src_data, data_size)) {
                     // printf("*** repacking tensor Xbox mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
                     tensor->is_repacked = true;
                     type = repack_type;
                 }
-#if 1
-                free(src_data);
-#endif
             }
 
             break;

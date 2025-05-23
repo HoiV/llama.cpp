@@ -5323,62 +5323,114 @@ static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block,
     GGML_ASSERT(t->type == GGML_TYPE_Q4_0);
     GGML_ASSERT(interleave_block == 8);
 
+#define COLUMNS_INTERLEAVED 8
+
+    // could be 4 or 8 - locked to 8 for q4_0_8_8
+    int ncols_interleaved = COLUMNS_INTERLEAVED;
+
     block_q4_0x8 * dst = (block_q4_0x8*)t->data;
+    block_q4_0x8 * dst_buffer = NULL;
     const block_q4_0 * src = (const block_q4_0*) data;
-    block_q4_0 dst_tmp[8];
+    block_q4_0 dst_tmp[COLUMNS_INTERLEAVED];
     int nrow = t->ne[1]; // Number of rows
-    int nrows_interleaved = 8;
     int nblocks = t->ne[0] / QK4_0;
 
     GGML_ASSERT(data_size == nrow * nblocks * sizeof(block_q4_0));
 
-    if (nrow % nrows_interleaved != 0 || t->ne[0] % 8 != 0) {
+    if (nrow % ncols_interleaved != 0 || t->ne[0] % COLUMNS_INTERLEAVED != 0) {
         return -1;
     }
 
-    for (int b = 0; b < nrow; b += nrows_interleaved) {
+    // allocate enough buffer space for one row of target blocks
+    // to avoid walk over src data during repacking
+    int row_q4_0x8_size = nblocks * sizeof(block_q4_0x8);
+    dst_buffer = malloc(row_q4_0x8_size);
+    if (dst_buffer == NULL) {
+        return -1;
+    }
+    memcpy(dst_buffer, src, row_q4_0x8_size);
+    block_q4_0x8 * dst_buffer_cur = dst_buffer;
+
+    for (int b = 0; b < nrow; b += ncols_interleaved) {
         for (int64_t x = 0; x < nblocks; x++) {
-            for (int i  = 0; i < nrows_interleaved; i++ ) {
+            for (int i  = 0; i < ncols_interleaved; i++ ) {
                 dst_tmp[i] = src[x + i * nblocks];
             }
-            *dst++ = make_block_q4_0x8(dst_tmp, interleave_block);
+            // write new block_q4_0x8 data to working buffer
+            GGML_ASSERT(dst_buffer < (dst_buffer_start + nblocks));
+            *dst_buffer_cur++ = make_block_q4_0x8(dst_tmp, COLUMNS_INTERLEAVED);
         }
-        src += nrows_interleaved * nblocks;
+        src += ncols_interleaved * nblocks;
+
+        // flush destination holding buffer to real tensor data
+        memcpy(dst, dst_buffer, row_q4_0x8_size);
+        dst_buffer_cur = dst_buffer;
+        dst += nblocks;
     }
+
+    free(dst_buffer);
+
     return 0;
 
     GGML_UNUSED(data_size);
+    GGML_UNUSED(interleave_block);
 }
 
 static int repack_q4_K_to_q4_K_8_bl(struct ggml_tensor * t, int interleave_block, const void * GGML_RESTRICT data, size_t data_size) {
     GGML_ASSERT(t->type == GGML_TYPE_Q4_K);
     GGML_ASSERT(interleave_block == 8);
-    int nrows_interleaved = 8;
+
+    #define COLUMNS_INTERLEAVED 8
+
+    // could be 4 or 8 - locked to 8 for q4_0_8_8
+    int ncols_interleaved = COLUMNS_INTERLEAVED;
 
     block_q4_Kx8 * dst = (block_q4_Kx8*)t->data;
+    block_q4_Kx8 * dst_buffer = NULL;
     const block_q4_K * src = (const block_q4_K*) data;
-    block_q4_K dst_tmp[8];
+    block_q4_K dst_tmp[COLUMNS_INTERLEAVED];
     int nrow = ggml_nrows(t);
     int nblocks = t->ne[0] / QK_K;
 
     GGML_ASSERT(data_size == nrow * nblocks * sizeof(block_q4_K));
 
-    if (t->ne[1] % nrows_interleaved != 0 || t->ne[0] % 8 != 0) {
+    if (t->ne[1] % ncols_interleaved != 0 || t->ne[0] % COLUMNS_INTERLEAVED != 0) {
         return -1;
     }
 
-    for (int b = 0; b < nrow; b += nrows_interleaved) {
+    // allocate enough buffer space for one row of target blocks
+    // to avoid walk over src data during repacking
+    int row_q4_Kx8_size = nblocks * sizeof(block_q4_Kx8);
+    dst_buffer = malloc(row_q4_Kx8_size);
+    if (dst_buffer == NULL) {
+        return -1;
+    }
+    memcpy(dst_buffer, src, row_q4_Kx8_size);
+    block_q4_Kx8 * dst_buffer_cur = dst_buffer;
+
+    for (int b = 0; b < nrow; b += ncols_interleaved) {
         for (int64_t x = 0; x < nblocks; x++) {
-            for (int i  = 0; i < nrows_interleaved; i++ ) {
+            for (int i  = 0; i < ncols_interleaved; i++ ) {
                 dst_tmp[i] = src[x + i * nblocks];
             }
-            *dst++ = make_block_q4_Kx8(dst_tmp, interleave_block);
+            // write new block_q4_0x8 data to working buffer
+            GGML_ASSERT(dst_buffer < (dst_buffer_start + nblocks));
+            *dst_buffer_cur++ = make_block_q4_Kx8(dst_tmp, COLUMNS_INTERLEAVED);
         }
-        src += nrows_interleaved * nblocks;
+        src += ncols_interleaved * nblocks;
+
+        // flush destination holding buffer to real tensor data
+        memcpy(dst, dst_buffer, row_q4_Kx8_size);
+        dst_buffer_cur = dst_buffer;
+        dst += nblocks;
     }
+
+    free(dst_buffer);
+
     return 0;
 
     GGML_UNUSED(data_size);
+    GGML_UNUSED(interleave_block);
 }
 
 // Prepare for optimized kernels if applicable
