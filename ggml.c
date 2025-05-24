@@ -41,13 +41,6 @@
 #include <unistd.h>
 #endif
 
-#if defined(__ARM_FEATURE_SVE)
-int ggml_sve_cnt_b = 0;
-#endif
-#if defined(__ARM_FEATURE_SVE) || defined(__ARM_FEATURE_MATMUL_INT8)
-#undef GGML_USE_LLAMAFILE
-#endif
-
 #ifdef GGML_USE_LLAMAFILE
 #include "sgemm.h"
 #endif
@@ -234,12 +227,6 @@ void ggml_print_backtrace(void) {
 // end of logging block
 //
 
-#ifdef GGML_USE_ACCELERATE
-// uncomment to use vDSP for soft max computation
-// note: not sure if it is actually faster
-//#define GGML_SOFT_MAX_ACCELERATE
-#endif
-
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #define GGML_ALIGNED_MALLOC(size) _aligned_malloc(size, GGML_MEM_ALIGN)
 #define GGML_ALIGNED_FREE(ptr)    _aligned_free(ptr)
@@ -317,10 +304,6 @@ inline static void * ggml_calloc(size_t num, size_t size) {
 #define UNUSED GGML_UNUSED
 #define SWAP(x, y, T) do { T SWAP = x; x = y; y = SWAP; } while (0)
 
-#if defined(GGML_USE_ACCELERATE)
-#include <Accelerate/Accelerate.h>
-#endif
-
 // floating point type used to accumulate sums
 //typedef double ggml_float;
 typedef float ggml_float; // ****** consider changing to float
@@ -342,7 +325,7 @@ DECLSPEC_CACHEALIGN ggml_fp16_t ggml_table_gelu_f16[1 << 16];
 DECLSPEC_CACHEALIGN ggml_fp16_t ggml_table_gelu_quick_f16[1 << 16];
 
 // precomputed f32 table for f16 (256 KB) (ggml-impl.h)
-float ggml_table_f32_f16[1 << 16];
+DECLSPEC_CACHEALIGN float ggml_table_f32_f16[1 << 16];
 
 GGML_CALL const char * ggml_status_to_string(enum ggml_status status) {
     switch (status) {
@@ -695,18 +678,14 @@ FILE * ggml_fopen(const char * fname, const char * mode) {
 #if defined(__cpp_lib_hardware_interference_size)
 #define CACHE_LINE_SIZE hardware_destructive_interference_size
 #else
-#if defined(__POWER9_VECTOR__)
-#define CACHE_LINE_SIZE 128
-#else
 #define CACHE_LINE_SIZE 64
-#endif
 #endif
 
 static const size_t CACHE_LINE_SIZE_F32 = CACHE_LINE_SIZE/sizeof(float);
 
-void ggml_vec_dot_f32(int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f32(const int n, float * restrict s, size_t bs, const float * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, const size_t bx, const ggml_bf16_t * restrict y, size_t by, int nrc);
-void ggml_vec_dot_f16(int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
+void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc);
 void ggml_vec_dot_bf16_f32(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 void ggml_vec_dot_f16_f32(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const float * restrict y, size_t by, int nrc);
 
@@ -773,11 +752,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float_reference     = quantize_row_q4_0,
         .vec_dot                  = ggml_vec_dot_q4_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
-#if defined (__ARM_FEATURE_MATMUL_INT8)
-        .nrows                    = 2,
-#else
         .nrows                    = 1,
-#endif
     },
     [GGML_TYPE_Q4_1] = {
         .type_name                = "q4_1",
@@ -789,11 +764,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float_reference     = (ggml_from_float_t) quantize_row_q4_1_reference,
         .vec_dot                  = ggml_vec_dot_q4_1_q8_1,
         .vec_dot_type             = GGML_TYPE_Q8_1,
-#if defined (__ARM_FEATURE_MATMUL_INT8)
-        .nrows                    = 2,
-#else
         .nrows                    = 1,
-#endif
     },
     [4] = { // GGML_TYPE_Q4_2
         .type_name                = "DEPRECATED",
@@ -854,11 +825,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float_to_mat        = quantize_mat_q8_0,
         .vec_dot                  = ggml_vec_dot_q8_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
-#if defined (__ARM_FEATURE_MATMUL_INT8)
-        .nrows                    = 2,
-#else
         .nrows                    = 1,
-#endif
     },
     [GGML_TYPE_Q8_1] = {
         .type_name                = "q8_1",
@@ -1153,7 +1120,6 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = (ggml_to_float_t) dequantize_row_q4_0,
         .from_float               = quantize_row_q4_0,
-        .from_float_reference     = quantize_row_q4_0,
         .vec_dot                  = xx_vec_dot_q4_0_K_q8_0_K,
         .vec_dot_type             = GGML_TYPE_Q8_0,
         .nrows                    = 1,
@@ -1165,7 +1131,6 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = true,
         .to_float                 = NULL,
         .from_float               = NULL,
-        .from_float_reference     = NULL,
         .vec_dot                  = xx_vec_dot_q8_0_K_q8_0_K,
         .vec_dot_type             = GGML_TYPE_Q8_0,
         .nrows                    = 1,
@@ -1193,122 +1158,7 @@ ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type) {
 //   number of elements to fit in a single register
 //
 
-#if defined(__ARM_NEON) && defined(__ARM_FEATURE_FMA)
-
-#define GGML_SIMD
-
-// F32 NEON
-
-#define GGML_F32_STEP 16
-#define GGML_F32_EPR  4
-
-#define GGML_F32x4              float32x4_t
-#define GGML_F32x4_ZERO         vdupq_n_f32(0.0f)
-#define GGML_F32x4_SET1(x)      vdupq_n_f32(x)
-#define GGML_F32x4_LOAD         vld1q_f32
-#define GGML_F32x4_STORE        vst1q_f32
-#define GGML_F32x4_FMA(a, b, c) vfmaq_f32(a, b, c)
-#define GGML_F32x4_ADD          vaddq_f32
-#define GGML_F32x4_MUL          vmulq_f32
-#define GGML_F32x4_REDUCE_ONE(x) vaddvq_f32(x)
-#define GGML_F32x4_REDUCE(res, x)              \
-{                                              \
-    int offset = GGML_F32_ARR >> 1;            \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vaddq_f32(x[i], x[offset+i]);   \
-    }                                          \
-    offset >>= 1;                              \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vaddq_f32(x[i], x[offset+i]);   \
-    }                                          \
-    offset >>= 1;                              \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vaddq_f32(x[i], x[offset+i]);   \
-    }                                          \
-    res = GGML_F32x4_REDUCE_ONE(x[0]);         \
-}
-
-#define GGML_F32_VEC        GGML_F32x4
-#define GGML_F32_VEC_ZERO   GGML_F32x4_ZERO
-#define GGML_F32_VEC_SET1   GGML_F32x4_SET1
-#define GGML_F32_VEC_LOAD   GGML_F32x4_LOAD
-#define GGML_F32_VEC_STORE  GGML_F32x4_STORE
-#define GGML_F32_VEC_FMA    GGML_F32x4_FMA
-#define GGML_F32_VEC_ADD    GGML_F32x4_ADD
-#define GGML_F32_VEC_MUL    GGML_F32x4_MUL
-#define GGML_F32_VEC_REDUCE GGML_F32x4_REDUCE
-
-// F16 NEON
-
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-    #define GGML_F16_STEP 32
-    #define GGML_F16_EPR  8
-
-    #define GGML_F16x8              float16x8_t
-    #define GGML_F16x8_ZERO         vdupq_n_f16(0.0f)
-    #define GGML_F16x8_SET1(x)      vdupq_n_f16(x)
-    #define GGML_F16x8_LOAD(x)      vld1q_f16((const ggml_fp16_internal_t *)(x))
-    #define GGML_F16x8_STORE        vst1q_f16
-    #define GGML_F16x8_FMA(a, b, c) vfmaq_f16(a, b, c)
-    #define GGML_F16x8_ADD          vaddq_f16
-    #define GGML_F16x8_MUL          vmulq_f16
-    #define GGML_F16x8_REDUCE(res, x)                             \
-    do {                                                          \
-        int offset = GGML_F16_ARR >> 1;                           \
-        for (int i = 0; i < offset; ++i) {                        \
-            x[i] = vaddq_f16(x[i], x[offset+i]);                  \
-        }                                                         \
-        offset >>= 1;                                             \
-        for (int i = 0; i < offset; ++i) {                        \
-            x[i] = vaddq_f16(x[i], x[offset+i]);                  \
-        }                                                         \
-        offset >>= 1;                                             \
-        for (int i = 0; i < offset; ++i) {                        \
-            x[i] = vaddq_f16(x[i], x[offset+i]);                  \
-        }                                                         \
-        const float32x4_t t0 = vcvt_f32_f16(vget_low_f16 (x[0])); \
-        const float32x4_t t1 = vcvt_f32_f16(vget_high_f16(x[0])); \
-        res = (ggml_float) vaddvq_f32(vaddq_f32(t0, t1));         \
-    } while (0)
-
-    #define GGML_F16_VEC                GGML_F16x8
-    #define GGML_F16_VEC_ZERO           GGML_F16x8_ZERO
-    #define GGML_F16_VEC_SET1           GGML_F16x8_SET1
-    #define GGML_F16_VEC_LOAD(p, i)     GGML_F16x8_LOAD(p)
-    #define GGML_F16_VEC_STORE(p, r, i) GGML_F16x8_STORE((ggml_fp16_internal_t *)(p), r[i])
-    #define GGML_F16_VEC_FMA            GGML_F16x8_FMA
-    #define GGML_F16_VEC_ADD            GGML_F16x8_ADD
-    #define GGML_F16_VEC_MUL            GGML_F16x8_MUL
-    #define GGML_F16_VEC_REDUCE         GGML_F16x8_REDUCE
-#else
-    // if FP16 vector arithmetic is not supported, we use FP32 instead
-    // and take advantage of the vcvt_ functions to convert to/from FP16
-
-    #define GGML_F16_STEP 16
-    #define GGML_F16_EPR  4
-
-    #define GGML_F32Cx4              float32x4_t
-    #define GGML_F32Cx4_ZERO         vdupq_n_f32(0.0f)
-    #define GGML_F32Cx4_SET1(x)      vdupq_n_f32(x)
-    #define GGML_F32Cx4_LOAD(x)      vcvt_f32_f16(vld1_f16((const ggml_fp16_internal_t *)(x)))
-    #define GGML_F32Cx4_STORE(x, y)  vst1_f16(x, vcvt_f16_f32(y))
-    #define GGML_F32Cx4_FMA(a, b, c) vfmaq_f32(a, b, c)
-    #define GGML_F32Cx4_ADD          vaddq_f32
-    #define GGML_F32Cx4_MUL          vmulq_f32
-    #define GGML_F32Cx4_REDUCE       GGML_F32x4_REDUCE
-
-    #define GGML_F16_VEC                GGML_F32Cx4
-    #define GGML_F16_VEC_ZERO           GGML_F32Cx4_ZERO
-    #define GGML_F16_VEC_SET1           GGML_F32Cx4_SET1
-    #define GGML_F16_VEC_LOAD(p, i)     GGML_F32Cx4_LOAD(p)
-    #define GGML_F16_VEC_STORE(p, r, i) GGML_F32Cx4_STORE((ggml_fp16_internal_t *)(p), r[i])
-    #define GGML_F16_VEC_FMA            GGML_F32Cx4_FMA
-    #define GGML_F16_VEC_ADD            GGML_F32Cx4_ADD
-    #define GGML_F16_VEC_MUL            GGML_F32Cx4_MUL
-    #define GGML_F16_VEC_REDUCE         GGML_F32Cx4_REDUCE
-#endif
-
-#elif defined(__AVX__)
+#if defined(__AVX__)
 
 #define GGML_SIMD
 
@@ -1496,186 +1346,6 @@ static inline void __avx_f32cx8_store(ggml_fp16_t *x, __m256 y) {
 #define GGML_F16_VEC_REDUCE512(res, x) GGML_F32_VEC_REDUCE512(res, x)
 #endif // __AVX512F__
 
-#elif defined(__POWER9_VECTOR__)
-
-#define GGML_SIMD
-
-// F32 POWER9
-
-#define GGML_F32_STEP 32
-#define GGML_F32_EPR  4
-
-#define GGML_F32x4              vector float
-#define GGML_F32x4_ZERO         0.0f
-#define GGML_F32x4_SET1         vec_splats
-#define GGML_F32x4_LOAD(p)      vec_xl(0, p)
-#define GGML_F32x4_STORE(p, r)  vec_xst(r, 0, p)
-#define GGML_F32x4_FMA(a, b, c) vec_madd(b, c, a)
-#define GGML_F32x4_ADD          vec_add
-#define GGML_F32x4_MUL          vec_mul
-#define GGML_F32x4_REDUCE(res, x)              \
-{                                              \
-    int offset = GGML_F32_ARR >> 1;            \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vec_add(x[i], x[offset+i]);     \
-    }                                          \
-    offset >>= 1;                              \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vec_add(x[i], x[offset+i]);     \
-    }                                          \
-    offset >>= 1;                              \
-    for (int i = 0; i < offset; ++i) {         \
-        x[i] = vec_add(x[i], x[offset+i]);     \
-    }                                          \
-    res = vec_extract(x[0], 0) +               \
-          vec_extract(x[0], 1) +               \
-          vec_extract(x[0], 2) +               \
-          vec_extract(x[0], 3);                \
-}
-
-#define GGML_F32_VEC        GGML_F32x4
-#define GGML_F32_VEC_ZERO   GGML_F32x4_ZERO
-#define GGML_F32_VEC_SET1   GGML_F32x4_SET1
-#define GGML_F32_VEC_LOAD   GGML_F32x4_LOAD
-#define GGML_F32_VEC_STORE  GGML_F32x4_STORE
-#define GGML_F32_VEC_FMA    GGML_F32x4_FMA
-#define GGML_F32_VEC_ADD    GGML_F32x4_ADD
-#define GGML_F32_VEC_MUL    GGML_F32x4_MUL
-#define GGML_F32_VEC_REDUCE GGML_F32x4_REDUCE
-
-// F16 POWER9
-#define GGML_F16_STEP       GGML_F32_STEP
-#define GGML_F16_EPR        GGML_F32_EPR
-#define GGML_F16_VEC        GGML_F32x4
-#define GGML_F16_VEC_ZERO   GGML_F32x4_ZERO
-#define GGML_F16_VEC_SET1   GGML_F32x4_SET1
-#define GGML_F16_VEC_FMA    GGML_F32x4_FMA
-#define GGML_F16_VEC_ADD    GGML_F32x4_ADD
-#define GGML_F16_VEC_MUL    GGML_F32x4_MUL
-#define GGML_F16_VEC_REDUCE GGML_F32x4_REDUCE
-// Use vec_xl, not vec_ld, in case the load address is not aligned.
-#define GGML_F16_VEC_LOAD(p, i) (i & 0x1) ?                   \
-  vec_extract_fp32_from_shorth(vec_xl(0, p - GGML_F16_EPR)) : \
-  vec_extract_fp32_from_shortl(vec_xl(0, p))
-#define GGML_ENDIAN_BYTE(i) ((unsigned char *)&(uint16_t){1})[i]
-#define GGML_F16_VEC_STORE(p, r, i)                             \
-  if (i & 0x1)                                                  \
-    vec_xst(vec_pack_to_short_fp32(r[i - GGML_ENDIAN_BYTE(1)],  \
-                                   r[i - GGML_ENDIAN_BYTE(0)]), \
-            0, p - GGML_F16_EPR)
-
-#elif defined(__wasm_simd128__)
-
-#define GGML_SIMD
-
-// F32 WASM
-
-#define GGML_F32_STEP 16
-#define GGML_F32_EPR  4
-
-#define GGML_F32x4              v128_t
-#define GGML_F32x4_ZERO         wasm_f32x4_splat(0.0f)
-#define GGML_F32x4_SET1(x)      wasm_f32x4_splat(x)
-#define GGML_F32x4_LOAD         wasm_v128_load
-#define GGML_F32x4_STORE        wasm_v128_store
-#define GGML_F32x4_FMA(a, b, c) wasm_f32x4_add(wasm_f32x4_mul(b, c), a)
-#define GGML_F32x4_ADD          wasm_f32x4_add
-#define GGML_F32x4_MUL          wasm_f32x4_mul
-#define GGML_F32x4_REDUCE(res, x)                  \
-{                                                  \
-    int offset = GGML_F32_ARR >> 1;                \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    offset >>= 1;                                  \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    offset >>= 1;                                  \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    res = wasm_f32x4_extract_lane(x[0], 0) +       \
-          wasm_f32x4_extract_lane(x[0], 1) +       \
-          wasm_f32x4_extract_lane(x[0], 2) +       \
-          wasm_f32x4_extract_lane(x[0], 3);        \
-}
-
-#define GGML_F32_VEC        GGML_F32x4
-#define GGML_F32_VEC_ZERO   GGML_F32x4_ZERO
-#define GGML_F32_VEC_SET1   GGML_F32x4_SET1
-#define GGML_F32_VEC_LOAD   GGML_F32x4_LOAD
-#define GGML_F32_VEC_STORE  GGML_F32x4_STORE
-#define GGML_F32_VEC_FMA    GGML_F32x4_FMA
-#define GGML_F32_VEC_ADD    GGML_F32x4_ADD
-#define GGML_F32_VEC_MUL    GGML_F32x4_MUL
-#define GGML_F32_VEC_REDUCE GGML_F32x4_REDUCE
-
-// F16 WASM
-
-#define GGML_F16_STEP 16
-#define GGML_F16_EPR  4
-
-inline static v128_t __wasm_f16x4_load(const ggml_fp16_t * p) {
-    float tmp[4];
-
-    tmp[0] = GGML_FP16_TO_FP32(p[0]);
-    tmp[1] = GGML_FP16_TO_FP32(p[1]);
-    tmp[2] = GGML_FP16_TO_FP32(p[2]);
-    tmp[3] = GGML_FP16_TO_FP32(p[3]);
-
-    return wasm_v128_load(tmp);
-}
-
-inline static void __wasm_f16x4_store(ggml_fp16_t * p, v128_t x) {
-    float tmp[4];
-
-    wasm_v128_store(tmp, x);
-
-    p[0] = GGML_FP32_TO_FP16(tmp[0]);
-    p[1] = GGML_FP32_TO_FP16(tmp[1]);
-    p[2] = GGML_FP32_TO_FP16(tmp[2]);
-    p[3] = GGML_FP32_TO_FP16(tmp[3]);
-}
-
-#define GGML_F16x4             v128_t
-#define GGML_F16x4_ZERO        wasm_f32x4_splat(0.0f)
-#define GGML_F16x4_SET1(x)     wasm_f32x4_splat(x)
-#define GGML_F16x4_LOAD(x)     __wasm_f16x4_load(x)
-#define GGML_F16x4_STORE(x, y) __wasm_f16x4_store(x, y)
-#define GGML_F16x4_FMA         GGML_F32x4_FMA
-#define GGML_F16x4_ADD         wasm_f32x4_add
-#define GGML_F16x4_MUL         wasm_f32x4_mul
-#define GGML_F16x4_REDUCE(res, x)                  \
-{                                                  \
-    int offset = GGML_F16_ARR >> 1;                \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    offset >>= 1;                                  \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    offset >>= 1;                                  \
-    for (int i = 0; i < offset; ++i) {             \
-        x[i] = wasm_f32x4_add(x[i], x[offset+i]);  \
-    }                                              \
-    res = wasm_f32x4_extract_lane(x[0], 0) +       \
-          wasm_f32x4_extract_lane(x[0], 1) +       \
-          wasm_f32x4_extract_lane(x[0], 2) +       \
-          wasm_f32x4_extract_lane(x[0], 3);        \
-}
-
-#define GGML_F16_VEC                GGML_F16x4
-#define GGML_F16_VEC_ZERO           GGML_F16x4_ZERO
-#define GGML_F16_VEC_SET1           GGML_F16x4_SET1
-#define GGML_F16_VEC_LOAD(p, i)     GGML_F16x4_LOAD(p)
-#define GGML_F16_VEC_STORE(p, r, i) GGML_F16x4_STORE(p, r[i])
-#define GGML_F16_VEC_FMA            GGML_F16x4_FMA
-#define GGML_F16_VEC_ADD            GGML_F16x4_ADD
-#define GGML_F16_VEC_MUL            GGML_F16x4_MUL
-#define GGML_F16_VEC_REDUCE         GGML_F16x4_REDUCE
-
 #elif defined(__SSE3__)
 
 #define GGML_SIMD
@@ -1762,196 +1432,6 @@ static inline void __sse_f16x4_store(ggml_fp16_t *x, __m128 y) {
 #define GGML_F32Cx4_FMA         GGML_F32x4_FMA
 #define GGML_F32Cx4_ADD         _mm_add_ps
 #define GGML_F32Cx4_MUL         _mm_mul_ps
-#define GGML_F32Cx4_REDUCE      GGML_F32x4_REDUCE
-
-#define GGML_F16_VEC                 GGML_F32Cx4
-#define GGML_F16_VEC_ZERO            GGML_F32Cx4_ZERO
-#define GGML_F16_VEC_SET1            GGML_F32Cx4_SET1
-#define GGML_F16_VEC_LOAD(p, i)      GGML_F32Cx4_LOAD(p)
-#define GGML_F16_VEC_STORE(p, r, i)  GGML_F32Cx4_STORE(p, r[i])
-#define GGML_F16_VEC_FMA             GGML_F32Cx4_FMA
-#define GGML_F16_VEC_ADD             GGML_F32Cx4_ADD
-#define GGML_F16_VEC_MUL             GGML_F32Cx4_MUL
-#define GGML_F16_VEC_REDUCE          GGML_F32Cx4_REDUCE
-
-#elif defined(__loongarch_asx)
-
-#define GGML_SIMD
-
-// F32 LASX
-#define GGML_F32_STEP 32
-#define GGML_F32_EPR  8
-
-#define GGML_F32x8         __m256
-#define GGML_F32x8_ZERO    (__m256)__lasx_xvldi(0)
-#define GGML_F32x8_SET1(x) (__m256)__lasx_xvreplfr2vr_s((x))
-#define GGML_F32x8_LOAD(x) (__m256)__lasx_xvld((x), 0)
-#define GGML_F32x8_STORE(x,y)   __lasx_xvst((y), (x), 0)
-#define GGML_F32x8_FMA(a, b, c) __lasx_xvfmadd_s(b, c, a)
-#define GGML_F32x8_ADD     __lasx_xvfadd_s
-#define GGML_F32x8_MUL     __lasx_xvfmul_s
-#define GGML_F32x8_REDUCE(res, x)                                 \
-do {                                                              \
-    int offset = GGML_F32_ARR >> 1;                               \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lasx_xvfadd_s(x[i], x[offset+i]);                  \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lasx_xvfadd_s(x[i], x[offset+i]);                  \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lasx_xvfadd_s(x[i], x[offset+i]);                  \
-    }                                                             \
-    float *tmp_p = (float *)&x[0]; \
-    res = tmp_p[0] + tmp_p[1] + tmp_p[2] + tmp_p[3] + tmp_p[4] + tmp_p[5] + tmp_p[6] + tmp_p[7];  \
-} while (0)
-// TODO: is this optimal ?
-
-#define GGML_F32_VEC        GGML_F32x8
-#define GGML_F32_VEC_ZERO   GGML_F32x8_ZERO
-#define GGML_F32_VEC_SET1   GGML_F32x8_SET1
-#define GGML_F32_VEC_LOAD   GGML_F32x8_LOAD
-#define GGML_F32_VEC_STORE  GGML_F32x8_STORE
-#define GGML_F32_VEC_FMA    GGML_F32x8_FMA
-#define GGML_F32_VEC_ADD    GGML_F32x8_ADD
-#define GGML_F32_VEC_MUL    GGML_F32x8_MUL
-#define GGML_F32_VEC_REDUCE GGML_F32x8_REDUCE
-
-// F16 LASX
-
-#define GGML_F16_STEP 32
-#define GGML_F16_EPR  8
-
-// F16 arithmetic is not supported by AVX, so we use F32 instead
-
-#define GGML_F32Cx8          __m256
-#define GGML_F32Cx8_ZERO    (__m256)__lasx_xvldi(0)
-#define GGML_F32Cx8_SET1(x) (__m256)__lasx_xvreplgr2vr_w((x))
-
-static inline __m256 __lasx_f32cx8_load(const ggml_fp16_t * x) {
-    float tmp[8];
-
-    for (int i = 0; i < 8; i++) {
-        tmp[i] = GGML_FP16_TO_FP32(x[i]);
-    }
-
-    return (__m256)__lasx_xvld(tmp, 0);
-}
-static inline void __lasx_f32cx8_store(ggml_fp16_t * x, __m256 y) {
-    float arr[8];
-
-    __lasx_xvst(y, arr, 0);
-
-    for (int i = 0; i < 8; i++) {
-        x[i] = GGML_FP32_TO_FP16(arr[i]);
-    }
-}
-#define GGML_F32Cx8_LOAD(x)     __lasx_f32cx8_load(x)
-#define GGML_F32Cx8_STORE(x, y) __lasx_f32cx8_store(x, y)
-
-#define GGML_F32Cx8_FMA         GGML_F32x8_FMA
-#define GGML_F32Cx8_ADD         __lasx_xvfadd_s
-#define GGML_F32Cx8_MUL         __lasx_xvfmul_s
-#define GGML_F32Cx8_REDUCE      GGML_F32x8_REDUCE
-
-#define GGML_F16_VEC                GGML_F32Cx8
-#define GGML_F16_VEC_ZERO           GGML_F32Cx8_ZERO
-#define GGML_F16_VEC_SET1           GGML_F32Cx8_SET1
-#define GGML_F16_VEC_LOAD(p, i)     GGML_F32Cx8_LOAD(p)
-#define GGML_F16_VEC_STORE(p, r, i) GGML_F32Cx8_STORE(p, r[i])
-#define GGML_F16_VEC_FMA            GGML_F32Cx8_FMA
-#define GGML_F16_VEC_ADD            GGML_F32Cx8_ADD
-#define GGML_F16_VEC_MUL            GGML_F32Cx8_MUL
-#define GGML_F16_VEC_REDUCE         GGML_F32Cx8_REDUCE
-
-#elif defined(__loongarch_sx)
-
-#define GGML_SIMD
-
-// F32 LSX
-
-#define GGML_F32_STEP 32
-#define GGML_F32_EPR  4
-
-#define GGML_F32x4         __m128
-#define GGML_F32x4_ZERO    __lsx_vldi(0)
-#define GGML_F32x4_SET1(x) __lsx_vinsgr2vr_w(__lsx_vldi(0),(x), 0)
-#define GGML_F32x4_LOAD(x) __lsx_vld((x), 0)
-#define GGML_F32x4_STORE((x),(y))   __lsx_vst((y), (x), 0)
-#define GGML_F32x4_FMA(a, b, c) __lsx_vfmadd_s(b, c, a)
-#define GGML_F32x4_ADD     __lsx_vfadd_s
-#define GGML_F32x4_MUL     __lsx_vfmul_s
-#define GGML_F32x4_REDUCE(res, x)                                 \
-{                                                                 \
-    int offset = GGML_F32_ARR >> 1;                               \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lsx_vfadd_s(x[i], x[offset+i]);                     \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lsx_vfadd_s(x[i], x[offset+i]);                     \
-    }                                                             \
-    offset >>= 1;                                                 \
-    for (int i = 0; i < offset; ++i) {                            \
-        x[i] = __lsx_vfadd_s(x[i], x[offset+i]);                     \
-    }                                                             \
-    __m128i tmp = __lsx_vsrli_d((__m128i)x[0], 32); \
-    tmp = (__m128i)__lsx_vfadd_s((__m128)tmp, x[0]); \
-    tmp = __lsx_vpickev_w(__lsx_vldi(0), tmp); \
-    const __m128 t0 = __lsx_vshuf4i_w(tmp, 0x88); \
-    tmp = __lsx_vsrli_d((__m128i)t0, 32); \
-    tmp = (__m128i)__lsx_vfadd_s((__m128)tmp, t0); \
-    tmp = __lsx_vpickev_w(__lsx_vldi(0), tmp); \
-    res = (ggml_float) __lsx_vpickve2gr_w(__lsx_vshuf4i_w(tmp, 0x88), 0);        \
-}
-
-#define GGML_F32_VEC        GGML_F32x4
-#define GGML_F32_VEC_ZERO   GGML_F32x4_ZERO
-#define GGML_F32_VEC_SET1   GGML_F32x4_SET1
-#define GGML_F32_VEC_LOAD   GGML_F32x4_LOAD
-#define GGML_F32_VEC_STORE  GGML_F32x4_STORE
-#define GGML_F32_VEC_FMA    GGML_F32x4_FMA
-#define GGML_F32_VEC_ADD    GGML_F32x4_ADD
-#define GGML_F32_VEC_MUL    GGML_F32x4_MUL
-#define GGML_F32_VEC_REDUCE GGML_F32x4_REDUCE
-
-// F16 LSX
-
-#define GGML_F16_STEP 32
-#define GGML_F16_EPR  4
-
-static inline __m128 __lsx_f16x4_load(const ggml_fp16_t * x) {
-    float tmp[4];
-
-    tmp[0] = GGML_FP16_TO_FP32(x[0]);
-    tmp[1] = GGML_FP16_TO_FP32(x[1]);
-    tmp[2] = GGML_FP16_TO_FP32(x[2]);
-    tmp[3] = GGML_FP16_TO_FP32(x[3]);
-
-    return __lsx_vld(tmp, 0);
-}
-
-static inline void __lsx_f16x4_store(ggml_fp16_t * x, __m128 y) {
-    float arr[4];
-
-    __lsx_vst(y, arr, 0);
-
-    x[0] = GGML_FP32_TO_FP16(arr[0]);
-    x[1] = GGML_FP32_TO_FP16(arr[1]);
-    x[2] = GGML_FP32_TO_FP16(arr[2]);
-    x[3] = GGML_FP32_TO_FP16(arr[3]);
-}
-
-#define GGML_F32Cx4             __m128
-#define GGML_F32Cx4_ZERO        __lsx_vldi(0)
-#define GGML_F32Cx4_SET1(x)     __lsx_vinsgr2vr_w(__lsx_vldi(0),(x), 0)
-#define GGML_F32Cx4_LOAD(x)     __lsx_f16x4_load(x)
-#define GGML_F32Cx4_STORE(x, y) __lsx_f16x4_store(x, y)
-#define GGML_F32Cx4_FMA         GGML_F32x4_FMA
-#define GGML_F32Cx4_ADD         __lsx_vfadd_s
-#define GGML_F32Cx4_MUL         __lsx_vfmul_s
 #define GGML_F32Cx4_REDUCE      GGML_F32x4_REDUCE
 
 #define GGML_F16_VEC                 GGML_F32Cx4
@@ -3073,6 +2553,85 @@ void ggml_vec_mul_f32(const uint32_t n, float * z, const float * x, const float 
 
 }
 
+void ggml_vec_mul1_f32(const uint64_t n, float * z, const float * x, const float v)
+{
+
+    uint64_t i = 0;
+
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+
+    __m512 vx = _mm512_set1_ps(v);
+    __m512 ax[GGML_F32_ARR];
+
+    const uint64_t np = (n & ~(GGML_F32_STEP16 - 1));
+
+    for (; i < np; i += GGML_F32_STEP16) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm512_loadu_ps(x + i + j * GGML_F32_EPR16);
+            ax[j] = _mm512_mul_ps(ax[j], vx);
+            _mm512_storeu_ps(z + i + j * GGML_F32_EPR16, ax[j]);
+        }
+    }
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR16 - 1));
+
+    for (; i < xn; i += GGML_F32_EPR16) {
+        ax[0] = _mm512_loadu_ps(x + i);
+        ax[0] = _mm512_mul_ps(ax[0], vx);
+        _mm512_storeu_ps(z + i, ax[0]);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR16 - 1)) {
+        do {
+            z[i]  = x[i] * v;
+            i += 1;
+        } while (i < n);
+    }
+
+#elif defined(__AVX2__)
+
+    __m256 vx = GGML_F32_VEC_SET1(v);
+    __m256 ax[GGML_F32_ARR];
+
+    const uint64_t np = (n & ~(GGML_F32_STEP - 1));
+
+    for (; i < np; i += GGML_F32_STEP) {
+        for (uint64_t j = 0; j < GGML_F32_ARR; j++) {
+            ax[j] = _mm256_loadu_ps(x + i + j * GGML_F32_EPR);
+            ax[j] = _mm256_mul_ps(ax[j], vx);
+            _mm256_storeu_ps(z + i + j * GGML_F32_EPR, ax[j]);
+        }
+    }
+
+    const uint64_t xn = (n & ~(GGML_F32_EPR - 1));
+
+    for (; i < xn; i += GGML_F32_EPR) {
+        ax[0] = _mm256_loadu_ps(x + i);
+        ax[0] = _mm256_mul_ps(ax[0], vx);
+        _mm256_storeu_ps(z + i, ax[0]);
+    }
+
+    // leftovers
+
+    if (n & (GGML_F32_EPR - 1)) {
+        do {
+            z[i]  = x[i] * v;
+            i += 1;
+        } while (i < n);
+    }
+
+#else
+
+    for (; i < n; ++i) {
+        z[i]  = x[i] * v;
+    }
+
+#endif // defined(__AVX512F__) && defined(__GEN_AVX512__) 
+
+}
+
 void ggml_vec_div_f32(const uint64_t n, float * z, const float * x, const float * y)
 {
 
@@ -3470,7 +3029,7 @@ void ggml_vec_sumsq_f32(const uint64_t n, float * s, const float * x) {
 
     // scalar
 
-    for (uint64_t i = 0; i < n; ++i) {
+    for (i = 0; i < n; ++i) {
         sumf += x[i] * x[i];
     }
 
@@ -3722,7 +3281,7 @@ void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf
     UNUSED(by);
     UNUSED(bs);
 
-    uint64_t nc = n;
+    const uint64_t nc = n;
     uint64_t i = 0;
     float sumf = 0;
 
@@ -4906,46 +4465,7 @@ inline static float ggml_silu_f32(float x) {
 #error "ref: https://github.com/ggerganov/llama.cpp/pull/7154#issuecomment-2143844461"
 #endif
 
-#if defined(__ARM_NEON) && defined(__aarch64__)
-
-// adapted from arm limited optimized routine
-// the maximum error is 1.45358 plus 0.5 ulps
-// numbers above 88.38 will flush to infinity
-// numbers beneath -103.97 will flush to zero
-inline static float32x4_t ggml_v_expf(float32x4_t x) {
-    const float32x4_t r = vdupq_n_f32(0x1.8p23f);
-    const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
-    const float32x4_t n = vsubq_f32(z, r);
-    const float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n,
-                                    vdupq_n_f32(0x1.7f7d1cp-20f));
-    const uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
-    const float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
-    const uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
-    const float32x4_t u = vmulq_f32(b, b);
-    const float32x4_t j = vfmaq_f32(
-        vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
-        vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
-                  vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
-    if (!vpaddd_u64(vreinterpretq_u64_u32(c)))
-        return vfmaq_f32(k, j, k);
-    const uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
-    const float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
-    const float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
-    return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
-                     vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
-}
-
-// computes silu x/(1+exp(-x)) in single precision vector
-inline static float32x4_t ggml_v_silu(float32x4_t x) {
-    const float32x4_t one = vdupq_n_f32(1.0f);
-    const float32x4_t zero = vdupq_n_f32(0.0f);
-    const float32x4_t neg_x = vsubq_f32(zero, x);
-    const float32x4_t exp_neg_x = ggml_v_expf(neg_x);
-    const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
-    return vdivq_f32(x, one_plus_exp_neg_x);
-}
-
-#elif defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__) && defined(__AVX512DQ__)
 
 // adapted from arm limited optimized routine
 // the maximum error is 1.45358 plus 0.5 ulps
@@ -5588,8 +5108,8 @@ DECLSPEC_CACHEALIGN quant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
 // Spin wait statistics.
 //
 
-int64_t init_wait_cycles = 0;
-int64_t tensor_wait_cycles = 0;
+int64_t init_wait_us = 0;
+int64_t tensor_wait_us = 0;
 int init_wait_count = 0;
 int tensor_wait_count = 0;
 
@@ -5765,8 +5285,6 @@ print_tensor_op_perf_data (
     // Tensor wait statistics.
     //
 
-    int64_t tensor_wait_us = ((double)tensor_wait_cycles * 1000. * 1000.) / (double)tsc_freq;;
-
     printf("total number of tensor waits %d\n", tensor_wait_count);
     printf("total elapsed tensor wait time %5.2fsec\n", (float)tensor_wait_us / (1000. * 1000.));
     printf("average wait time per tensor wait %5.2fus\n",
@@ -5779,8 +5297,6 @@ print_tensor_op_perf_data (
     //
     // Init wait statistics.
     //
-
-    int64_t init_wait_us = ((double)init_wait_cycles * 1000. * 1000.) / (double)tsc_freq;
 
     printf("total number of init waits %d\n", init_wait_count);
     if (init_wait_count) {
@@ -11006,13 +10522,31 @@ void ggml_wait_for_done(
         atomic_int * generation = params->generation;
     
         //
-        // Add one to the barrier value and check if this is the last task to
-        // arrive.
+        // Compute barrier wait start time.
+        //
+        // N.B. The barrier wait time computation is not perfectly synchronized, but
+        //      it is close and provides meaningful data. The computation is performed
+        //      by the zeroth thread which is always involved in the computation of
+        //      the barrier and does maximum work.
+        //
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        const int ith = params->ith;
+        int64_t wait_us = 0;
+        if (!ith) {
+            wait_us = ggml_time_us();
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
+        //
+        // Capture the current barrier generation, add one to the barrier value and
+        // check if this is the last task to arrive.
         //
     
         int generation_old = *generation;
-        int pn_threads = atomic_fetch_add(barrier, 1);
-        if (pn_threads == (n_tasks - 1)) {
+        if (atomic_fetch_add(barrier, 1) == (n_tasks - 1)) {
     
             //
             // This is the last task - reset barrier and increment the generation.
@@ -11027,30 +10561,25 @@ void ggml_wait_for_done(
             // Wait for other tasks, i.e., the generation number to change.
             //
 
-#ifdef GGML_TENSOR_OP_PERF
-    
-            int64_t wait_cycles = 0;
-            if (!pn_threads) {
-                wait_cycles = ReadTimeStampCounter();
-            }
-    
-#endif // GGML_TENSOR_OP_PERF
-    
             do {
                 YieldProcessor();
             } while (*generation == generation_old);
+        }
+
+        //
+        // Compute the barrier wait end time and update the barrier wait statistics.
+        //
 
 #ifdef GGML_TENSOR_OP_PERF
     
-            if (!pn_threads) {
-                wait_cycles = ReadTimeStampCounter() - wait_cycles;
-                init_wait_cycles += wait_cycles;
-                init_wait_count += 1;
-            }
+        if (!ith) {
+            wait_us = ggml_time_us() - wait_us;
+            init_wait_us += wait_us;
+            init_wait_count += 1;
+        }
     
 #endif // GGML_TENSOR_OP_PERF
 
-        }
     }
 }
 
@@ -12766,20 +12295,10 @@ void ggml_compute_forward_add1_f32(
         const int i2 = (ir - i3*ne2*ne1)/ne1;
         const int i1 = (ir - i3*ne2*ne1 - i2*ne1);
 
-#ifdef GGML_USE_ACCELERATE
-        UNUSED(ggml_vec_add1_f32);
-
-        vDSP_vadd(
-                (float *) ((char *) src0->data + i3*nb03 + i2*nb02 + i1*nb01), 1,
-                (float *) ((char *) src1->data), 0,
-                (float *) ((char *) dst->data  + i3*nb3  + i2*nb2  + i1*nb1 ), 1,
-                ne0);
-#else
         ggml_vec_add1_f32(ne0,
                 (float *) ((char *) dst->data  + i3*nb3  + i2*nb2  + i1*nb1 ),
                 (float *) ((char *) src0->data + i3*nb03 + i2*nb02 + i1*nb01),
                *(float *) src1->data);
-#endif
     }
 }
 
@@ -13180,17 +12699,10 @@ void ggml_compute_forward_acc_f32(
         const int i2 = (ir - i3*ne12*ne11)/ne11;
         const int i1 = (ir - i3*ne12*ne11 - i2*ne11);
 
-#ifdef GGML_USE_ACCELERATE
-        vDSP_vadd(
-                (float *) ((char *) src0->data + i3*nb03 + i2*nb02 + i1*nb01 + offset), 1,
-                (float *) ((char *) src1->data + i3*nb13 + i2*nb12 + i1*nb11), 1,
-                (float *) ((char *) dst->data  + i3*nb3  + i2*nb2  + i1*nb1  + offset), 1, nc);
-#else
         ggml_vec_add_f32(nc,
                 (float *) ((char *)  dst->data + i3*nb3  + i2*nb2  + i1*nb1  + offset),
                 (float *) ((char *) src0->data + i3*nb03 + i2*nb02 + i1*nb01 + offset),
                 (float *) ((char *) src1->data + i3*nb13 + i2*nb12 + i1*nb11));
-#endif
     }
 }
 
@@ -13476,13 +12988,7 @@ void ggml_compute_forward_div_f32(
             float * src1_ptr = (float *) ((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11);
 
             for (int64_t r = 0; r < nr0; ++r) {
-#ifdef GGML_USE_ACCELERATE
-                UNUSED(ggml_vec_div_f32);
-
-                vDSP_vdiv(src1_ptr, 1, src0_ptr + r*ne10, 1, dst_ptr + r*ne10, 1, ne10);
-#else
                 ggml_vec_div_f32(ne10, dst_ptr + r*ne10, src0_ptr + r*ne10, src1_ptr);
-#endif
             }
         }
     } else {
@@ -15309,97 +14815,6 @@ void ggml_compute_forward_group_norm(
 
 // ggml_compute_forward_mul_mat
 
-static void ggml_compute_forward_mul_mat_one_chunk(
-    const struct ggml_compute_params * params,
-    struct ggml_tensor * dst,
-    const int64_t num_rows_per_vec_dot,
-    const int64_t ir0_start,
-    const int64_t ir0_end,
-    const int64_t ir1_start,
-    const int64_t ir1_end) {
-
-    const struct ggml_tensor * src0 = dst->src[0];
-    const struct ggml_tensor * src1 = dst->src[1];
-
-    GGML_TENSOR_BINARY_OP_LOCALS
-
-    const enum ggml_type type = src0->type;
-
-    const bool src1_cont = ggml_is_contiguous(src1);
-
-    ggml_vec_dot_t    const vec_dot = type_traits[type].vec_dot;
-    enum ggml_type    const vec_dot_type = type_traits[type].vec_dot_type;
-
-    // broadcast factors
-    const int64_t r2 = ne12 / ne02;
-    const int64_t r3 = ne13 / ne03;
-
-    //printf("ir0_start = %6lld, ir0_end = %6lld, ir1_start = %6lld, ir1_end = %6lld\n", ir0_start, ir0_end, ir1_start, ir1_end);
-
-    // threads with no work simply yield (not sure if it helps)
-    if (ir0_start >= ir0_end || ir1_start >= ir1_end) {
-        return;
-    }
-
-    const void * wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
-    const size_t row_size = ggml_row_size(vec_dot_type, ne10);
-
-    assert(ne12 % ne02 == 0);
-    assert(ne13 % ne03 == 0);
-
-    // block-tiling attempt
-    const int64_t blck_0 = 16;
-    const int64_t blck_1 = 16;
-
-    const size_t src1_col_stride = src1_cont || src1->type != vec_dot_type ? row_size : nb11;
-
-    // attempt to reduce false-sharing (does not seem to make a difference)
-    // 16 * 2, accounting for mmla kernels
-    float tmp[32];
-
-    for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
-        for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
-            for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
-                const int64_t i13 = (ir1 / (ne12 * ne1));
-                const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
-                const int64_t i11 = (ir1 - i13 * ne12 * ne1 - i12 * ne1);
-
-                // broadcast src0 into src1
-                const int64_t i03 = i13 / r3;
-                const int64_t i02 = i12 / r2;
-
-                const int64_t i1 = i11;
-                const int64_t i2 = i12;
-                const int64_t i3 = i13;
-
-                const char * src0_row = (const char*)src0->data + (0 + i02 * nb02 + i03 * nb03);
-
-                // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
-                //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
-                //       the original src1 data pointer, so we should index using the indices directly
-                // TODO: this is a bit of a hack, we should probably have a better way to handle this
-                const char * src1_col = (const char*)wdata +
-                    (src1_cont || src1->type != vec_dot_type
-                        ? (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size
-                        : (i11 * nb11 + i12 * nb12 + i13 * nb13));
-                float * dst_col = (float*)((char*)dst->data + (i1 * nb1 + i2 * nb2 + i3 * nb3));
-
-                //for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ++ir0) {
-                //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
-                //}
-
-                for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ir0 += num_rows_per_vec_dot) {
-                    vec_dot(ne00, &tmp[ir0 - iir0], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
-                }
-
-                for (int cn = 0; cn < num_rows_per_vec_dot; ++cn) {
-                    memcpy(&dst_col[iir0 + cn * nb1 / nb0], tmp + (cn * 16), (MIN(iir0 + blck_0, ir0_end) - iir0) * sizeof(float));
-                }
-            }
-        }
-    }
-}
-
 void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
@@ -15423,31 +14838,29 @@ void ggml_compute_forward_mul_mat(
             //
 
             if (!ith) {
-                if (!src0->is_repacked) {
-                    src0_type = ggml_repack_tensor(src0);
-                    if (src0->is_repacked) {
-                        //
-                        // update new tensor type
-                        //
+                src0_type = ggml_repack_tensor(src0);
+                if (src0->is_repacked) {
+                    //
+                    // update new tensor type
+                    //
 
-                        src0->type = src0_type;
-                    }
+                    src0->type = src0_type;
                 }
             }
-
-            //
-            // Wait until repacking process is done (if any)
-            //
-
-            ggml_wait_for_done(params);
         }
-
-        //
-        // refresh for all threads if the type has changed through repacking
-        // 
-    
-        src0_type = src0->type;
     }
+
+    //
+    // Wait until repacking process is done (if any)
+    //
+
+    ggml_wait_for_done(params);
+
+    //
+    // refresh for all threads if the type has changed through repacking
+    // 
+    
+    src0_type = src0->type;
 
 #ifdef GGML_TENSOR_OP_PERF
     int64_t vec_dot_src0_t0 = 0;
@@ -15545,7 +14958,7 @@ void ggml_compute_forward_mul_mat(
             for (int64_t i13 = 0; i13 < ne13; ++i13) {
                 for (int64_t i12 = 0; i12 < ne12; ++i12) {
                     int64_t i11_processed = 0;
-                    if ((ggml_n_dims(src1) == 2) && from_float_to_mat && gemm) {
+                    if ((ggml_n_dims(src1) == 2) && from_float_to_mat) {
                         for (int64_t i11 = ith * 4; i11 < ne11 - ne11 % 4; i11 += nth * 4) {
                             from_float_to_mat((float *)((char *) src1->data + i13*nb13 + i12*nb12 + i11*nb11),
                                               (void *)               (wdata + i13*nbw3 + i12*nbw2 + i11*nbw1),
@@ -15583,7 +14996,7 @@ void ggml_compute_forward_mul_mat(
             if (src0_start >= src0_end) return;
 
             // If there are more than three rows in src1, use gemm; otherwise, use gemv.
-            if (gemm && (ne11 > 3)) {
+            if (ne11 > 3) {
                 gemm(ne00, (float *)((char *) dst->data) + src0_start, ne01, (const char *) src0->data + src0_start * nb01,
                      (const char *) src1_wdata, ne11 - ne11 % 4, src0_end - src0_start);
             }
@@ -15596,13 +15009,8 @@ void ggml_compute_forward_mul_mat(
         }
     }
 
-#if 1 // ORG_ALGO for distributing work over the nth cores
-
     assert(ne12 % ne02 == 0);
     assert(ne13 % ne03 == 0);
-
-    // ggml_vec_dot_t vec_dot = type_traits[src0_type].vec_dot;
-    // enum ggml_type const vec_dot_type = type_traits[src0_type].vec_dot_type;
 
     const bool init_mat = ((vec_dot_type != src1_type) &&
                            (vec_dot_type != GGML_TYPE_F16));
@@ -15611,7 +15019,6 @@ void ggml_compute_forward_mul_mat(
     char * wdata = src1->data;
 
     if (init_mat) {
-        // printf("src0_type=[%s] src1_type=[%s]\n", ggml_type_name(src0_type), ggml_type_name(src1_type));
         wdata = params->wdata;
 
         assert(params->wsize >= ne11*ne12*ne13*row_size);
@@ -15669,8 +15076,6 @@ void ggml_compute_forward_mul_mat(
         row_size = ggml_row_size(src1_type, ne10);
         vec_dot = (ggml_vec_dot_t)ggml_vec_dot_f16_f32;
     }
-
-#endif // ORG_ALGO
 
 /*
     printf("ne00 %zd, ne01 %zd, ne02 %zd, ne03 %zd\n"
@@ -15736,7 +15141,7 @@ void ggml_compute_forward_mul_mat(
     int64_t ir111;
     int64_t src0_rpc = 0;
 
-#if 1 // ORG_ALO
+#if 1 // ORG_ALGO
 //    if (nr0 >= nr1) {
 //    if ((nr0 >= nth) || (nr1 < nth)) { // << llindex 1017tps
 #endif
@@ -15975,7 +15380,7 @@ void ggml_compute_forward_mul_mat_id(
     int64_t * matrix_row_counts = (int64_t *) (wdata_src1_end); // [n_as]
     struct mmid_row_mapping * matrix_rows = (struct mmid_row_mapping *)(matrix_row_counts + n_as); // [n_as][ne11]
 
-#if 0 // already taken care below
+#if 0 // Q4_0_8_8
     if (src1->type != vec_dot_type) {
         char * wdata = params->wdata;
 
@@ -19211,17 +18616,7 @@ void ggml_compute_forward_flash_attn_back_f32(
                     float max = -INFINITY;
                     ggml_vec_max_f32(masked_begin, &max, S);
 
-                    ggml_float sum = 0.0;
-                    {
-#ifdef GGML_SOFT_MAX_ACCELERATE
-                        max = -max;
-                        vDSP_vsadd(SM, 1, &max, SM, 1, Mup);
-                        vvexpf(SM, SM, &Mup);
-                        ggml_vec_sum_f32(Mup, &sum, SM);
-#else
-                        sum = ggml_vec_soft_max_f32(Mup, SM, S, max);
-#endif
-                    }
+                    ggml_float sum = ggml_vec_soft_max_f32(Mup, SM, S, max);
 
                     assert(sum > 0.0);
 
@@ -22524,7 +21919,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
             if (!ith) {
     
                 //
-                // Update op counts.
+                // Update tensor op counts and op time.
                 //
     
                 compute_op_counts[op] += 1;
@@ -22598,9 +21993,9 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     
 #ifdef GGML_TENSOR_OP_PERF
 
-            int64_t wait_cycles = 0;
+            int64_t wait_us = 0;
             if (!ith) {
-                wait_cycles = ReadTimeStampCounter();
+                wait_us = ggml_time_us();
             }
     
 #endif // GGML_TENSOR_OP_PERF
@@ -22638,8 +22033,8 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 #ifdef GGML_TENSOR_OP_PERF
     
             if (!ith) {
-                wait_cycles = ReadTimeStampCounter() - wait_cycles;
-                tensor_wait_cycles += wait_cycles;
+                wait_us = ggml_time_us() - wait_us;
+                tensor_wait_us += wait_us;
                 tensor_wait_count += 1;
             }
     
@@ -22930,7 +22325,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 #endif
 
-    struct ggml_compute_state_shared state_shared = {
+    DECLSPEC_CACHEALIGN struct ggml_compute_state_shared state_shared = {
         .barrier_tb = 0,
         .generation_tb = 0,
         .barrier_db = 0,
@@ -22997,44 +22392,42 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #endif // __clang__
 
     } else {
-        for (int j = 1; j < n_threads; j += 1) {
-
 #ifdef GGML_TENSOR_OP_PERF
 
-            int64_t t1 = ggml_time_us();
+        int64_t t1 = ggml_time_us();
 
 #endif // GGML_TENSOR_OP_PERF
-
+    
+        for (int j = 1; j < n_threads; j += 1) {
             const int rc = ggml_thread_create(&workers[j].thrd,
                                               NULL,
                                               ggml_graph_compute_thread,
                                               &workers[j]);
-
+    
             GGML_ASSERT(rc == 0);
-
-#if 0
-            if (!SetThreadPriority(workers[j].thrd, THREAD_PRIORITY_HIGHEST)) {
-                fprintf(stderr, "%s: failed to bump thread priority\n", __func__);
-            }
-#endif
-
+        }
+    
+    
 #ifdef GGML_TENSOR_OP_PERF
 
-            t1 = ggml_time_us() - t1;
-            atomic_fetch_add64(&thread_create_time, t1);
+        t1 = ggml_time_us() - t1;
+        atomic_fetch_add64(&thread_create_time, t1);
 
 #endif // GGML_TENSOR_OP_PERF
 
-        }
-
-        // this is a work thread too
-
+        //
+        // The current thread is also a worker thread.
+        //
+    
         ggml_graph_compute_thread(&workers[0]);
 
-        // wait for thread pool threads to finish.
-
+        //
+        // Wait for thread pool threads to finish.
+        //
+    
         for (int j = 1; j < n_threads; j += 1) {
             const int rc = ggml_thread_join(workers[j].thrd, NULL);
+
             GGML_ASSERT(rc == 0);
         }
     }
@@ -26073,27 +25466,15 @@ int ggml_cpu_has_fma(void) {
 }
 
 int ggml_cpu_has_neon(void) {
-#if defined(__ARM_NEON)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_sve(void) {
-#if defined(__ARM_FEATURE_SVE)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_arm_fma(void) {
-#if defined(__ARM_FEATURE_FMA)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_metal(void) {
@@ -26113,19 +25494,11 @@ int ggml_cpu_has_f16c(void) {
 }
 
 int ggml_cpu_has_fp16_va(void) {
-#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_wasm_simd(void) {
-#if defined(__wasm_simd128__)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_blas(void) {
@@ -26197,19 +25570,11 @@ int ggml_cpu_has_ssse3(void) {
 }
 
 int ggml_cpu_has_vsx(void) {
-#if defined(__POWER9_VECTOR__)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 int ggml_cpu_has_matmul_int8(void) {
-#if defined(__ARM_FEATURE_MATMUL_INT8)
-    return 1;
-#else
     return 0;
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

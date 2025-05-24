@@ -111,10 +111,7 @@ extern "C" {
     GGML_API ggml_backend_buffer_type_t ggml_backend_cpu_hbm_buffer_type(void);
 #endif
 
-    GGML_API ggml_backend_buffer_type_t ggml_backend_cpu_aarch64_buffer_type(void);
-    GGML_API bool ggml_backend_cpu_buft_is_aarch64(ggml_backend_buffer_type_t buft);
-
-//
+    //
     // Backend registry
     //
 
