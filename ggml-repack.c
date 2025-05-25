@@ -339,6 +339,50 @@ xx_vec_dot_q8_0_K_q8_0_K (
     *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
 }
 
+bool
+repack_q4_0_to_q4_0_K (
+    struct ggml_tensor * tensor, 
+    const void * src_data, 
+    size_t data_size
+    ) 
+{
+
+    block_q4_0 * q40x = src_data;
+    block_q4_0_K q4kx_tmp;
+    block_q4_0_K * q4kx = tensor->data;
+
+    size_t blocks_count = data_size / QK_K;
+
+    for (int i = 0; i < blocks_count; i++) {
+        make_q4_0_k_quant(&q4kx_tmp, q40x + i * (QK_K / QK4_0));
+        memcpy(q4kx + i, &q4kx_tmp, sizeof(block_q4_0_K));
+    }
+
+    return false;
+}
+
+bool
+repack_q8_0_to_q8_0_K (
+    struct ggml_tensor * tensor, 
+    const void * src_data, 
+    size_t data_size
+    ) 
+{
+
+    block_q8_0 * q80x = src_data;
+    block_q8_0_K q8kx_tmp;
+    block_q8_0_K *q8kx = tensor->data;
+
+    size_t blocks_count = data_size / QK_K;
+
+    for (int i = 0; i < blocks_count; i++) {
+        make_q8_0_k_quant(&q8kx_tmp, q80x + i * (QK_K / QK8_0));
+        memcpy(q8kx + i, &q8kx_tmp, sizeof(block_q8_0_K));
+    }
+
+    return false;
+}
+
 bool ggml_xbox_repack_tensor (
     struct ggml_tensor *tensor, 
     enum ggml_type repack_type, 
@@ -346,12 +390,6 @@ bool ggml_xbox_repack_tensor (
     size_t data_size
     )
 {
-    block_q4_0 * q40x = src_data;
-    block_q4_0_K q4kx_tmp;
-    block_q4_0_K * q4kx = tensor->data;
-    block_q8_0 * q80x = src_data;
-    block_q8_0_K q8kx_tmp;
-    block_q8_0_K *q8kx = tensor->data;
 
     GGML_ASSERT(tensor->type != repack_type);
     GGML_ASSERT(sizeof(block_q4_0) == sizeof(bock_q4_0_K));
@@ -361,17 +399,14 @@ bool ggml_xbox_repack_tensor (
         return false;
     }
 
-    size_t blocks_count = data_size / QK_K;
-
     if (repack_type == GGML_TYPE_Q4_0_K) {
-        for (int i = 0; i < blocks_count; i++) {
-            make_q4_0_k_quant(&q4kx_tmp, q40x + i * (QK_K / QK4_0));
-            memcpy(q4kx + i, &q4kx_tmp, sizeof(block_q4_0_K));
+        if (repack_q4_0_to_q4_0_K(tensor, src_data, data_size) != 0) {
+            return false;
         }
+
     } else if (repack_type == GGML_TYPE_Q8_0_K) {
-        for (int i = 0; i < blocks_count; i++) {
-            make_q8_0_k_quant(&q8kx_tmp, q80x + i * (QK_K / QK8_0));
-            memcpy(q8kx + i, &q8kx_tmp, sizeof(block_q8_0_K));
+        if (repack_q8_0_to_q8_0_K(tensor, src_data, data_size) != 0) {
+            return false;
         }
     }
 
@@ -414,7 +449,6 @@ enum ggml_type ggml_repack_tensor (
 
                 if (ggml_aarch64_repack_tensor(tensor, repack_type, src_data, data_size)) {
                     // printf("*** repacking tensor GGML mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
-                    tensor->is_repacked = true;
                     type = repack_type;
                 }
             }
@@ -439,7 +473,6 @@ enum ggml_type ggml_repack_tensor (
 
                 if (ggml_xbox_repack_tensor(tensor, repack_type, src_data, data_size)) {
                     // printf("*** repacking tensor Xbox mode %s - type %s - size %zd successfully\n", ggml_get_name(tensor), ggml_type_name(type), data_size);
-                    tensor->is_repacked = true;
                     type = repack_type;
                 }
             }

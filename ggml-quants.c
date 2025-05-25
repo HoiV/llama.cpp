@@ -254,6 +254,8 @@ static inline float hsum_float_4x4(const __m128 a, const __m128 b, const __m128 
 #endif // defined(__AVX__) || defined(__AVX2__) || defined(__AVX512F__) || defined(__SSSE3__)
 
 void quantize_row_q4_0(const float * restrict x, void * restrict vy, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q4_0=" __FUNCTION__)
+
     const uint64_t qk = QK4_0;
 
     assert(qk == 32);
@@ -475,6 +477,8 @@ void quantize_row_q5_1(const float * restrict x, void * restrict y, int64_t k) {
 }
 
 void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q8_0=" __FUNCTION__)
+
     uint64_t qk = QK8_0;
 
     assert(qk == 32);
@@ -915,6 +919,8 @@ void quantize_row_q8_1(const float * restrict x, void * restrict vy, int64_t k) 
 }
 
 void dequantize_row_q4_0(const block_q4_0 * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q4_0=" __FUNCTION__)
+
     const uint64_t qk = QK4_0;
 
     assert(k % qk == 0);
@@ -1083,6 +1089,8 @@ void dequantize_row_q5_1(const block_q5_1 * restrict x, float * restrict y, int6
 }
 
 void dequantize_row_q8_0(const block_q8_0 * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q8_0=" __FUNCTION__)
+
     const uint64_t qk = QK8_0;
 
     assert(k % qk == 0);
@@ -1435,6 +1443,8 @@ static inline void get_scale_min_k4(int j, const uint8_t * restrict q, uint8_t *
 //========================- 2-bit (de)-quantization
 
 void quantize_row_q2_K(const float * restrict x, block_q2_K * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q2_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -1508,6 +1518,8 @@ void quantize_row_q2_K(const float * restrict x, block_q2_K * restrict y, int64_
 }
 
 void dequantize_row_q2_K(const block_q2_K * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q2_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -1894,6 +1906,8 @@ size_t quantize_q2_K(const float * restrict src, void * restrict dst, int64_t nr
 //========================= 3-bit (de)-quantization
 
 void quantize_row_q3_K(const float * restrict x, block_q3_K * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q3_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -1975,6 +1989,8 @@ void quantize_row_q3_K(const float * restrict x, block_q3_K * restrict y, int64_
 }
 
 void dequantize_row_q3_K(const block_q3_K * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q3_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -2420,6 +2436,8 @@ size_t quantize_q3_K(const float * restrict src, void * restrict dst, int64_t nr
 // ====================== 4-bit (de)-quantization
 
 void quantize_row_q4_K(const float * restrict x, block_q4_K * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q4_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -2495,6 +2513,8 @@ void quantize_row_q4_K(const float * restrict x, block_q4_K * restrict y, int64_
 }
 
 void dequantize_row_q4_K(const block_q4_K * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q4_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -3065,6 +3085,8 @@ void quantize_row_q6_K_reference(const float * restrict x, block_q6_K * restrict
 }
 
 void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q6_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -3287,9 +3309,80 @@ void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int6
 }
 
 void quantize_row_q6_K(const float * restrict x, void * restrict vy, int64_t k) {
-    assert(k % QK_K == 0);
+#pragma comment(linker, "/EXPORT:quantize_row_q6_K=" __FUNCTION__)
+
+    const uint64_t qk = QK_K;
+
+    assert(k % qk == 0);
+
+    const uint64_t nb = k / qk;
+
     block_q6_K * restrict y = vy;
-    quantize_row_q6_K_reference(x, y, k);
+
+    int8_t L[QK_K];
+    float   scales[QK_K/16];
+
+    for (uint64_t i = 0; i < nb; i++) {
+
+        float max_scale = 0;
+        float max_abs_scale = 0;
+
+        for (int ib = 0; ib < QK_K/16; ++ib) {
+
+            const float scale = make_qx_quants(16, 32, x + 16*ib, L + 16*ib, 1, NULL);
+            scales[ib] = scale;
+
+            const float abs_scale = fabsf(scale);
+            if (abs_scale > max_abs_scale) {
+                max_abs_scale = abs_scale;
+                max_scale = scale;
+            }
+
+        }
+
+        if (max_abs_scale < GROUP_MAX_EPS) {
+            memset(&y[i], 0, sizeof(block_q6_K));
+            y[i].d = GGML_FP32_TO_FP16(0.f);
+            x += QK_K;
+            continue;
+        }
+
+        float iscale = -128.f/max_scale;
+        y[i].d = GGML_FP32_TO_FP16(1/iscale);
+        for (int ib = 0; ib < QK_K/16; ++ib) {
+            y[i].scales[ib] = MIN(127, nearest_int(iscale*scales[ib]));
+        }
+
+        for (int j = 0; j < QK_K/16; ++j) {
+            float d = GGML_FP16_TO_FP32(y[i].d) * y[i].scales[j];
+            if (!d) {
+                continue;
+            }
+            for (int ii = 0; ii < 16; ++ii) {
+                int l = nearest_int(x[16*j + ii]/d);
+                l = MAX(-32, MIN(31, l));
+                L[16*j + ii] = l + 32;
+            }
+        }
+
+        uint8_t * restrict ql = y[i].ql;
+        uint8_t * restrict qh = y[i].qh;
+        for (int j = 0; j < QK_K; j += 128) {
+            for (int l = 0; l < 32; ++l) {
+                const uint8_t q1 = L[j + l +  0] & 0xF;
+                const uint8_t q2 = L[j + l + 32] & 0xF;
+                const uint8_t q3 = L[j + l + 64] & 0xF;
+                const uint8_t q4 = L[j + l + 96] & 0xF;
+                ql[l+ 0] = q1 | (q3 << 4);
+                ql[l+32] = q2 | (q4 << 4);
+                qh[l] = (L[j + l] >> 4) | ((L[j + l + 32] >> 4) << 2) | ((L[j + l + 64] >> 4) << 4) | ((L[j + l + 96] >> 4) << 6);
+            }
+            ql += 64;
+            qh += 32;
+        }
+
+        x += QK_K;
+    }
 }
 
 static void quantize_row_q6_K_impl(const float * restrict x, block_q6_K * restrict y, int64_t n_per_row, const float * quant_weights) {
@@ -3962,6 +4055,8 @@ inline int hsum_i32_16(__m512i x) {
 #endif
 
 void quantize_row_q8_K(const float * restrict x, block_q8_K * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q8_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -4167,6 +4262,8 @@ next_block:
 }
 
 void dequantize_row_q8_K(const block_q8_K * restrict x, float * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:dequantize_row_q8_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -4270,6 +4367,8 @@ static inline __m128i get_scale_shuffle(int i) {
 #endif // __AVX__ || __AVX2__ || __AVX512F__
 
 void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q4_0_q8_0=" __FUNCTION__)
+
     const uint64_t qk = QK8_0;
     const uint64_t nb = n / qk;
 
@@ -5057,6 +5156,8 @@ void ggml_vec_dot_q5_1_q8_1(int n, float * restrict s, size_t bs, const void * r
 }
 
 void ggml_vec_dot_q8_0_q8_0(const int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q8_0_q8_0=" __FUNCTION__)
+
     const uint64_t qk = QK8_0;
     const uint64_t nb = n / qk;
 
@@ -5361,6 +5462,8 @@ void ggml_vec_dot_q8_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
 }
 
 void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2_K * restrict x, size_t bx, const block_q8_K * restrict y, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q2_K_q8_K=" __FUNCTION__)
+
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -5683,6 +5786,8 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 }
 
 void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3_K * restrict x, size_t bx, const block_q8_K * restrict y, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q3_K_q8_K=" __FUNCTION__)
+
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
@@ -6165,6 +6270,8 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * restrict s, size_t bs, const block_q3
 }
 
 void ggml_vec_dot_q4_K_q8_K(int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q4_K_q8_K=" __FUNCTION__)
+
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
@@ -6708,6 +6815,8 @@ void ggml_vec_dot_q5_K_q8_K(int n, float * restrict s, size_t bs, const void * r
 }
 
 void ggml_vec_dot_q6_K_q8_K(const int n, float * restrict s, size_t bs, const void * restrict vx, size_t bx, const void * restrict vy, size_t by, int nrc) {
+#pragma comment(linker, "/EXPORT:ggml_vec_dot_q6_K_q8_K=" __FUNCTION__)
+
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
