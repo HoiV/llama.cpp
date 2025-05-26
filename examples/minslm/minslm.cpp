@@ -2,6 +2,21 @@
 
 #include "minslm.h"
 
+#ifdef _WIN32
+
+#include <intrin.h>
+namespace common {
+    #include <xbox-cpu.h>
+    #include <xbox-cpu.hpp>
+}
+
+#else // _WIN32
+
+#define xb_set_process_affinity(n, m)
+#define xb_set_optimal_process_affinity(n)
+
+#endif // _WIN32
+
 int current_custom_prompt_index = 0;
 std::vector<std::string> custom_prompts;
 std::vector<std::string>::iterator custom_prompts_it;
@@ -200,12 +215,6 @@ int main(int argc, char** argv) {
         params.n_threads = n_threads;
     }
 
-#if defined(__SET_PROCESS_AFFINITY__)
-
-    ggml_set_process_affinity(params.n_threads);
-
-#endif // defined(__SET_PROCESS_AFFINITY__) 
-
     if (argc >= 4) {
         params.custom_p_file = argv[3];
     }
@@ -222,6 +231,10 @@ int main(int argc, char** argv) {
 
         } else if (!strcmp(argv[4], "repack-xbox")) {
             ggml_set_tensor_repacking_mode(TENSOR_REPACKING_MODE_XBOX);
+
+        } else if (!strcmp(argv[4], "paffin")) {
+            common::xb_set_process_affinity(params.n_threads, 0);
+
         }
 
         argv += 1;

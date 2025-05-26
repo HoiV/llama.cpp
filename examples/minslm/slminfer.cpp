@@ -114,7 +114,7 @@ int slm_init(gpt_params& params) {
             // build the shared prompt
             params.pfx_shared = template_prompt.substr(0, pos);
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, true);
             // build the cache file directory
             params.pfx_file = pfx_file_path(params.pfx_shared);
             // load the cache and create one if it does not exist
@@ -196,7 +196,7 @@ int slm_inference(gpt_params& params) {
     }
 
     // tokenize the remaining prompt or full prompt if pfc_mode is off
-    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
+    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, true);
 
     // append the variant part of the prompt or the full prompt for non pfc mode
     embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
@@ -283,7 +283,7 @@ int slm_inference(gpt_params& params) {
             // build the shared prompt
             params.pfx_shared = template_prompt.substr(0, pos);
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, true);
         }
     }
 
