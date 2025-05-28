@@ -15004,6 +15004,16 @@ void ggml_compute_forward_mul_mat(
 #endif
 
     if ((gemm != NULL) && (gemv != NULL)) {
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        int64_t init_t0 = 0;
+        if (!ith) {
+            init_t0 = ggml_time_us();
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
         if (src1_type != vec_dot_type) {
             char * wdata = params->wdata;
     
@@ -15039,12 +15049,36 @@ void ggml_compute_forward_mul_mat(
         //
 
         ggml_wait_for_done(params);
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith) {
+            mul_mat_init_count += 1;
+            mul_mat_init_time_us += ggml_time_us() - init_t0;
+        }
+        
+#endif // GGML_TENSOR_OP_PERF
+
     }
 
     const int64_t nr0 = ne01;          // src0 rows
     const int64_t nr1 = ne1*ne12*ne13; // src1 rows
 
     if ((gemm != NULL) && (gemv != NULL)) {
+
+#ifdef GGML_TENSOR_OP_PERF
+        if (!ith) {
+            uint64_t bucket_index = ggml_row_size(src0_type, ne00);
+        
+            if (bucket_index > ARRAYSIZE(quant_type_row_size[src0_type].counts)) {
+                bucket_index = ARRAYSIZE(quant_type_row_size[src0_type].counts);
+            }
+
+            quant_type_row_size[src0_type].total_count += 1;
+            quant_type_row_size[src0_type].counts[bucket_index - 1] += 1;        
+        }
+#endif // GGML_TENSOR_OP_PERF
+        
         if (ggml_n_dims(src0) == 2) {
             const void *src1_wdata = (src1_type == vec_dot_type) ? src1->data : params->wdata;
             const size_t src1_col_stride = ggml_is_contiguous(src1) || src1->type != vec_dot_type ? ggml_row_size(vec_dot_type, ne10) : nb11;
@@ -15064,6 +15098,16 @@ void ggml_compute_forward_mul_mat(
                      (const char *) src0->data + src0_start * nb01, (const char *) src1_wdata + (src1_col_stride * iter), 1,
                      src0_end - src0_start);
             }
+
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith) {
+            vec_dot_src0_counts[src0_type] += 1;
+            vec_dot_src0_time[src0_type] += ggml_time_us() - vec_dot_src0_t0;
+        }
+
+#endif // GGML_TENSOR_OP_PERF
+
             return;
         }
     }
@@ -15096,7 +15140,6 @@ void ggml_compute_forward_mul_mat(
 
 #endif // GGML_TENSOR_OP_PERF
 
-        ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
         const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
         const int64_t start_row = rows_per_thread * ith;
         const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
@@ -15110,7 +15153,8 @@ void ggml_compute_forward_mul_mat(
             for (int64_t i12 = 0; i12 < ne12; ++i12) {
                 char * row_base = row_data + (((i12 * ne11) + start_row) * row_size);
                 for (int64_t i11 = start_row; i11 < end_row; ++i11) {
-                    from_float_to_vec_dot((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), row_base, ne10);
+                    from_float((float *)((char *)src1->data + i13*nb13 + i12*nb12 + i11*nb11), 
+                        row_base, ne10);
                     row_base += row_size;
                 }
             }
@@ -15308,7 +15352,6 @@ void ggml_compute_forward_mul_mat(
         if (bucket_index > ARRAYSIZE(quant_type_row_size[src0_type].counts)) {
             bucket_index = ARRAYSIZE(quant_type_row_size[src0_type].counts);
         }
-
 
         quant_type_row_size[src0_type].total_count += 1;
         quant_type_row_size[src0_type].counts[bucket_index - 1] += 1;
