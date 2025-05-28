@@ -14885,12 +14885,17 @@ void ggml_compute_forward_mul_mat(
              (src0_type == GGML_TYPE_Q8_0) || 
              (src0_type == GGML_TYPE_Q4_K))) {
 
+            enum ggml_type original_src0_type = src0_type;
             if (!ith) {
                 //
                 // only one thread can repack the tensor
                 //
 
-                src0->type = ggml_repack_tensor(src0);
+                src0_type = ggml_repack_tensor(src0);
+                if (src0_type != original_src0_type) {
+                    // update new tensor type if repacking is successful
+                    src0->type = src0_type;
+                }
             }
 
             //
@@ -14899,16 +14904,22 @@ void ggml_compute_forward_mul_mat(
 
             ggml_wait_for_done(params);
 
-            if (src0->type != src0_type) {
-                //
-                // all threads update new tensor type if it has changed
-                //
+            //
+            // if this is the zeroth cpu and the old type does not match the current
+            // type, then the tensor was repacked
+            //
 
-                src0_type = src0->type;
+            if (!ith && (original_src0_type != src0_type)) {
                 src0->is_repacked = true;
             }
         }
     }
+
+    //
+    // refresh for all threads in case the type has changed through repacking
+    // 
+    
+    src0_type = src0->type;
 
 #ifdef GGML_TENSOR_OP_PERF
     int64_t vec_dot_src0_t0 = 0;

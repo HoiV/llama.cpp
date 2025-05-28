@@ -128,9 +128,10 @@ int slm_init(xbapp_params& params) {
         size_t pos = template_prompt.find("{message}");
         if (pos != std::string::npos) {
             // build the shared prompt
-            params.pfx_shared = ::trim(template_prompt.substr(0, pos));
+//            params.pfx_shared = ::trim(template_prompt.substr(0, pos));
+            params.pfx_shared = template_prompt.substr(0, pos);
             // tokenize(a) + tokenize(b) != tokenize(a+b), we tokenize pfx and content separately
-            tokens_shared = llama_tokenize(model, params.pfx_shared, false, true);
+            tokens_shared = llama_tokenize(model, params.pfx_shared, false, false);
 
 #if 1 // use llama_state_load_file()
             // build the cache file directory
@@ -231,7 +232,7 @@ int slm_inference(xbapp_params& params) {
     }
 
     // tokenize the remaining prompt or full prompt if pfc_mode is off
-    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, true);
+    std::vector<llama_token> tokens_input = llama_tokenize(model, params.prompt, false, false);
 
     // append the variant part of the prompt or the full prompt for non pfc mode
     embd_inp.insert(embd_inp.end(), tokens_input.begin(), tokens_input.end());
@@ -401,7 +402,9 @@ int slm_inference(xbapp_params& params) {
             }
 
             // save this new token for next evaluation
-            embd[0] = new_token_id;
+            // embd[0] = new_token_id;
+            embd.clear();
+            embd.push_back(new_token_id);
 
             n_tokens_generated += 1;
             total_tokens_generated += 1;

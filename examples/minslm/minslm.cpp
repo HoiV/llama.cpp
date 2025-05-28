@@ -23,19 +23,6 @@ std::vector<std::string>::iterator custom_prompts_it;
 std::string custom_prompts_output;
 bool switch_prompt = false; // set true every time switch to a new prompt
 
-void xbapp_log_callback(ggml_log_level level, const char * text, void * user_data) {
-    GGML_UNUSED(text);
-
-    ggml_log_level xbapp_log_level = (ggml_log_level)0 /* GGML_LOG_LEVEL_NONE */;
-    if (user_data != nullptr) {
-        xbapp_log_level = *(ggml_log_level *)user_data;
-    }
-
-    if (level == xbapp_log_level) {
-        fputs(text, stdout);
-    }
-}
-
 namespace console {
     enum display_t {
         reset = 0,
@@ -184,6 +171,19 @@ void print_system_info(int32_t n_threads, int32_t n_batch) {
     printf("\n%s: %s\n\n", __func__, os.str().c_str());
 }
 
+void xbapp_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    GGML_UNUSED(text);
+
+    ggml_log_level xbapp_log_level = (ggml_log_level)0 /* GGML_LOG_LEVEL_NONE */;
+    if (user_data != nullptr) {
+        xbapp_log_level = *(ggml_log_level *)user_data;
+    }
+
+    if (level == xbapp_log_level) {
+        fputs(text, stdout);
+    }
+}
+
 int main(int argc, char** argv) {
     gpt_params params = {0};
 
@@ -261,12 +261,12 @@ int main(int argc, char** argv) {
     while (custom_prompts_it != custom_prompts.end())
     {
         // Create custom user prompt
-        std::string& custom_prompt = *custom_prompts_it;
+        std::string& custom_prompt = ::trim(*custom_prompts_it);
         custom_prompt.erase(
             std::remove(custom_prompt.begin(), custom_prompt.end(), '\"'),
             custom_prompt.end());
 
-        std::string full_prompt = params.custom_template_prompt;
+        std::string full_prompt = ::trim(params.custom_template_prompt);
         size_t pos = full_prompt.find("{message}");
         if (pos != std::string::npos) {
             full_prompt.replace(pos, std::string("{message}").length(), custom_prompt);
