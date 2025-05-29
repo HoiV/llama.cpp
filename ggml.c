@@ -1027,7 +1027,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .nrows                    = 1,
     },
     [GGML_TYPE_Q4_0_4_4] = {
-        .type_name                = "q4_0_4x4",
+        .type_name                = "q4_0_4x4_arm64_only",
         .blck_size                = QK4_0,
         .type_size                = sizeof(block_q4_0),
         .is_quantized             = true,
@@ -1043,7 +1043,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .gemm                     = ggml_gemm_q4_0_4x4_q8_0,
     },
     [GGML_TYPE_Q4_0_4_8] = {
-        .type_name                = "q4_0_4x8",
+        .type_name                = "q4_0_4x8_arm64_only",
         .blck_size                = QK4_0,
         .type_size                = sizeof(block_q4_0),
         .is_quantized             = true,
@@ -1074,6 +1074,22 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .gemv                     = ggml_gemv_q4_0_8x8_q8_0,
         .gemm                     = ggml_gemm_q4_0_8x8_q8_0,
     },
+    [GGML_TYPE_Q4_K_8_8] = {
+        .type_name                = "q4_K_8x8",
+        .blck_size                = QK_K,
+        .type_size                = sizeof(block_q4_K),
+        .is_quantized             = true,
+        .to_float                 = NULL,
+        .from_float               = NULL,
+        .from_float_reference     = NULL,
+        .vec_dot                  = NULL,
+        .vec_dot_type             = GGML_TYPE_Q8_K,
+        .nrows                    = 1,
+        .ncols                    = 8,
+        .blck_size_interleave     = 8,
+        .gemv                     = ggml_gemv_q4_K_8x8_q8_K,
+        .gemm                     = ggml_gemm_q4_K_8x8_q8_K,
+    },
     [GGML_TYPE_Q4_0_B16] = {
         .type_name                = "q4_0_b16",
         .blck_size                = QK4_0,
@@ -1098,42 +1114,75 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .vec_dot_type             = GGML_TYPE_Q8_0_B16,
         .nrows                    = 1,
     },
-    [GGML_TYPE_Q4_K_8_8] = {
-        .type_name                = "q4_K_8x8",
+
+    //
+    // Xbox repack and linkage types.
+    //
+    // N.B. A lknkage type is not required for GGML_TYPE_Q8_0_Q8_0_x8 since both the
+    //      src0 and src1 tensors are the same type size and block size.
+    //
+
+    [GGML_TYPE_Q8_0_Q8_0_x8] = {
+        .type_name                = "q8_0_q8_0_x8",
+        .blck_size                = QK8_0,
+        .type_size                = sizeof(block_q8_0),
+        .is_quantized             = true,
+        .to_float                 = NULL,
+        .from_float               = (ggml_from_float_t)quantize_row_q8_0_x8,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q8_0_q8_0_x8,
+        .vec_dot_type             = GGML_TYPE_Q8_0_Q8_0_x8,
+        .nrows                    = 1,
+    },
+
+    //
+    // linkage type after repack of GGML_TYPE_Q4_K
+    //
+    // A linkage type is required since there is a different vec_dot function.
+    //
+
+    [GGML_TYPE_Q4_K_x8] = {
+        .type_name                = "q4_K_x8",
         .blck_size                = QK_K,
         .type_size                = sizeof(block_q4_K),
         .is_quantized             = true,
-        .to_float                 = NULL,
-        .from_float               = NULL,
-        .from_float_reference     = NULL,
-        .vec_dot                  = NULL,
-        .vec_dot_type             = GGML_TYPE_Q8_K,
-        .nrows                    = 1,
-        .ncols                    = 8,
-        .blck_size_interleave     = 8,
-        .gemv                     = ggml_gemv_q4_K_8x8_q8_K,
-        .gemm                     = ggml_gemm_q4_K_8x8_q8_K,
-    },
-    [GGML_TYPE_Q4_0_K] = {
-        .type_name                = "q4_0_K",
-        .blck_size                = QK_K,
-        .type_size                = sizeof(block_q4_0_K),
-        .is_quantized             = true,
-        .to_float                 = (ggml_to_float_t) dequantize_row_q4_0,
-        .from_float               = quantize_row_q4_0,
-        .vec_dot                  = xx_vec_dot_q4_0_K_q8_0_K,
-        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_k_q8_k_x8,
+        .vec_dot_type             = GGML_TYPE_Q4_K_Q8_K_x8,
         .nrows                    = 1,
     },
-    [GGML_TYPE_Q8_0_K] = {
-        .type_name                = "q8_0_K",
+    [GGML_TYPE_Q4_K_Q8_K_x8] = {
+        .type_name                = "q4_K_q8_k_x8",
         .blck_size                = QK_K,
-        .type_size                = sizeof(block_q8_0_K),
+        .type_size                = sizeof(block_q8_K),
         .is_quantized             = true,
-        .to_float                 = NULL,
-        .from_float               = NULL,
-        .vec_dot                  = xx_vec_dot_q8_0_K_q8_0_K,
-        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .from_float               = (ggml_from_float_t)quantize_row_q8_k_x8,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_k_q8_k_x8,
+        .vec_dot_type             = GGML_TYPE_Q4_K_Q8_K_x8,
+        .nrows                    = 1,
+    },
+
+    //
+    // linkage type after repack of GGML_TYPE_Q4_0
+    //
+    // A linkage type is required since there is a different vec_dot function.
+    //
+
+    [GGML_TYPE_Q4_0_x8] = {
+        .type_name                = "q4_0_x8",
+        .blck_size                = QK4_0,
+        .type_size                = sizeof(block_q4_0),
+        .is_quantized             = true,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_0_q8_0_x8,
+        .vec_dot_type             = GGML_TYPE_Q4_0_Q8_0_x8,
+        .nrows                    = 1,
+    },
+    [GGML_TYPE_Q4_0_Q8_0_x8] = {
+        .type_name                = "q4_0_q8_0_x8",
+        .blck_size                = QK8_0,
+        .type_size                = sizeof(block_q8_0),
+        .is_quantized             = true,
+        .from_float               = (ggml_from_float_t)quantize_row_q8_0_x8,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_0_q8_0_x8,
+        .vec_dot_type             = GGML_TYPE_Q4_0_Q8_0_x8,
         .nrows                    = 1,
     },
 };
@@ -2478,7 +2527,7 @@ void ggml_vec_neg_f32(const uint64_t n, float * y, const float * x)
 
 }
 
-void ggml_vec_mul_f32(const uint32_t n, float * z, const float * x, const float * y) {
+void ggml_vec_mul_f32(const uint64_t n, float * z, const float * x, const float * y) {
 #pragma comment(linker, "/EXPORT:ggml_vec_mul_f32=" __FUNCTION__)
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
@@ -14861,7 +14910,7 @@ void ggml_compute_forward_group_norm(
 }
 
 // ggml_compute_forward_mul_mat
-
+int skipped_me = -1;
 void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
@@ -14875,49 +14924,51 @@ void ggml_compute_forward_mul_mat(
     const int ith = params->ith;
     const int nth = params->nth;
 
-    if (!src0->is_repacked) {
+    //
+    // Check if an attempt should be made to repack the src0 tensor
+    //
+
+    if (src1_type == GGML_TYPE_F32 &&
+        ((src0_type == GGML_TYPE_Q4_0) ||
+         (src0_type == GGML_TYPE_Q8_0) || 
+         (src0_type == GGML_TYPE_Q4_K))) {
+
         //
-        // repack tensor if applicable
+        // If this is the zeroth cpu, then attempt to repack the src0 tensor.
+        //
+        // N.B. Repacking is single threaded on the zeroth cpu.
         //
 
-        if ((src1_type == GGML_TYPE_F32) &&
-            ((src0_type == GGML_TYPE_Q4_0) ||
-             (src0_type == GGML_TYPE_Q8_0) || 
-             (src0_type == GGML_TYPE_Q4_K))) {
-
-            enum ggml_type original_src0_type = src0_type;
-            if (!ith) {
-                //
-                // only one thread can repack the tensor
-                //
-
-                src0_type = ggml_repack_tensor(src0);
-                if (src0_type != original_src0_type) {
-                    // update new tensor type if repacking is successful
-                    src0->type = src0_type;
-                }
-            }
+        enum ggml_type repack_type = src0_type;
+        if (!ith) {
 
             //
-            // all threads wait until repacking is done (if any)
+            // N.B. If the repack is successful, then the repack type is returned.
+            //      Otherwise, the original type is returned.
+
+            repack_type = ggml_repack_tensor(src0);
+
+            //
+            // Wait for all other threads to arrive at the barrier below before
+            // potentially changing the src0 type.
+            //
+            // N.B. The tensor type cannot be changed until it is guaranteed that
+            //      all other threads are waiting of the barrier below.
             //
 
-            ggml_wait_for_done(params);
-
-            //
-            // if this is the zeroth cpu and the old type does not match the current
-            // type, then the tensor was repacked
-            //
-
-            if (!ith && (original_src0_type != src0_type)) {
-                src0->is_repacked = true;
-            }
+            ggml_wait_to_finalize(params);
+            src0->type = repack_type;
         }
+
+        ggml_wait_for_done(params);
     }
 
     //
-    // refresh for all threads in case the type has changed through repacking
-    // 
+    // Refresh for all threads in case the type has changed through repacking.
+    //
+    // N.B. All repacked tensors require exactly the same amount of memory as their
+    //      unpacked type.
+    //
     
     src0_type = src0->type;
 
@@ -21932,7 +21983,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     // N.B. The priority of the master thread is only set once during initialization.
     //
 
-    if (!ith && xb_set_thread_priority(ith)) {
+    if (ith && xb_set_thread_priority(ith)) {
         // printf("work thread %d priority set to TIME_CRITICAL\n", ith);
     }
 
@@ -21945,7 +21996,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 
     uint64_t affinity;
 
-    if (!ith && ggml_set_thread_affinity(ith, &affinity)) {
+    if (ith && ggml_set_thread_affinity(ith, &affinity)) {
 //        printf("work thread %d affinity set to 0x%016llx\n", ith, affinity);
     }
 #endif // #if 0
@@ -22044,7 +22095,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
                 }
 
                 // update time per vec_dot_type and per src0_row_size for mul_mat
-                if (node->op == GGML_OP_MUL_MAT) {
+                if (op == GGML_OP_MUL_MAT) {
                     // printf("=================================================\n");
                     const struct ggml_tensor * src0 = node->src[0];
                     const enum ggml_type src0_type = src0->type;
@@ -22470,7 +22521,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
     if (ggml_use_omp) {
 
-        #ifdef __clang__
+#ifdef __clang__
 
         printf("omp is not supported with clang\n");
 

@@ -440,11 +440,20 @@ extern "C" {
         GGML_TYPE_Q4_0_4_4 = 31,
         GGML_TYPE_Q4_0_4_8 = 32,
         GGML_TYPE_Q4_0_8_8 = 33,
-        GGML_TYPE_Q4_0_B16 = 34,
-        GGML_TYPE_Q8_0_B16 = 35,
-        GGML_TYPE_Q4_K_8_8 = 36,
-        GGML_TYPE_Q4_0_K   = 37,
-        GGML_TYPE_Q8_0_K   = 38,
+        GGML_TYPE_Q4_K_8_8 = 34,
+        GGML_TYPE_Q4_0_B16 = 35,
+        GGML_TYPE_Q8_0_B16 = 36,
+
+        //
+        // Xbox specific quant types.
+        //
+
+        GGML_TYPE_Q8_0_Q8_0_x8 = 37,    // repacked type
+        GGML_TYPE_Q4_K_x8 = 38,         // - dummy linkage type
+        GGML_TYPE_Q4_K_Q8_K_x8 = 39,    // repacked type
+        GGML_TYPE_Q4_0_x8 = 40,         // - dummy linkage type
+        GGML_TYPE_Q4_0_Q8_0_x8 = 41,    // repacked type
+
         GGML_TYPE_COUNT,
     };
 
@@ -661,7 +670,7 @@ extern "C" {
         struct {
             int n_tasks : 16;
             int is_skipped : 8;
-            int is_repacked : 8;
+            int reserved : 8;
         };
 
         // performance - not used but required for size and alignment
