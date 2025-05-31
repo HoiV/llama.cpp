@@ -440,9 +440,14 @@ extern "C" {
         GGML_TYPE_Q4_0_4_4 = 31,
         GGML_TYPE_Q4_0_4_8 = 32,
         GGML_TYPE_Q4_0_8_8 = 33,
-        GGML_TYPE_Q4_K_8_8 = 34,
-        GGML_TYPE_Q4_0_B16 = 35,
-        GGML_TYPE_Q8_0_B16 = 36,
+
+        GGML_TYPE_Q4_0_B16 = 34, // New from AMD
+        GGML_TYPE_Q8_0_B16 = 35, // New from AMD
+
+        // Nothing above this line can change since there are GGUF built with
+        // the above types which could be impacted if they are modified
+
+        GGML_TYPE_Q4_K_8_8 = 36, // New from Xbox to support Q4_K_8_8
 
         //
         // Xbox specific quant types.

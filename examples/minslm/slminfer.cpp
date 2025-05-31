@@ -12,6 +12,17 @@ std::vector<llama_token> session_tokens;
 int64_t t_token_generation_time = 0;;
 std::vector<llama_token> tokens_shared;
 
+llama_token minslm_sample_token(struct llama_context *, llama_token_data_array * candidates) {
+    // Find max element
+    auto * max_iter = std::max_element(candidates->data, candidates->data + candidates->size, [](const llama_token_data & a, const llama_token_data & b) {
+        return a.logit < b.logit;
+    });
+
+    llama_token result = max_iter->id;
+    //printf("new_token_id=%5d - logig=%8.5f\n", result, max_iter->logit);
+    return result;
+}
+
 std::vector<llama_token> llama_tokenize(
     const struct llama_model * model,
     const std::string & text,
@@ -319,6 +330,7 @@ int slm_inference(gpt_params& params) {
             llama_sample_temp(ctx, &candidates_p, temp);
 
             const llama_token new_token_id = llama_sample_token_greedy(ctx, &candidates_p);
+            // const llama_token new_token_id = minslm_sample_token(ctx, &candidates_p);
 
             // is it an end of generation - are we done?
             if (llama_token_is_eog(model, new_token_id)) {

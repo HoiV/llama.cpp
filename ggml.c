@@ -15152,10 +15152,10 @@ void ggml_compute_forward_mul_mat(
 
 #ifdef GGML_TENSOR_OP_PERF
 
-        if (!ith) {
-            vec_dot_src0_counts[src0_type] += 1;
-            vec_dot_src0_time[src0_type] += ggml_time_us() - vec_dot_src0_t0;
-        }
+            if (!ith) {
+                vec_dot_src0_counts[src0_type] += 1;
+                vec_dot_src0_time[src0_type] += ggml_time_us() - vec_dot_src0_t0;
+            }
 
 #endif // GGML_TENSOR_OP_PERF
 
