@@ -61,6 +61,7 @@ else()
     add_subdirectory(chatbot)
     add_subdirectory(llm-infer)
     add_subdirectory(minslm)
+    add_subdirectory(splitter)
 endif()
 
 #    add_subdirectory(frotz)
