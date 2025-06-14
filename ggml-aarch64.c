@@ -2937,6 +2937,7 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
 #endif // defined(__ARM_FEATURE_SVE) && defined(__ARM_FEATURE_MATMUL_INT8)
 
 #elif defined(__AVX2__) || defined(__AVX512F__)
+#pragma message("Building AVX512 gemm_q4_0_8x8_q8_0")
     {
         const block_q4_0x8 * b_ptr_start = (const block_q4_0x8 *)vx;
         const block_q8_0x4 * a_ptr_start = (const block_q8_0x4 *)vy;
@@ -3661,6 +3662,7 @@ void ggml_gemm_q4_0_8x8_q8_0(int n, float * restrict s, size_t bs, const void * 
     }
 
 #else
+#pragma message("Building ================ default gemm_q4_0_8x8_q8_0")
 
     float sumf[4][8];
     int sumi;
@@ -5357,7 +5359,7 @@ static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block,
                 dst_tmp[i] = src[x + i * nblocks];
             }
             // write new block_q4_0x8 data to working buffer
-            GGML_ASSERT(dst_buffer < (dst_buffer_start + nblocks));
+            GGML_ASSERT(dst_buffer_cur < (dst_buffer + nblocks));
             *dst_buffer_cur++ = make_block_q4_0x8(dst_tmp, COLUMNS_INTERLEAVED);
         }
         src += ncols_interleaved * nblocks;

@@ -5367,6 +5367,10 @@ print_tensor_op_perf_data (
            (float)(total_time) / (1000. * 1000.),
            total_percent);
 
+    if (elapsed_time_us == 0) {
+        goto exit_tensor_op_perf;
+    }
+
     printf("Tensor op dispatch spin wait information\n\n");
     printf("Threads dispatch tensor ops by scanning the graph node list in parallel,\n");
     printf("selecting an eligible tensor (i.e., one that is not NOP'ed and not empty),\n");
@@ -5543,6 +5547,8 @@ print_tensor_op_perf_data (
     printf("Total creation Time(ms): %6.2f\n", (float)thread_create_time / 1000.);
     printf("Thread creation time(us): %6.2f\n\n",
            (float)thread_create_time / (float)thread_create_count);
+
+exit_tensor_op_perf:
 
     printf("\n");
 }
@@ -5941,6 +5947,9 @@ enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype) {
         case GGML_FTYPE_MOSTLY_Q4_0_4_4:      wtype = GGML_TYPE_Q4_0_4_4; break;
         case GGML_FTYPE_MOSTLY_Q4_0_4_8:      wtype = GGML_TYPE_Q4_0_4_8; break;
         case GGML_FTYPE_MOSTLY_Q4_0_8_8:      wtype = GGML_TYPE_Q4_0_8_8; break;
+        case GGML_FTYPE_MOSTLY_Q4_0_x8:       wtype = GGML_TYPE_Q4_0_x8; break;
+        case GGML_FTYPE_MOSTLY_Q4_K_x8:       wtype = GGML_TYPE_Q4_K_x8; break;
+        case GGML_FTYPE_MOSTLY_Q8_0_Q8_0_x8:  wtype = GGML_TYPE_Q8_0_Q8_0_x8; break;
         case GGML_FTYPE_UNKNOWN:              wtype = GGML_TYPE_COUNT; break;
         case GGML_FTYPE_MOSTLY_Q4_1_SOME_F16: wtype = GGML_TYPE_COUNT; break;
     }
@@ -12346,6 +12355,9 @@ void ggml_compute_forward_add(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
             {
                 ggml_compute_forward_add_q_f32(params, dst);
             } break;
@@ -12716,6 +12728,9 @@ void ggml_compute_forward_add1(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
             {
                 ggml_compute_forward_add1_q_f32(params, dst);
             } break;
@@ -12840,6 +12855,9 @@ void ggml_compute_forward_acc(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
         default:
             {
                 GGML_ASSERT(false);
@@ -14910,7 +14928,6 @@ void ggml_compute_forward_group_norm(
 }
 
 // ggml_compute_forward_mul_mat
-int skipped_me = -1;
 void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
@@ -15179,7 +15196,7 @@ void ggml_compute_forward_mul_mat(
         GGML_ASSERT(src1_type == GGML_TYPE_F32);
 
         //
-        // Distribute the src1 converion over all threads.
+        // Distribute the src1 conversion over all threads.
         //
 
 #ifdef GGML_TENSOR_OP_PERF
@@ -15460,6 +15477,7 @@ void ggml_compute_forward_mul_mat(
             const int64_t limit0 = MIN(iir0 + blck0_factor, ir011);
             for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
                 vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
+                // printf("vec_dot -> %8.5f\n", *dst_col);
             }
         }
     }
@@ -15985,6 +16003,9 @@ void ggml_compute_forward_out_prod(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
             {
                 ggml_compute_forward_out_prod_q_f32(params, dst);
             } break;
@@ -16176,6 +16197,9 @@ void ggml_compute_forward_set(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
         default:
             {
                 GGML_ASSERT(false);
@@ -16484,6 +16508,9 @@ static void ggml_compute_forward_get_rows(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
             {
                 ggml_compute_forward_get_rows_q(params, dst);
             } break;
@@ -17085,6 +17112,9 @@ void ggml_compute_forward_clamp(
         case GGML_TYPE_Q4_0_4_4:
         case GGML_TYPE_Q4_0_4_8:
         case GGML_TYPE_Q4_0_8_8:
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
         case GGML_TYPE_I8:
         case GGML_TYPE_I16:
         case GGML_TYPE_I32:
@@ -22510,7 +22540,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 
 #ifdef GGML_TENSOR_OP_PERF
-
+    // printf("=========================== Number of nodes = %d\n", cgraph->n_nodes);
     atomic_fetch_add(&thread_create_count, n_threads - 1);
 
 #endif // GGML_TENSOR_OP_PERF
@@ -24344,6 +24374,9 @@ size_t ggml_quantize_chunk(
             } break;
         case GGML_TYPE_Q4_0_4_4: /* result = quantize_q4_0_4x4(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break; */
         case GGML_TYPE_Q4_0_4_8: /* result = quantize_q4_0_4x8(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break; */
+        case GGML_TYPE_Q4_0_x8:
+        case GGML_TYPE_Q4_K_x8:
+        case GGML_TYPE_Q8_0_Q8_0_x8:
         default:
             assert(false);
     }

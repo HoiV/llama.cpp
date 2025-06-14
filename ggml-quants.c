@@ -4382,7 +4382,7 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
     const block_q4_0 * restrict x = vx;
     const block_q8_0 * restrict y = vy;
 
-    #if defined(__AVX512F__) && defined(__GEN_AVX512__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     __m512 acc = _mm512_setzero_ps();
     const __m512i zero512 = _mm512_setzero_si512();
@@ -4586,7 +4586,7 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
     *s = hsum_float_8(acc);
 
 #else
-
+#pragma message("Building =============== default ggml_vec_dot_q4_0_q8_0")
     // scalar
     float sumf = 0.0;
 

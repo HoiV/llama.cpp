@@ -14,12 +14,25 @@ std::vector<llama_token> tokens_shared;
 
 llama_token minslm_sample_token(struct llama_context *, llama_token_data_array * candidates) {
     // Find max element
-    auto * max_iter = std::max_element(candidates->data, candidates->data + candidates->size, [](const llama_token_data & a, const llama_token_data & b) {
-        return a.logit < b.logit;
-    });
+    auto * max_iter = std::max_element(candidates->data, 
+                                       candidates->data + candidates->size, 
+                                       [](const llama_token_data & a, const llama_token_data & b) {
+                                           return a.logit < b.logit;
+                                       }
+                                      );
 
     llama_token result = max_iter->id;
-    //printf("new_token_id=%5d - logig=%8.5f\n", result, max_iter->logit);
+    printf("Max ID = %5d - logit = %8.5f\n", result, max_iter->logit);
+
+    std::sort(candidates->data, candidates->data + candidates->size,
+              [](const llama_token_data & a, const llama_token_data & b) {
+                return a.logit > b.logit; // or any other member you want to sort by
+              }
+             );
+    
+    for (int i = 0; i < 5 ; ++i) {
+        printf("   ==== new_token_id=[%5d] - logit=[%8.5f]\n", candidates->data[i].id, candidates->data[i].logit);
+    }
     return result;
 }
 
@@ -270,6 +283,14 @@ int slm_inference(gpt_params& params) {
         // update n_past to reflect what has been decoded
         n_past += n_eval;
     }
+
+#ifdef 0 // GGML_TENSOR_OP_PERF
+    printf("========================================\n");
+    printf("========================================\n");
+    print_tensor_op_perf_data(0);
+    printf("========================================\n");
+    printf("========================================\n");
+#endif // GGML_TENSOR_OP_PERF
 
     int64_t t2_start = ggml_time_us();
     float t_prompt_eval_ms = (t2_start - t1_start) / 1000.0f;

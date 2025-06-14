@@ -4501,6 +4501,9 @@ static std::string llama_model_ftype_name(llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_Q4_0_4_4: return "Q4_0_4_4";
         case LLAMA_FTYPE_MOSTLY_Q4_0_4_8: return "Q4_0_4_8";
         case LLAMA_FTYPE_MOSTLY_Q4_0_8_8: return "Q4_0_8_8";
+        case LLAMA_FTYPE_MOSTLY_Q4_0_x8: return "Q4_0_x8";
+        case LLAMA_FTYPE_MOSTLY_Q4_K_x8: return "Q4_K_x8";
+        case LLAMA_FTYPE_MOSTLY_Q8_0_Q8_0_x8: return ("Q8_0_Q8_0_x8");
 
         default: return "unknown, may not work";
     }
@@ -17844,6 +17847,15 @@ static ggml_type llama_tensor_get_type(quantize_state_internal & qs, ggml_type n
                      new_type == GGML_TYPE_Q4_0_8_8) {
                 new_type = GGML_TYPE_Q4_0;
             }
+            else if (new_type == GGML_TYPE_Q4_0_x8) {
+                new_type = GGML_TYPE_Q4_0;
+            }
+            else if (new_type == GGML_TYPE_Q4_K_x8) {
+                new_type = GGML_TYPE_Q4_K;
+            }
+            else if (new_type == GGML_TYPE_Q8_0_Q8_0_x8) {
+                new_type = GGML_TYPE_Q8_0;
+            }
         }
     } else if (ftype == LLAMA_FTYPE_MOSTLY_IQ2_XXS || ftype == LLAMA_FTYPE_MOSTLY_IQ2_XS || ftype == LLAMA_FTYPE_MOSTLY_IQ1_S ||
                ftype == LLAMA_FTYPE_MOSTLY_IQ2_S || ftype == LLAMA_FTYPE_MOSTLY_IQ2_M    || ftype == LLAMA_FTYPE_MOSTLY_IQ1_M) {
@@ -18161,6 +18173,9 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
         case LLAMA_FTYPE_MOSTLY_Q4_0_4_4: default_type = GGML_TYPE_Q4_0_4_4; break;
         case LLAMA_FTYPE_MOSTLY_Q4_0_4_8: default_type = GGML_TYPE_Q4_0_4_8; break;
         case LLAMA_FTYPE_MOSTLY_Q4_0_8_8: default_type = GGML_TYPE_Q4_0_8_8; break;
+        case LLAMA_FTYPE_MOSTLY_Q4_0_x8: default_type = GGML_TYPE_Q4_0_x8; break;
+        case LLAMA_FTYPE_MOSTLY_Q4_K_x8: default_type = GGML_TYPE_Q4_K_x8; break;
+        case LLAMA_FTYPE_MOSTLY_Q8_0_Q8_0_x8: default_type = GGML_TYPE_Q8_0_Q8_0_x8; break;
 
         default: throw std::runtime_error(format("invalid output file type %d\n", ftype));
     }
