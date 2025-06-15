@@ -5282,6 +5282,15 @@ void ggml_vec_dot_q8_0_q8_0(const int n, float * restrict s, size_t bs, const vo
 
     *s = hsum_float_16(acc);
 
+/*
+    static uint32_t count = 128;
+
+    if (count != 0) {
+        count -= 1;
+        printf("ggml_vec_dot_q8_0_q8_0 %08x\n", *(uint32_t *)s);
+    }
+*/
+
 #elif defined(__AVX2__)
 
     __m256 acc = _mm256_setzero_ps();

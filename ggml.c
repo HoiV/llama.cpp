@@ -1118,7 +1118,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     //
     // Xbox repack and linkage types.
     //
-    // N.B. A lknkage type is not required for GGML_TYPE_Q8_0_Q8_0_x8 since both the
+    // N.B. A linkage type is not required for GGML_TYPE_Q8_0_Q8_0_x8 since both the
     //      src0 and src1 tensors are the same type size and block size.
     //
 
@@ -15370,6 +15370,16 @@ void ggml_compute_forward_mul_mat(
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
+
+/*
+    if (src0_type == GGML_TYPE_Q4_K_x8) {
+        printf("ne %zd, bf %zd, src0 size %zd, src1 size %zd\n",
+               ne00,
+               blck0_factor,
+               src0_row_size,
+               row_size);
+    }
+*/
 
 #if 0 // too noisy for BF16
     if (blck0_factor <= 1) {

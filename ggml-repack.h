@@ -28,10 +28,14 @@ typedef struct {
     int8_t qs[QK_K / 2];                // quants interleaved packed two per byte
 } block_q4_0_repack;
 
+static_assert((sizeof(block_q4_0) * 8) == sizeof(block_q4_0_repack));
+
 typedef struct {
     ggml_half d[8];                     // delta (scale)
     int8_t qs[QK_K];                    // quants interleaved
 } block_q8_0_repack;
+
+static_assert((sizeof(block_q8_0) * 8) == sizeof(block_q8_0_repack));
 
 typedef block_q4_K block_q4_K_repack;
 typedef block_q8_K block_q8_K_repack;

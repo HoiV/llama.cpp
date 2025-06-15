@@ -284,7 +284,7 @@ int slm_inference(gpt_params& params) {
         n_past += n_eval;
     }
 
-#ifdef 0 // GGML_TENSOR_OP_PERF
+#ifdef __NOT_NOW // GGML_TENSOR_OP_PERF
     printf("========================================\n");
     printf("========================================\n");
     print_tensor_op_perf_data(0);

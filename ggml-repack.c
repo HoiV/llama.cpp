@@ -46,6 +46,7 @@ make_q4_0_repack_quant (
 //
 
 {
+#pragma comment(linker, "/EXPORT:make_q4_0_repack_quant=" __FUNCTION__)
 
     uint64_t i;
     uint64_t j;
@@ -142,6 +143,7 @@ make_q4_k_repack_quant (
 //
 
 {
+#pragma comment(linker, "/EXPORT:make_q4_k_repack_quant=" __FUNCTION__)
 
     uint64_t i;
     uint64_t j;
@@ -236,6 +238,7 @@ make_q8_0_repack_quant (
 //
 
 {
+#pragma comment(linker, "/EXPORT:make_q8_0_repack_quant=" __FUNCTION__)
 
     uint64_t i;
     uint64_t j;
@@ -290,6 +293,7 @@ make_q8_k_repack_quant (
 //
 
 {
+#pragma comment(linker, "/EXPORT:make_q8_k_repack_quant=" __FUNCTION__)
 
     uint64_t i;
     uint64_t j;
@@ -306,13 +310,23 @@ make_q8_k_repack_quant (
     for (k = 0; k < nb; k += 1) {
 
         //
-        // Copy the multiplier/(d) and sums/(bsums) values directly from the input quant
-        // block to the output quant block.
+        // Copy the multiplier/(d) value from the input quant block to the output
+        // quant block.
         //
     
         out->d = in->d;
-        memcpy(out->bsums, in->bsums, sizeof(in->bsums));
-    
+
+        //
+        // Precompute bsums half add that is required in the q4_k_q8_k vector dot
+        // function.
+        //
+
+        __m128i bsums0 = _mm_loadu_si128((__m128i *)&in->bsums[0]);
+        __m128i bsums1 = _mm_loadu_si128((__m128i *)&in->bsums[8]);
+        bsums0 = _mm_hadd_epi16(bsums0, bsums1);
+        _mm_storeu_si128((__m128i *)&out->bsums[0], bsums0);
+        _mm_storeu_si128((__m128i *)&out->bsums[8], bsums0);
+
         //
         // Rearrange the 8-bit quant values into lanes of four bytes interleaved.
         // 
@@ -352,6 +366,8 @@ xx_vec_dot_q4_0_q8_0_x8 (
     int nrc
     )
 {
+#pragma comment(linker, "/EXPORT:xx_vec_dot_q4_0_q8_0_x8=" __FUNCTION__)
+
     GGML_UNUSED(bs);
     GGML_UNUSED(bx);
     GGML_UNUSED(by);
@@ -440,6 +456,8 @@ xx_vec_dot_q4_k_q8_k_x8 (
     int nrc
     )
 {
+#pragma comment(linker, "/EXPORT:xx_vec_dot_q4_k_q8_k_x8=" __FUNCTION__)
+
     GGML_UNUSED(bs);
     GGML_UNUSED(bx);
     GGML_UNUSED(by);
@@ -451,61 +469,51 @@ xx_vec_dot_q4_k_q8_k_x8 (
     static const uint32_t kmask2 = 0x0f0f0f0f;
     static const uint32_t kmask4 = 0xc0c0c0c0;
 
-    uint32_t utmp[4];
+    uint64_t utmp[2];
 
     __m512 acc = _mm512_setzero_ps();
+    __m128 mins_acc = _mm_setzero_ps();
     const __m512i m4 = _mm512_set1_epi8(0xf);
-    const __m512 zero512 = _mm512_setzero_ps();
+    const __m128i zero128 = _mm_setzero_si128();
 
     for (uint64_t i = 0; i < nb; ++i) {
 
         const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
-        const float dmin = -y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+        const float dmin = y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
 
         const uint32_t * vscales = (uint32_t *)x[i].scales;
-        utmp[3] = ((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2);
-        utmp[2] = vscales[1] & kmask1;
-        utmp[1] = (vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2);
-        utmp[0] = vscales[0] & kmask1;
+        utmp[1] = (uint64_t)(((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2)) << 32;
+        utmp[1] |= (uint64_t)(vscales[1] & kmask1);
+        utmp[0] = (uint64_t)((vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2)) << 32;
+        utmp[0] |= (uint64_t)(vscales[0] & kmask1);
 
         const uint8_t * q4 = x[i].qs;
         const int8_t  * q8 = y[i].qs;
 
         //
-        // Load q4 mins and scales and expand to 16 - 16-bit values.
+        // Insert 8 q4 mins and 8 q4 scales.
+        //
+        // N.B. Both mins and scales are 6-bit unsigned values.
         //
 
-        const __m128i mins_and_scales8 = _mm_set_epi32(utmp[3], utmp[2], utmp[1], utmp[0]);
-        const __m256i mins_and_scales = _mm256_cvtepu8_epi16(mins_and_scales8);
-
-        //
-        // Load q8 16 bsums values and reduce to 8 bsums values.
-        //
-
-        const __m256i q8sums = _mm256_loadu_si256((const __m256i*)y[i].bsums);
-
-        const __m128i q8s = _mm_hadd_epi16(_mm256_castsi256_si128(q8sums),
-                                           _mm256_extracti128_si256(q8sums, 1));
-
-        //
-        // Multiply the 8 bsums by the 8 mins values, convert to float and add to the
-        // vector dot accumulation.
-        //
-
-        const __m128i prod = _mm_madd_epi16(_mm256_extracti128_si256(mins_and_scales, 1), q8s);
-
-        const __m128 prod_m = _mm_mul_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod));
-        acc = _mm512_add_ps(acc, _mm512_insertf32x4(zero512, prod_m, 0));
+        const __m128i scales8 = _mm_insert_epi64(zero128, utmp[0], 0);
+        const __m128i mins8 = _mm_insert_epi64(zero128, utmp[1], 0);
 
         //
         // Compute the scale vector.
         //
         // N.B. The 8 scale values and replicated to 16 scale values.
+        //
 
-        __m512i scale = _mm512_cvtepu16_epi32(mins_and_scales);
+        __m512i scale = _mm512_cvtepi8_epi32(scales8);
         scale = _mm512_inserti64x4(scale, _mm512_castsi512_si256(scale), 1);
 
         __m512i sumi = _mm512_setzero_si512();
+
+        //
+        // Compute the integer product of the q4 and q8 quants and accumulate the
+        // integer results.
+        //
 
         for (uint64_t j = 0; j < QK_K / 64; ++j) {
             const __m256i q4bits = _mm256_loadu_si256((const __m256i*)(q4 + (j * 32)));
@@ -518,15 +526,35 @@ xx_vec_dot_q4_k_q8_k_x8 (
             sumi = _mm512_dpbusd_epi32(sumi, q4v, q8v);
         }
 
+        //
+        // Multiply the accumulated integer result by the q4 scale, convert to float,
+        // multiply by the q8 multiplier, and acculate the results.
+        //
+
         sumi = _mm512_mullo_epi32(sumi, scale);
         acc = _mm512_fmadd_ps(_mm512_set1_ps(d), _mm512_cvtepi32_ps(sumi), acc);
+
+        //
+        // Load 8 q8 bsums values, multiply by the mins values, and accumulate
+        // the floating results.
+        //
+        // N.B. The half add to fold the 16 bsum values into 8 values is performed
+        //      in the make q8_k quant code.
+        //
+
+        const __m128i q8s = _mm_loadu_si128((const __m128i *)y[i].bsums);
+        const __m128i mins = _mm_cvtepi8_epi16(mins8);
+        const __m128i prod = _mm_madd_epi16(mins, q8s);
+        mins_acc = _mm_fmadd_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod), mins_acc);
     }
 
     const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
                                      _mm512_extractf32x8_ps(acc, 1));
 
-    const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
+    __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
                                  _mm256_extractf128_ps(res, 1));
+
+    t0 = _mm_sub_ps(t0, mins_acc);
 
     const __m128 t1 = _mm_hadd_ps(t0, t0);
     *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
@@ -544,6 +572,8 @@ xx_vec_dot_q8_0_q8_0_x8 (
     int nrc
     )
 {
+#pragma comment(linker, "/EXPORT:xx_vec_dot_q8_0_q8_0_x8=" __FUNCTION__)
+
     GGML_UNUSED(bs);
     GGML_UNUSED(bx);
     GGML_UNUSED(by);
@@ -609,6 +639,38 @@ xx_vec_dot_q8_0_q8_0_x8 (
 
     const __m128 t1 = _mm_hadd_ps(t0, t0);
     *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+
+/*
+    static uint32_t count = 128;
+
+    if (count != 0) {
+        count -= 1;
+        printf("xx_vec_dot_q8_0_q8_0_x8 %08x\n", *(uint32_t *)s);
+    }
+*/
+
+}
+
+void
+quantize_row_q4_0_x8 (
+    const float * x,
+    block_q4_0 * y,
+    uint32_t vec_size
+    )
+{
+#pragma comment(linker, "/EXPORT:quantize_row_q4_0_x8=" __FUNCTION__)
+
+    //
+    // Quantize the x vector into q4_0 quants.
+    //
+
+    quantize_row_q4_0(x, y, vec_size);
+
+    //
+    // Make q4_0_repack quant blocks
+    //
+
+    make_q4_0_repack_quant(vec_size, (block_q4_0_repack *)y, y);
 }
 
 void                   
@@ -618,6 +680,7 @@ quantize_row_q4_k_x8 (
     uint64_t vec_size
     )
 {
+#pragma comment(linker, "/EXPORT:quantize_row_q4_k_x8=" __FUNCTION__)
 
     //
     // Quantize the x vector into q4_K quants.
@@ -639,6 +702,7 @@ quantize_row_q8_k_x8 (
     uint64_t vec_size
     )
 {
+#pragma comment(linker, "/EXPORT:quantize_row_q8_k_x8=" __FUNCTION__)
 
     //
     // Quantize the x vector into q8_K quants.
@@ -660,6 +724,7 @@ quantize_row_q8_0_x8 (
     uint64_t vec_size
     )
 {
+#pragma comment(linker, "/EXPORT:quantize_row_q8_0_x8=" __FUNCTION__)
 
     //
     // Quantize the x vector into q8_0 guants.
@@ -680,20 +745,18 @@ enum ggml_type ggml_repack_tensor (
 {
     enum ggml_type type = tensor->type;
 
-    GGML_ASSERT(!tensor->is_repacked);
     GGML_ASSERT((type == GGML_TYPE_Q4_0) ||
                 (type == GGML_TYPE_Q4_K) ||
                 (type == GGML_TYPE_Q8_0));
 
-    enum ggml_type repack_type = type;
     switch (tensor_repacking_mode) {
-
     case TENSOR_REPACKING_MODE_GGML:
 
         //
         // repack GGML mode
         //
 
+        enum ggml_type repack_type = type;
         if (type == GGML_TYPE_Q4_0) {
             repack_type = GGML_TYPE_Q4_0_8_8;
 
@@ -726,7 +789,7 @@ enum ggml_type ggml_repack_tensor (
 
         uint64_t ne = tensor->ne[0];
         if ((ne % QK_K) != 0) {
-            return type;
+            break;
         }
 
         //
@@ -738,29 +801,66 @@ enum ggml_type ggml_repack_tensor (
         //      no extra copies.
         //
 
-        void * src_data = tensor->data;
+        char * src_data = tensor->data;
+        uint64_t nrows = tensor->ne[1];
+        uint64_t stride = tensor->nb[1];
+
+/*
+        static uint32_t count = 8;
+
+        if (count != 0) {
+            count -= 1;
+            uint32_t contiguous = ggml_is_contiguous(tensor);
+            printf("contiguous %u, row size %zu, stride %zu\n",
+                   contiguous,
+                   ggml_row_size(tensor->type, ne),
+                   tensor->nb[1]);
+        }
+*/
+
         if (type == GGML_TYPE_Q4_0) {
-            repack_type = GGML_TYPE_Q4_0_x8;
-            make_q4_0_repack_quant(ne, src_data, src_data);
+            type = GGML_TYPE_Q4_0_x8;
+
+            for (uint64_t i = 0; i < nrows; i += 1) {
+                make_q4_0_repack_quant(ne,
+                                       (block_q4_0_repack *)src_data,
+                                       (block_q4_0 *)src_data);
+
+                src_data += stride;
+            }
 
         } else if (type == GGML_TYPE_Q4_K) {
-            repack_type = GGML_TYPE_Q4_K_x8;
-            make_q4_k_repack_quant(ne, src_data, src_data);
+            type = GGML_TYPE_Q4_K_x8;
+
+            for (uint64_t i = 0; i < nrows; i += 1) {
+                make_q4_k_repack_quant(ne,
+                                       (block_q4_K_repack *)src_data,
+                                       (block_q4_K *)src_data);
+
+                src_data += stride;
+            }
 
         } else if (type == GGML_TYPE_Q8_0) {
-            repack_type = GGML_TYPE_Q8_0_Q8_0_x8;
-            make_q8_0_repack_quant(ne, src_data, src_data);
+            type = GGML_TYPE_Q8_0_Q8_0_x8;
+
+            for (uint64_t i = 0; i < nrows; i += 1) {
+                make_q8_0_repack_quant(ne,
+                                       (block_q8_0_repack *)src_data,
+                                       (block_q8_0 *)src_data);
+
+                src_data += stride;
+            }
         }
 
-        if (type != repack_type) {
+/*
+        if (type != tensor->type) {
 
-            // printf("*** XBOX convert tensor %s - type %s - elements %zd succeeded\n",
-            //        ggml_get_name(tensor),
-            //        ggml_type_name(type),
-            //        tensor->ne[0]);
-
-            type = repack_type;
+            printf("*** XBOX convert tensor %s - type %s - elements %zd succeeded\n",
+                   ggml_get_name(tensor),
+                   ggml_type_name(type),
+                   tensor->ne[0]);
         }
+*/
 
         break;
 
