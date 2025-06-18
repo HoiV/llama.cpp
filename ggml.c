@@ -1,6 +1,8 @@
 #define _CRT_SECURE_NO_DEPRECATE // Disables ridiculous "unsafe" warnings on Windows
 #define _USE_MATH_DEFINES // For M_PI on MSVC
 
+#define GGML_COMMON_IMPL_C
+#include "ggml-common.h"
 #include "ggml-impl.h"
 #include "ggml-quants.h"
 #include "ggml.h"
@@ -129,7 +131,9 @@ static int sched_yield (void) {
     Sleep (0);
     return 0;
 }
-#else
+
+#else // _WIN32
+
 #include <pthread.h>
 #include <stdatomic.h>
 
@@ -139,7 +143,16 @@ typedef void * thread_ret_t;
 #include <sys/stat.h>
 #include <unistd.h>
 
-#endif
+#if defined(__gnu_linux__)
+#define GGML_BF16_STEP32 128
+#define GGML_BF16_EPR32 32
+#define GGML_BF16_STEP16 64
+#define GGML_BF16_EPR16 16
+
+#define YieldProcessor _mm_pause
+#endif // __gnu_linux__
+
+#endif // _WIN32
 
 typedef pthread_t ggml_thread_t;
 
@@ -318,14 +331,21 @@ typedef float ggml_float; // ****** consider changing to float
 // global data
 //
 
+#if defined(__gnu_linux__)
+#define DECLSPEC__CACHEALIGN
+#define ARRAYSIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#else
+#define DECLSPEC__CACHEALIGN DECLSPEC_CACHEALIGN 
+#endif // __gnu_linux
+
 // precomputed gelu table for f16 (128 KB)
-DECLSPEC_CACHEALIGN ggml_fp16_t ggml_table_gelu_f16[1 << 16];
+DECLSPEC__CACHEALIGN ggml_fp16_t ggml_table_gelu_f16[1 << 16];
 
 // precomputed quick gelu table for f16 (128 KB)
-DECLSPEC_CACHEALIGN ggml_fp16_t ggml_table_gelu_quick_f16[1 << 16];
+DECLSPEC__CACHEALIGN ggml_fp16_t ggml_table_gelu_quick_f16[1 << 16];
 
 // precomputed f32 table for f16 (256 KB) (ggml-impl.h)
-DECLSPEC_CACHEALIGN float ggml_table_f32_f16[1 << 16];
+DECLSPEC__CACHEALIGN float ggml_table_f32_f16[1 << 16];
 
 GGML_CALL const char * ggml_status_to_string(enum ggml_status status) {
     switch (status) {
@@ -1622,7 +1642,8 @@ void ggml_fp32_to_bf16_row(const float * x, ggml_bf16_t * y, int64_t n) {
     const uint64_t nc = n;
     uint64_t i = 0;
 
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__) && !defined(__gnu_linux__)
+#pragma message("Building AVX512F ggml_fp32_to_bf16_row_cpu")
 
     __m512 ax;
     __m512 bx;
@@ -1660,7 +1681,7 @@ void ggml_fp32_to_bf16_row(const float * x, ggml_bf16_t * y, int64_t n) {
         } while (i < nc);
     }
 
-#elif defined(__AVX2__)
+#elif defined(__AVX2__) && !defined(__gnu_linux__)
 
     __m256 ax[GGML_F32_ARR];
     __m128bh ay[GGML_F32_ARR];
@@ -3114,7 +3135,7 @@ void ggml_vec_sumsq_bf16(const uint64_t n, float * s, const ggml_bf16_t * x) {
     uint64_t i = 0;
     float sumf = 0.0f;
 
-#if defined(__AVX512F__) && defined(__GEN_AVX512__)
+#if defined(__AVX512F__) && defined(__GEN_AVX512__) && !defined(__gnu_linux__)
 
     const uint64_t xn = (n & ~(GGML_BF16_EPR32 - 1));
 
@@ -3156,7 +3177,7 @@ void ggml_vec_sumsq_bf16(const uint64_t n, float * s, const ggml_bf16_t * x) {
         } while (i < n);
     }
 
-#elif defined(__AVX2__)
+#elif defined(__AVX2__) && !defined(__gnu_linux__)
 
     const uint64_t xn = (n & ~(GGML_BF16_EPR16 - 1));
 
@@ -3348,6 +3369,90 @@ float ggml_cosine_similarity_f32(const int n, const float *x,  const float *y) {
     return dot / sqrtf(denom_x * denom_y);
 }
 
+#if defined(__gnu_linux__)
+
+inline ggml_bf16_t ggml_make_bf16(uint16_t h) {
+    union {
+        ggml_bf16_t f;
+        uint16_t i;
+    } u;
+    u.i = h;
+    return u.f;
+}
+
+void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, const size_t bx, const ggml_bf16_t * restrict y, size_t by, int nrc) {
+    assert(nrc == 1);
+    UNUSED(nrc);
+    UNUSED(bx);
+    UNUSED(by);
+    UNUSED(bs);
+    int i = 0;
+    ggml_float sumf = 0;
+
+#if defined(__AVX512BF16__)
+#pragma message("Building ----- default ----- AVX512BF16 version of ggml_vec_dot_bf16")
+
+    __m512 c1 = _mm512_setzero_ps();
+    __m512 c2 = _mm512_setzero_ps();
+    for (; i + 64 <= n; i += 64) {
+        c1 = _mm512_dpbf16_ps(c1, m512bh(_mm512_loadu_si512((x + i))),
+                             m512bh(_mm512_loadu_si512((y + i))));
+        c2 = _mm512_dpbf16_ps(c2, m512bh(_mm512_loadu_si512((x + i + 32))),
+                             m512bh(_mm512_loadu_si512((y + i + 32))));
+    }
+    sumf += (ggml_float)_mm512_reduce_add_ps(c1);
+    sumf += (ggml_float)_mm512_reduce_add_ps(c2);
+
+#elif defined(__AVX512F__)
+#pragma message("Building ----- default ----- AVX512F version of ggml_vec_dot_bf16")
+#define LOAD(p) _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(_mm256_loadu_si256((const __m256i *)(p))), 16))
+    __m512 c1 = _mm512_setzero_ps();
+    __m512 c2 = _mm512_setzero_ps();
+    for (; i + 32 <= n; i += 32) {
+        c1 = _mm512_add_ps(_mm512_mul_ps(LOAD(x + i), LOAD(y + i)), c1);
+        c2 = _mm512_add_ps(_mm512_mul_ps(LOAD(x + i + 16), LOAD(y + i + 16)), c2);
+    }
+    sumf += (ggml_float)_mm512_reduce_add_ps(c1);
+    sumf += (ggml_float)_mm512_reduce_add_ps(c2);
+
+#undef LOAD
+#elif defined(__AVX2__) || defined(__AVX__)
+#if defined(__AVX2__)
+#define LOAD(p) _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)(p))), 16))
+#else
+#define LOAD(p) _mm256_castsi256_ps(_mm256_insertf128_si256(_mm256_castsi128_si256(_mm_slli_epi32(_mm_cvtepu16_epi32(_mm_loadu_si128((const __m128i *)(p))), 16)), (_mm_slli_epi32(_mm_cvtepu16_epi32(_mm_bsrli_si128(_mm_loadu_si128((const __m128i *)(p)), 8)), 16)), 1))
+#endif
+    __m256 c1 = _mm256_setzero_ps();
+    __m256 c2 = _mm256_setzero_ps();
+    __m256 c3 = _mm256_setzero_ps();
+    __m256 c4 = _mm256_setzero_ps();
+    for (; i + 32 <= n; i += 32) {
+        c1 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i), LOAD(y + i)), c1);
+        c2 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 8), LOAD(y + i + 8)), c2);
+        c3 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 16), LOAD(y + i + 16)), c3);
+        c4 = _mm256_add_ps(_mm256_mul_ps(LOAD(x + i + 24), LOAD(y + i + 24)), c4);
+    }
+    __m128 g;
+    c1 = _mm256_add_ps(_mm256_add_ps(c1, c3),
+                       _mm256_add_ps(c2, c4));
+    g = _mm_add_ps(_mm256_extractf128_ps(c1, 1),
+                   _mm256_castps256_ps128(c1));
+    g = _mm_add_ps(g, _mm_movehl_ps(g, g));
+    g = _mm_add_ss(g, _mm_movehdup_ps(g));
+    sumf += (ggml_float)_mm_cvtss_f32(g);
+
+#undef LOAD
+#endif // defined(__AVX512BF16__)
+
+    for (; i < n; ++i) {
+        sumf += (ggml_float)(GGML_BF16_TO_FP32(x[i]) *
+                             GGML_BF16_TO_FP32(y[i]));
+    }
+    *s = sumf;
+}
+
+#else // __gnu_linux__
+
 void ggml_vec_dot_bf16(const int n, float * restrict s, size_t bs, const ggml_bf16_t * restrict x, size_t bx, const ggml_bf16_t * restrict y, size_t by, int nrc) {
 #pragma comment(linker, "/EXPORT:ggml_vec_dot_bf16=" __FUNCTION__)
 
@@ -3509,6 +3614,8 @@ float ggml_cosine_similarity_bf16(const int n, const ggml_bf16_t *x, const ggml_
     ggml_vec_sumsq_bf16(n, &denom_y, y);
     return dot / sqrtf(denom_x * denom_y);
 }
+
+#endif // __gnu_linux__
 
 void ggml_vec_dot_f16(const int n, float * restrict s, size_t bs, const ggml_fp16_t * restrict x, size_t bx, const ggml_fp16_t * restrict y, size_t by, int nrc) {
 #pragma comment(linker, "/EXPORT:ggml_vec_dot_f16=" __FUNCTION__)
@@ -5160,6 +5267,12 @@ static_assert(GGML_UNARY_OP_COUNT == 13, "GGML_UNARY_OP_COUNT != 13");
 //
 
 #ifdef GGML_TENSOR_OP_PERF
+
+#if defined(__gnu_linux__)
+#define ARRAYSIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define atomic_int64 atomic_int
+#endif // __gnu_linux
+
 #define GGML_TENSOR_NODE_COUNT 4096
 atomic_int thread_create_count = 0;
 atomic_int64 thread_create_time = 0;
@@ -5196,7 +5309,7 @@ typedef struct {
     int64_t max_time;
 } quant_type_info;
 
-DECLSPEC_CACHEALIGN quant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
+DECLSPEC__CACHEALIGN quant_type_info quant_type_row_size[GGML_TYPE_COUNT] = {0};
 
 //
 // Spin wait statistics.
@@ -5947,9 +6060,11 @@ enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype) {
         case GGML_FTYPE_MOSTLY_Q4_0_4_4:      wtype = GGML_TYPE_Q4_0_4_4; break;
         case GGML_FTYPE_MOSTLY_Q4_0_4_8:      wtype = GGML_TYPE_Q4_0_4_8; break;
         case GGML_FTYPE_MOSTLY_Q4_0_8_8:      wtype = GGML_TYPE_Q4_0_8_8; break;
+#if !defined(__gnu_linux__)
         case GGML_FTYPE_MOSTLY_Q4_0_x8:       wtype = GGML_TYPE_Q4_0_x8; break;
         case GGML_FTYPE_MOSTLY_Q4_K_x8:       wtype = GGML_TYPE_Q4_K_x8; break;
         case GGML_FTYPE_MOSTLY_Q8_0_Q8_0_x8:  wtype = GGML_TYPE_Q8_0_Q8_0_x8; break;
+#endif // __gnu_linux__        
         case GGML_FTYPE_UNKNOWN:              wtype = GGML_TYPE_COUNT; break;
         case GGML_FTYPE_MOSTLY_Q4_1_SOME_F16: wtype = GGML_TYPE_COUNT; break;
     }
@@ -10590,12 +10705,12 @@ void ggml_set_param(
     ggml_format_name(tensor->grad, "%s (grad)", tensor->name);
 }
 
-struct DECLSPEC_CACHEALIGN ggml_compute_state_shared {
-    DECLSPEC_CACHEALIGN atomic_int barrier_tb; // tensor barrier
-    DECLSPEC_CACHEALIGN atomic_int generation_tb; // tensor generation
-    DECLSPEC_CACHEALIGN atomic_int barrier_db; // dispatch barrier
-    DECLSPEC_CACHEALIGN atomic_int generation_db; // dispatch generation
-    DECLSPEC_CACHEALIGN struct ggml_tensor * const * cgraph_nodes;
+struct DECLSPEC__CACHEALIGN ggml_compute_state_shared {
+    DECLSPEC__CACHEALIGN atomic_int barrier_tb; // tensor barrier
+    DECLSPEC__CACHEALIGN atomic_int generation_tb; // tensor generation
+    DECLSPEC__CACHEALIGN atomic_int barrier_db; // dispatch barrier
+    DECLSPEC__CACHEALIGN atomic_int generation_db; // dispatch generation
+    DECLSPEC__CACHEALIGN struct ggml_tensor * const * cgraph_nodes;
     size_t cplan_work_size;             // cplan work size
     uint8_t * cplan_work_data;          // cplan work data
     ggml_abort_callback abort_callback; // abort ggml_graph_compute when true
@@ -11851,7 +11966,7 @@ void ggml_compute_forward_dup_bytes(
     }
 }
 
-inline void ggml_compute_forward_dup(
+void ggml_compute_forward_dup(
         const struct ggml_compute_params * params,
         struct ggml_tensor * dst) {
 
@@ -15369,6 +15484,11 @@ void ggml_compute_forward_mul_mat(
     //
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
+
+#ifdef __gnu_linux__
+    uint64_t l1d_cache_size = 48ull * 1024ull;
+#endif // __gnu_linux
+
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
 
 /*
@@ -22023,9 +22143,11 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     // N.B. The priority of the master thread is only set once during initialization.
     //
 
+#if !defined(__gnu_linux__)
     if (ith && xb_set_thread_priority(ith)) {
         // printf("work thread %d priority set to TIME_CRITICAL\n", ith);
     }
+#endif // __gnu_linux__
 
 #if 0
     //
@@ -22518,7 +22640,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     }
 #endif
 
-    DECLSPEC_CACHEALIGN struct ggml_compute_state_shared state_shared = {
+    DECLSPEC__CACHEALIGN struct ggml_compute_state_shared state_shared = {
         .barrier_tb = 0,
         .generation_tb = 0,
         .barrier_db = 0,
@@ -22533,7 +22655,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
         .status = GGML_STATUS_SUCCESS
     };
 
-    DECLSPEC_CACHEALIGN struct ggml_compute_state * workers = alloca(sizeof(struct ggml_compute_state)*n_threads);
+    DECLSPEC__CACHEALIGN struct ggml_compute_state * workers = alloca(sizeof(struct ggml_compute_state)*n_threads);
 
 #ifndef GGML_TENSOR_OP_PERF
     const int64_t perf_start_cycles  = ggml_perf_cycles();
@@ -22604,7 +22726,11 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 #ifdef GGML_TENSOR_OP_PERF
 
         t1 = ggml_time_us() - t1;
+        #if !defined(__gnu_linux__)
         atomic_fetch_add64(&thread_create_time, t1);
+        #else
+        thread_create_time = 0;
+        #endif // __gnu_linux__
 
 #endif // GGML_TENSOR_OP_PERF
 
@@ -22627,7 +22753,11 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
 
 #ifdef GGML_TENSOR_OP_PERF
     t0 = ggml_time_us() - t0;
+    #if !defined(__gnu_linux__)
     atomic_fetch_add64(&graph_tensor_time[tensor_index], t0);
+    #else
+    graph_tensor_time[tensor_index]= 0;
+    #endif // __gnu_linux__
 #else // GGML_TENSOR_OP_PERF
     // performance stats (graph)
     {

@@ -298,8 +298,9 @@ void quantize_row_q4_0(const float * restrict x, void * restrict vy, int64_t k) 
 }
 
 // reference implementation for deterministic creation of model files
-void quantize_row_q4_0_b16_ref(const float * restrict x, block_q4_0 * restrict y, int64_t k) {
+void quantize_row_q4_0_b16_ref(const float * restrict x, void * restrict vy, int64_t k) {
     static const int qk = QK4_0;
+    block_q4_0 *y = (block_q4_0 *) vy;
 
     assert(k % qk == 0);
 
@@ -653,8 +654,10 @@ void quantize_row_q8_0(const float * restrict x, void * restrict vy, int64_t k) 
 
 }
 
-void quantize_row_q8_0_b16_ref(const float * restrict x, block_q8_0 * restrict y, int64_t k) {
+void quantize_row_q8_0_b16_ref(const float * restrict x, void * restrict vy, int64_t k) {
     assert(k % QK8_0 == 0);
+    block_q8_0 * y = (block_q8_0 *) vy;
+
     const int nb = k / QK8_0;
 
     for (int i = 0; i < nb; i++) {
@@ -4625,7 +4628,7 @@ void ggml_vec_dot_q4_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     const block_q8_0 * restrict y = vy;
 
     // Initialize accumulator with zeros
-#if defined(__AVX512BF16__) || defined(__AVX512F__)
+#if (defined(__AVX512BF16__) || defined(__AVX512F__)) && !defined(__gnu_linux__)
 #pragma message("Build AVX512 " __FUNCTION__)
     __m256 acc = _mm256_setzero_ps();
     __m128 zerovec = _mm_setzero_ps();
@@ -4710,7 +4713,7 @@ void ggml_vec_dot_q4_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     }
     *s = hsum_float_8(acc);
 #elif defined(__AVX__)
-#pragma message("=============== Build AVX512 " __FUNCTION__)
+#pragma message("=============== Build AVX " __FUNCTION__)
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
 
@@ -5375,7 +5378,7 @@ void ggml_vec_dot_q8_0_b16_q8_0_b16(int n, float * restrict s, size_t bs, const 
     const block_q8_0 * restrict y = vy;
 
 
-#if defined(__AVX512BF16__) || defined(__AVX512F__)
+#if (defined(__AVX512BF16__) || defined(__AVX512F__)) && !defined(__gnu_linux__)
 #pragma message("Build AVX512 " __FUNCTION__)
     __m256 acc = _mm256_setzero_ps();
     __m128 zerovec = _mm_setzero_ps();
@@ -5483,14 +5486,20 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
 
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
-    static __declspec(align(64)) const uint16_t perm0[32] = {
+#if defined(__gnu_linux__)
+#define DECL_ALIGNED_64 __attribute__ ((aligned (64)))
+#else
+#define DECL_ALIGNED_64 __declspec(align(64))
+#endif // __gnu_linux__
+
+    static DECL_ALIGNED_64 const uint16_t perm0[32] = {
         0, 0, 0, 0, 0, 0, 0, 0,
         1, 1, 1, 1, 1, 1, 1, 1,
         8, 8, 8, 8, 8, 8, 8, 8,
         9, 9, 9, 9, 9, 9, 9, 9
     };
 
-    static __declspec(align(64)) const uint16_t perm1[32] = {
+    static DECL_ALIGNED_64 const uint16_t perm1[32] = {
         2, 2, 2, 2, 2, 2, 2, 2,
         3, 3, 3, 3, 3, 3, 3, 3,
         10, 10, 10, 10, 10, 10, 10, 10,
@@ -5498,14 +5507,14 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * restrict s, size_t bs, const block_q2
     };
 
 
-    static __declspec(align(64)) const uint16_t perm2[32] = {
+    static DECL_ALIGNED_64 const uint16_t perm2[32] = {
         4, 4, 4, 4, 4, 4, 4, 4,
         5, 5, 5, 5, 5, 5, 5, 5,
         12, 12, 12, 12, 12, 12, 12, 12,
         13, 13, 13, 13, 13, 13, 13, 13
     };
 
-    static __declspec(align(64)) const uint16_t perm3[32] = {
+    static DECL_ALIGNED_64 const uint16_t perm3[32] = {
         6, 6, 6, 6, 6, 6, 6, 6,
         7, 7, 7, 7, 7, 7, 7, 7,
         14, 14, 14, 14, 14, 14, 14, 14,

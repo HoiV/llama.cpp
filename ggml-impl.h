@@ -142,6 +142,92 @@ static inline ggml_bf16_t ggml_make_bf16(uint16_t h) {
 
 #endif // _MSC_VER && __F16C__
 
+#if defined(__gnu_linux__) && defined(__F16C__)
+
+#if (defined(__AVX2__) || defined(__AVX512F__))
+#ifndef __FMA__
+#define __FMA__
+#endif
+#ifndef __F16C__
+#define __F16C__
+#endif
+#endif // __AVX2__ || __AVX512F__
+
+// __SSE3__ and __SSSE3__ are not defined in MSVC, but SSE3/SSSE3 are present when AVX/AVX2/AVX512 are available
+#if (defined(__AVX__) || defined(__AVX2__) || defined(__AVX512F__))
+#ifndef __SSE3__
+#define __SSE3__
+#endif
+#ifndef __AVXVNNIINT8__
+//#define __AVXVNNIINT8__
+#endif
+#ifndef __SSSE3__
+#define __SSSE3__
+#endif
+#endif // __AVX__ || __AVX2__ || __AVX512F__
+
+#if defined(__F16C__)
+
+#define m512bh(p) (__m512bh)(p)
+#define m128bh(p) (__m128bh)(p)
+#define m512i(p) (__m512i)(p)
+
+#include <immintrin.h>
+
+typedef __m128i __m128h;
+#define _mm_castps_ph(x)   _mm_castps_si128(x)
+#define _mm_loadu_ph(x)    _mm_castps_ph(_mm_loadu_ps((float *)(x)))
+#define _mm256_loadu_ph(x) _mm256_castps_ph(_mm256_loadu_ps((float *)(x)))
+#define _mm512_loadu_ph(x) _mm512_castps_ph(_mm512_loadu_ps(x))
+
+#endif // __F16C__
+
+#if !defined(GGML_COMPUTE_FP16_TO_FP32)
+#define GGML_COMPUTE_FP16_TO_FP32(x) _cvtsh_ss(x)
+#define GGML_COMPUTE_FP32_TO_FP16(x) _cvtss_sh(x, 0)
+#endif // GGML_COMPUTE_FP16_TO_FP32
+
+#if !defined(GGML_FP32_TO_BF16)
+static inline float ggml_compute_bf16_to_fp32(ggml_bf16_t h) {
+    union {
+        float f;
+        uint32_t i;
+    } u;
+    u.i = (uint32_t)h.bits << 16;
+    return u.f;
+}
+
+/**
+ * Converts float32 to brain16.
+ *
+ * This is binary identical with Google Brain float conversion.
+ * Floats shall round to nearest even, and NANs shall be quiet.
+ * Subnormals aren't flushed to zero, except perhaps when used.
+ * This code should vectorize nicely if using modern compilers.
+ */
+static inline ggml_bf16_t ggml_compute_fp32_to_bf16(float s) {
+    ggml_bf16_t h;
+    union {
+        float f;
+        uint32_t i;
+    } u;
+    u.f = s;
+    if ((u.i & 0x7fffffff) > 0x7f800000) { /* nan */
+        h.bits = (u.i >> 16) | 64; /* force to quiet */
+        return h;
+    }
+    h.bits = (u.i + (0x7fff + ((u.i >> 16) & 1))) >> 16;
+    return h;
+}
+
+#define GGML_FP32_TO_BF16(x) ggml_compute_fp32_to_bf16(x)
+#define GGML_BF16_TO_FP32(x) ggml_compute_bf16_to_fp32(x)
+#endif // GGML_FP32_TO_BF16
+
+ggml_bf16_t ggml_make_bf16(uint16_t h);
+
+#endif // __gnu_linux__
+
 // precomputed f32 table for f16 (256 KB)
 // defined in ggml.c, initialized in ggml_init()
 

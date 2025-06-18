@@ -23,6 +23,7 @@
 #include "ggml-cuda.h"
 #include "ggml-sycl.h"
 
+#if defined(_WIN32)
 #if !defined WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
 #endif // WIN32_LEAN_AND_MEAN
@@ -32,6 +33,11 @@
 #include <windows.h>
 #include <intrin.h>
 
+#else
+
+#include <immintrin.h>
+
+#endif // _WIN32
 using namespace std; 
 
 // utils
@@ -1520,6 +1526,7 @@ int main(int argc, char ** argv) {
                 test_prompt(ctx, std::min(t.n_batch, std::min(t.n_prompt, 32)), 0, t.n_batch, t.n_threads);
                 printf("Done pp warmup run\n");
 
+#if !defined(__gnu_linux__)
                 if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_prompt)) {
                     cpu_affinity_mask = common::xb_set_process_affinity(t.n_threads_prompt, cpu_affinity_mask);
                     printf("Set process affinity w/ cpuMask %016llX\n", cpu_affinity_mask);
@@ -1527,6 +1534,8 @@ int main(int argc, char ** argv) {
                     cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_prompt);
                     printf("Set process affinity w/ n_threads %016llX\n", cpu_affinity_mask);
                 }
+#endif // __gnu_linux__
+
                 warmup_already = true;
             }
 
@@ -1542,6 +1551,7 @@ int main(int argc, char ** argv) {
                 test_gen(ctx, 1, 0, t.n_threads_gen);
                 printf("Done tg warmup run\n");
 
+#if !defined(__gnu_linux__)
                 if (params.cpumask_present && (cpu_core_count_from_cpumask >= t.n_threads_gen)) {
                     cpu_affinity_mask = common::xb_set_process_affinity(t.n_threads_gen, cpu_affinity_mask);
                     printf("Set process affinity w/ cpuMask %016llX\n", cpu_affinity_mask);
@@ -1549,6 +1559,8 @@ int main(int argc, char ** argv) {
                     cpu_affinity_mask = common::xb_set_optimal_process_affinity(t.n_threads_gen);
                     printf("Set process affinity w/ n_threads %016llX\n", cpu_affinity_mask);
                 }
+#endif // __gnu_linux__
+
                 warmup_already = true;
             }
 
