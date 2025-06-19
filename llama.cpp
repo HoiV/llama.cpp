@@ -1681,7 +1681,14 @@ struct llama_mmap {
     llama_mmap(struct llama_file * file, size_t prefetch = (size_t) -1 /* -1 = max value */, bool numa = false) {
         size = file->size;
         int fd = fileno(file->fp);
+#ifndef GGML_TENSOR_OP_PERF
         int flags = MAP_SHARED;
+        int protection = PROT_READ;
+#else
+        // Do not write back updated content
+        int flags = MAP_PRIVATE;
+        int protection = PROT_READ | PROT_WRITE;
+#endif // GGML_TENSOR_OP_PERF
         // prefetch/readahead impairs performance on NUMA systems
         if (numa)  { prefetch = 0; }
 #ifdef __linux__
@@ -1692,7 +1699,7 @@ struct llama_mmap {
         }
         if (prefetch) { flags |= MAP_POPULATE; }
 #endif
-        addr = mmap(NULL, file->size, PROT_READ, flags, fd, 0);
+        addr = mmap(NULL, file->size, protection, flags, fd, 0);
         if (addr == MAP_FAILED) { // NOLINT
             throw std::runtime_error(format("mmap failed: %s", strerror(errno)));
         }
