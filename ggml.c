@@ -21940,6 +21940,56 @@ static void set_numa_thread_affinity(int thread_n) {
     CPU_FREE(cpus);
 }
 
+static int ggml_linux_total_cpus = 0;
+static bool ggml_use_linux_thread_affinity = false;
+void ggml_set_linux_thread_affinity_mode(int total_cpus, bool flag) {
+    ggml_linux_total_cpus = total_cpus;
+    ggml_use_linux_thread_affinity = flag;
+}
+
+#include <pthread.h>
+#include <sched.h>
+void ggml_set_thread_affinity(int ith_cpu) {
+    int rv;
+#if 0
+    size_t setsize = CPU_ALLOC_SIZE(ggml_linux_total_cpus);
+
+    GGML_ASSERT(ggml_use_linux_thread_affinity);
+    cpu_set_t * cpuset = CPU_ALLOC(ggml_linux_total_cpus);
+    CPU_ZERO_S(setsize, cpuset);
+    CPU_SET_S(ith_cpu * 2, setsize, cpuset);
+
+    rv = pthread_setaffinity_np(pthread_self(), setsize, cpuset);
+    if (rv) {
+        fprintf(stderr, "warning: pthread_setaffinity_np(%d) failed: %s\n",ith_cpu, strerror(rv));
+    }
+    CPU_FREE(cpuset);
+#else
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(ith_cpu /* * 2 */, &cpuset);
+
+    rv = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    if (rv) {
+        fprintf(stderr, "warning: pthread_setaffinity_np(%d) failed: %s\n",ith_cpu, strerror(rv));
+    }
+    rv = pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+    int cpuid = sched_getcpu();
+
+    #if DEBUG_AFFINITY
+    printf("\nMask - [");
+	for(long int i = 0; i < ggml_linux_total_cpus; ++i) {
+		if(CPU_ISSET_S(i, sizeof(cpu_set_t), &cpuset)) {
+			printf("1");
+        } else {
+			printf("0");
+		}
+	}
+    printf("] - [%2d]\n", cpuid);
+    #endif // DEBUG_AFFINITY
+#endif
+}
+
 static void clear_numa_thread_affinity(void) {
     if (!ggml_is_numa()) {
         return;
@@ -22124,9 +22174,15 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 
     const int ith = state->ith;
 
-#if 0
+#if defined(__gnu_linux__)
+    if (ggml_use_linux_thread_affinity) {
+        ggml_set_thread_affinity(ith);
+    }
+#else
+    // if process affinity is not set the following affinity 
+    // scheme will hold for each thread instead
     SetThreadAffinityMask(GetCurrentThread(), 1ull << (ith *2));
-#endif
+#endif // __gnu_linux__
 
     struct ggml_compute_params params = {
         .ith = ith,
@@ -22148,20 +22204,6 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
         // printf("work thread %d priority set to TIME_CRITICAL\n", ith);
     }
 #endif // __gnu_linux__
-
-#if 0
-    //
-    // Attempt to set thread affinity.
-    //
-    // N.B. The affinity of the master thread is only set once during initialization.
-    //
-
-    uint64_t affinity;
-
-    if (ith && ggml_set_thread_affinity(ith, &affinity)) {
-//        printf("work thread %d affinity set to 0x%016llx\n", ith, affinity);
-    }
-#endif // #if 0
 
     for (uint32_t node_n = 0; node_n < graph_n_nodes; node_n++) {
 
@@ -22721,8 +22763,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
     
             GGML_ASSERT(rc == 0);
         }
-    
-    
+
 #ifdef GGML_TENSOR_OP_PERF
 
         t1 = ggml_time_us() - t1;

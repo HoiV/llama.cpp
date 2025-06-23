@@ -2559,6 +2559,10 @@ extern "C" {
 
     GGML_API ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type);
 
+#if defined(__gnu_linux__)
+    void ggml_set_linux_thread_affinity_mode(int total_cpus, bool flag);
+#endif // __gnu_linux__
+
 #ifdef  __cplusplus
 }
 #endif

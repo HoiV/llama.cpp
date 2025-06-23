@@ -36,6 +36,7 @@
 #else
 
 #include <immintrin.h>
+#include <unistd.h>
 
 #endif // _WIN32
 using namespace std; 
@@ -1478,6 +1479,17 @@ int main(int argc, char ** argv) {
             }
         }
         printf("CPU affinity mask = [%016llX] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count_from_cpumask);
+
+#if defined(__gnu_linux__)
+        //long n_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+        long n_cpus = sysconf(_SC_NPROCESSORS_CONF);
+        if (n_cpus < 1) {
+            printf("%s: Error - sysconf\n", __func__);
+        }
+        printf("Number of available CPUs: %ld\n", n_cpus);
+
+        ggml_set_linux_thread_affinity_mode(n_cpus, true);
+#endif // __gnu_linux__
     }
 
     llama_model * lmodel = nullptr;
