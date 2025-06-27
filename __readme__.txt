@@ -740,4 +740,236 @@ C:\llama.cpp\Ryzen\example\transformers\dll\stx\qlinear_2\README.md
 
 ======================================================================
 
+// Affinity check
 
+#if defined(_WIN32)
+
+#include <SDKDDKVer.h>
+
+#define STRICT
+#define NOMINMAX
+#include <Windows.h>
+
+#else
+
+#if !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+#include <unistd.h>
+#include <sched.h>
+#include <pthread.h>
+#include <cpuid.h>
+
+#endif
+
+#include <thread>
+#include <iostream>
+#include <iomanip>
+#include <array>
+
+#if !defined(_WIN32)
+
+cpu_set_t* alloc_cpu_set(std::size_t* size) {
+	// the CPU set macros don't handle cases like my Azure VM, where there are 2 cores, but 128 possible cores (why???)
+	// hence requiring an oversized 16 byte cpu_set_t rather than the 8 bytes that the macros assume to be sufficient.
+	// this is the only way (even documented as such!) to figure out how to make a buffer big enough
+	unsigned long* buffer = nullptr;
+	int len = 0;
+	do {
+		++len;
+		delete [] buffer;
+		buffer = new unsigned long[len];
+	} while(pthread_getaffinity_np(pthread_self(), len * sizeof(unsigned long), reinterpret_cast<cpu_set_t*>(buffer)) == EINVAL);
+
+	*size = len * sizeof(unsigned long);
+	return reinterpret_cast<cpu_set_t*>(buffer);
+}
+
+void free_cpu_set(cpu_set_t* s) {
+	delete [] reinterpret_cast<unsigned long*>(s);
+}
+#endif
+
+template<typename Fn>
+void run_on_every_core(Fn&& f) {
+	std::thread bouncer = std::thread([&]() {
+#if defined(_WIN32)
+		const WORD total_processor_groups = ::GetMaximumProcessorGroupCount();
+		for(WORD group_id = 0; group_id < total_processor_groups; ++group_id) {
+			const DWORD processors_in_group = ::GetMaximumProcessorCount(group_id);
+			for(DWORD proc = 0; proc < processors_in_group; ++proc) {
+				const GROUP_AFFINITY aff = { 1ui64 << proc, group_id };
+				::SetThreadGroupAffinity(::GetCurrentThread(), &aff, nullptr);
+				f();
+			}
+		}
+
+#else
+		const long int total_cores = sysconf(_SC_NPROCESSORS_CONF);
+		std::size_t cpu_size = 0;
+		cpu_set_t* cpus = alloc_cpu_set(&cpu_size);
+
+		CPU_ZERO_S(cpu_size, cpus);
+		for(long int i = 0; i < total_cores; ++i) {
+			CPU_SET_S(i, cpu_size, cpus);
+			int ret = pthread_setaffinity_np(pthread_self(), cpu_size, cpus);
+			if(ret != 0) {
+				std::cout << ret << std::endl;
+				std::terminate();
+			}
+			f();
+			CPU_CLR_S(i, cpu_size, cpus);
+		}
+		free_cpu_set(cpus);
+#endif
+	});
+	bouncer.join();
+}
+
+volatile int force_writes = 0;
+
+int main() {
+#if defined(_MSC_VER)
+	std::array<int, 4> basic;
+	__cpuidex(basic.data(), 0, 0);
+#else
+	std::array<unsigned int, 4> basic;
+	__get_cpuid_count(0, 0, &basic[0], &basic[1], &basic[2], &basic[3]);
+#endif
+
+	std::array<char, 12> vendor_string;
+	std::memcpy(vendor_string.data() + 0, &basic[1], 4);
+	std::memcpy(vendor_string.data() + 4, &basic[3], 4);
+	std::memcpy(vendor_string.data() + 8, &basic[2], 4);
+
+	const std::array<char, 12> intel_string = { 'G', 'e', 'n', 'u', 'i', 'n', 'e', 'I', 'n', 't', 'e', 'l' };
+	const std::array<char, 12> amd_string   = { 'A', 'u', 't', 'h', 'e', 'n', 't', 'i', 'c', 'A', 'M', 'D' };
+
+	const bool is_intel = vendor_string == intel_string;
+	const bool is_amd   = vendor_string == amd_string;
+	if(!is_intel && !is_amd) {
+		return EXIT_FAILURE;
+	}
+
+	std::cout << "using the " << (is_intel ? "Intel" : "AMD") << " path" << std::endl;
+
+	std::cout << "apic\taffinity mask\tcpu number" << std::endl;
+
+	run_on_every_core([=]() {
+#if defined(_WIN32)
+		std::array<int, 4> regs;
+		if(is_amd) {
+			// AMD: extended APIC leaf
+			__cpuidex(regs.data(), 0x8000'001e, 0x0000'0000);
+			std::cout << std::setw(4) << std::hex << regs[0];
+		}
+		if(is_intel) {
+			// Intel: extended topology leaf
+			__cpuidex(regs.data(), 0x0000'000b, 0x0000'0000);
+			std::cout << std::setw(4) << std::hex << regs[3];
+		}
+
+		std::cout << "\t";
+
+		GROUP_AFFINITY aff = { 0 };
+		::GetThreadGroupAffinity(::GetCurrentThread(), &aff);
+		if(::GetMaximumProcessorGroupCount() > 1) {
+			for(size_t i = 0; i < sizeof(WORD) * CHAR_BIT; ++i) {
+				if(aff.Group & (1 << i)) {
+					std::cout << 1;
+				} else {
+					std::cout << 0;
+				}
+			}
+		}
+		for(size_t i = 0; i < ::GetMaximumProcessorCount(aff.Group); ++i) {
+			if(aff.Mask & (1ui64 << i)) {
+				std::cout << 1;
+			} else {
+				std::cout << 0;
+			}
+		}
+
+		std::cout << "\t";
+
+		std::cout << std::setw(2) << std::hex << ::GetCurrentProcessorNumber() << std::endl;
+
+		for(int i = 0; i < 2'000'000'000; ++i) {
+			++force_writes;
+		}
+
+#else
+		std::array<unsigned int, 4> regs;
+		if(is_amd) {
+			// AMD: extended APIC leaf
+			__get_cpuid_count(0x8000'001e, 0x0000'0000, &regs[0], &regs[1], &regs[2], &regs[3]);
+			std::cout << std::setw(4) << std::hex << regs[0];
+		}
+		if(is_intel) {
+			// Intel: extended topology leaf
+			__get_cpuid_count(0x0000'000b, 0x0000'0000, &regs[0], &regs[1], &regs[2], &regs[3]);
+			std::cout << std::setw(4) << std::hex << regs[3];
+		}
+
+		std::cout << "\t";
+
+		const long int total_cores = sysconf(_SC_NPROCESSORS_CONF);
+		std::size_t cpu_size = 0;
+		cpu_set_t* cpus = alloc_cpu_set(&cpu_size);
+		CPU_ZERO_S(cpu_size, cpus);
+
+		pthread_getaffinity_np(pthread_self(), cpu_size, cpus);
+
+		for(long int i = 0; i < total_cores; ++i) {
+			if(CPU_ISSET_S(i, cpu_size, cpus)) {
+				std::cout << 1;
+			} else {
+				std::cout << 0;
+			}
+		}
+
+		std::cout << "\t";
+
+		std::cout << std::setw(2) << std::hex << sched_getcpu() << std::endl;
+
+		free_cpu_set(cpus);
+
+		for(int i = 0; i < 2'000'000'000; ++i) {
+			++force_writes;
+		}
+#endif
+	});
+	return EXIT_SUCCESS;
+}
+
+It should compile on real linux, WSL, and MSVC, though I've only tested with clang++-libc++ on Linux/WSL, and the latest update of VS2017.
+
+So to explain the program briefly: the function run_on_every_core creates a thread, and then sets that thread's affinity to each core in the system in turn, running a user-supplied function before moving on to the next core. I'm using pthread_setaffinity_np for this, though sched_setaffinity has the same behaviour.
+
+The callback that I'm running does a couple of things. First of all, it examines the processor's APIC ID (using the cpuid intrinsic) to identify it. Each logical core on a system has a unique APIC ID. Next, it prints out the affinity mask that the thread is running under. It then prints the processor number that the OS thinks it's using. Finally, it does a compute-bound loop for a couple of seconds.
+
+On a Linux machine or under real Windows, the APIC IDs increment sequentially on typical hardware (I'm using a single socket system with a power-of-two logical core count, so that makes things simpler; some system topologies might have gaps or other oddities). Each APIC ID has a unique CPU number, and vice versa.
+
+So on Windows, we get output such as:
+
+C:\Code\Projects\bouncer>bouncer.exe
+using the AMD path
+apic    affinity mask   cpu number
+   0    1000000000000000         0
+   1    0100000000000000         1
+   2    0010000000000000         2
+   3    0001000000000000         3
+   4    0000100000000000         4
+   5    0000010000000000         5
+   6    0000001000000000         6
+   7    0000000100000000         7
+   8    0000000010000000         8
+   9    0000000001000000         9
+   a    0000000000100000         a
+   b    0000000000010000         b
+   c    0000000000001000         c
+   d    0000000000000100         d
+   e    0000000000000010         e
+   f    0000000000000001         f
+
+=========================================================

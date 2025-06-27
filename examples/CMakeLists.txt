@@ -62,6 +62,7 @@ else()
     add_subdirectory(llm-infer)
     add_subdirectory(minslm)
     add_subdirectory(splitter)
+    add_subdirectory(clip)
 endif()
 
 #    add_subdirectory(frotz)

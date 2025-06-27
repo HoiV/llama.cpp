@@ -8294,6 +8294,16 @@ struct ggml_tensor * ggml_scale_inplace(
     return ggml_scale_impl(ctx, a, s, true);
 }
 
+struct ggml_tensor * ggml_scale_inplace_Ex(
+    struct ggml_context * ctx,
+    struct ggml_tensor * a,
+    struct ggml_tensor * b) {
+
+    float s = *(float *) b->data;
+
+    return ggml_scale_impl(ctx, a, s, true);
+}
+
 // ggml_set
 
 static struct ggml_tensor * ggml_set_impl(

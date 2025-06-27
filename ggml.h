@@ -1303,6 +1303,11 @@ extern "C" {
             struct ggml_tensor  * a,
             float                 s);
 
+    GGML_API struct ggml_tensor * ggml_scale_inplace_Ex(
+        struct ggml_context * ctx,
+        struct ggml_tensor * a,
+        struct ggml_tensor * b);
+
     // b -> view(a,offset,nb1,nb2,3), return modified a
     GGML_API struct ggml_tensor * ggml_set(
             struct ggml_context * ctx,
@@ -2558,10 +2563,6 @@ extern "C" {
     } ggml_type_traits_t;
 
     GGML_API ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type);
-
-#if defined(__gnu_linux__)
-    void ggml_set_linux_thread_affinity_mode(int total_cpus, bool flag);
-#endif // __gnu_linux__
 
 #ifdef  __cplusplus
 }
