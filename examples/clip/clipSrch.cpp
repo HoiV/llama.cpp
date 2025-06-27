@@ -204,7 +204,7 @@ int main(int argc, char ** argv) {
         clip_image_preprocess(clip_ctx, &img0, &img_res);
 
         printf("[%s]: encoding image...\n", __func__);
-        if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec.data(), true)) {
+        if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
             fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, params.img_path.c_str());
             clip_free(clip_ctx);
             return 1;
@@ -214,7 +214,7 @@ int main(int argc, char ** argv) {
         printf("[%s]: searching DB for string '%s'\n", __func__, params.search_text.c_str());
         clip_tokens tokens;
         clip_tokenize(clip_ctx, params.search_text.c_str(), &tokens);
-        clip_text_encode(clip_ctx, params.n_threads, &tokens, vec.data(), true);
+        clip_text_encode(clip_ctx, params.n_threads, &tokens, vec, true);
     }
 
     printf("[%s]: KNN search image...\n", __func__);

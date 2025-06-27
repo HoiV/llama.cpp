@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 
 #if defined(_WIN32)
 
@@ -544,11 +545,7 @@ static ggml_cgraph * clip_image_build_graph(
 
     // final visual projection
     embeddings = ggml_mul_mat(ctx_gf, model.projection, embeddings);
-    ggml_set_name(embeddings, "clip_proj");
-
-    // prepare output
-    struct ggml_tensor * output = ggml_new_tensor_2d(ctx_gf, GGML_TYPE_F32, projection_dim, batch_size);
-    ggml_set_name(output, "clip_outputt");
+    ggml_set_name(embeddings, "clip_output");
 
     // build the graph
     ggml_build_forward_expand(gf, embeddings);
@@ -1145,8 +1142,8 @@ void clip_free(clip_ctx * ctx) {
     delete ctx;
 }
 
-bool clip_text_encode(const clip_ctx * ctx, const int n_threads, const clip_tokens * tokens, float * vec,
-                      const bool normalize) {
+bool clip_text_encode(const clip_ctx * ctx, const int n_threads, const clip_tokens * tokens, 
+    std::vector<float> & vec, const bool normalize) {
     if (!ctx->has_text_encoder) {
         printf("This GGUF file seems to have no text encoder\n");
         return false;
@@ -1353,7 +1350,8 @@ bool clip_text_encode(const clip_ctx * ctx, const int n_threads, const clip_toke
 
     printf("used_mem = %zu\n", ggml_used_mem(ctx0));
 #endif
-    memcpy(vec, ggml_get_data_f32(embeddings), sizeof(float) * projection_dim);
+
+    memcpy(vec.data(), ggml_get_data_f32(embeddings), sizeof(float) * projection_dim);
 
     if (cplan.work_size != 0) {
         free(cplan.work_data);
@@ -1368,7 +1366,7 @@ bool clip_image_encode(
     const clip_ctx * ctx, 
     const int n_threads, 
     clip_image_f32 * img, 
-    float * vec, 
+    std::vector<float> & vec,
     const bool normalize) {
 
     if (!ctx->has_vision_encoder) {
@@ -1386,11 +1384,11 @@ bool clip_image_batch_encode(
     const clip_ctx * c_ctx, 
     const int n_threads, 
     const clip_image_f32_batch * imgs, 
-    float * vec,
+    std::vector<float> & vec,
     bool normalize) {
 
     // TEMP 
-    normalize = false;
+    //normalize = false;
     // TEMP
 
     struct clip_ctx * ctx_clip = (clip_ctx *) c_ctx;
@@ -1480,35 +1478,83 @@ bool clip_image_batch_encode(
 
     ggml_backend_graph_compute(ctx_clip->backend, gf);
 
-    // the last node is the output embeddings tensor or the named tensor "clip_proj"
+    // the last node is the output embeddings tensor or the named tensor "clip_output"
     struct ggml_tensor * embeddings = gf->nodes[gf->n_nodes - 1];
-    struct ggml_tensor * clip_output = ggml_graph_get_tensor(gf, "clip_proj");
+    struct ggml_tensor * clip_output = ggml_graph_get_tensor(gf, "clip_output");
 
     if (normalize) {
-        const int projection_dim = hparams.projection_dim;
-        ggml_context *ctx_gf = ctx_clip->ctx_gf;
-
-        // prepare a tensor for normalization of output embeddings
-        struct ggml_tensor * output = ggml_new_tensor_2d(ctx_gf, GGML_TYPE_F32, projection_dim, batch_size);
-
-        for (int b = 0; b < batch_size; b++) {
-            struct ggml_tensor * embedding = ggml_get_rows(ctx_gf, clip_output, ggml_new_i32(ctx_gf, b));
-
-            ggml_tensor * length = ggml_sqrt(ctx_gf, ggml_sum(ctx_gf, ggml_sqr(ctx_gf, embedding)));
-            embedding = ggml_scale_inplace_Ex(ctx_gf, embedding, 
-                ggml_div(ctx_gf, ggml_new_f32(ctx_gf, 1.0f), length));
-            output = ggml_acc(ctx_gf, output, embedding, output->nb[1], 
-                output->nb[2], output->nb[3], b * ggml_nbytes(embedding));
-        }
-
         // copy the normalized result embeddings to the location passed by the user
-        ggml_backend_tensor_get(output, vec, 0, ggml_nbytes(output));
-
+        ggml_backend_tensor_get(clip_output, vec.data(), 0, ggml_nbytes(clip_output));
+        float norm = std::sqrt(std::inner_product(vec.begin(), vec.end(), vec.begin(), 0.0f));
+        printf("[%s]: norm = %.2f\n", __func__, norm);
+        if (norm > 0.0f) {
+            for (auto& val : vec) {
+                val /= norm;
+            }
+        }
     } else {
         // copy the result embeddings to the location passed by the user
         // ggml_backend_tensor_get(embeddings, vec, 0, ggml_nbytes(embeddings));
-        ggml_backend_tensor_get(clip_output, vec, 0, ggml_nbytes(clip_output));
+        ggml_backend_tensor_get(clip_output, vec.data(), 0, ggml_nbytes(clip_output));
     }
+
+// print
+#ifdef CLIP_DEBUG
+    {
+        auto print_t_f32 = [&](struct ggml_tensor * t) {
+            float * data = (float *)t->data;
+            printf("dtype: f32, dims: %jd %jd %jd %jd, nb: %jd %jd %jd %jd\n", 
+                t->ne[0], t->ne[1], t->ne[2], t->ne[3], 
+                t->nb[0], t->nb[1], t->nb[2], t->nb[3]);
+            printf("data: ");
+            for (int i = 0; i < std::min<int>((int)t->ne[0], 20); i++) {
+                printf("%f ", data[i]);
+            }
+
+            // printf("\n\n");
+            double sum = 0.0;
+            for (int i = 0; i < ggml_nelements(t); i++) {
+                sum += data[i];
+            }
+            printf("sum:  %f\n", sum);
+        };
+
+        auto print_t_f16 = [&](struct ggml_tensor * t) {
+            ggml_fp16_t * data = (ggml_fp16_t *)t->data;
+            printf("dtype: f16, dims: %jd %jd %jd %jd, nb: %jd %jd %jd %jd\n", 
+                t->ne[0], t->ne[1], t->ne[2], t->ne[3],
+                t->nb[0], t->nb[1], t->nb[2], t->nb[3]);
+            printf("data: ");
+            for (int i = 0; i < std::min<int>((int)t->ne[0], 10); i++) {
+                printf("%f ", ggml_fp16_to_fp32(data[i]));
+            }
+            printf("\n\n");
+            double sum = 0.0;
+            for (int i = 0; i < ggml_nelements(t); i++) {
+                sum += ggml_fp16_to_fp32(data[i]);
+            }
+            printf("sum:  %f\n", sum);
+        };
+
+        auto * t = ggml_get_tensor(ctx_clip->ctx_gf, "clip_output");
+        if (t->type == GGML_TYPE_F32) {
+            print_t_f32(t);
+        } else if (t->type == GGML_TYPE_F16) {
+            print_t_f16(t);
+        }
+        printf("normalized output:\n");
+        for (int i = 0; i < 10; i++) {
+            printf("%f ", vec[i]);
+        }        
+        float sum = 0.0;
+        for (int i = 0; i < vec.size(); i++) {
+            sum += vec[i];
+        }
+        printf("normalized sum:  %f\n", sum);
+}
+
+    // printf("used_mem = %zu\n", ggml_used_mem(ctx0));
+#endif
 
     ggml_free(ctx_clip->ctx_gf);
     ctx_clip->ctx_gf = nullptr;
@@ -1836,24 +1882,18 @@ bool clip_compare_text_and_image(const clip_ctx * ctx, const int n_threads, cons
         return false;
     }
 
-    float *txt_vec = new float[projection_dim];
+    std::vector<float> txt_vec(projection_dim);
     if (!clip_text_encode(ctx, n_threads, &tokens, txt_vec, true)) {
-        delete txt_vec;
         return false;
     }
 
-    float *img_vec = new float[projection_dim];
+    std::vector<float> img_vec(projection_dim);
     if (!clip_image_encode(ctx, n_threads, &img_res, img_vec, true)) {
-        delete img_vec;
-        delete txt_vec;
         return false;
     }
 
     // compute similarity
-    *score = clip_similarity_score(img_vec, txt_vec, projection_dim);
-
-    delete txt_vec;
-    delete img_vec;
+    *score = clip_similarity_score(img_vec.data(), txt_vec.data(), projection_dim);
 
     return true;
 }
@@ -1923,14 +1963,13 @@ bool clip_zero_shot_label_image(struct clip_ctx * ctx, const int n_threads, cons
 
     clip_image_preprocess(ctx, input_img, &img_res);
 
-    float *img_vec = (float *)malloc(sizeof(float) * vec_dim);
+    std::vector<float> img_vec(vec_dim);
     if (!clip_image_encode(ctx, n_threads, &img_res, img_vec, false)) {
-        free(img_vec);
         return false;
     }
 
     // encode texts and compute similarities
-    float *txt_vec = (float *)malloc(sizeof(float) * vec_dim);
+    std::vector<float> txt_vec(vec_dim);
     float *similarities = (float *)malloc(sizeof(float) *n_labels);
 
     for (int i = 0; i < n_labels; i++) {
@@ -1938,14 +1977,12 @@ bool clip_zero_shot_label_image(struct clip_ctx * ctx, const int n_threads, cons
         clip_tokens tokens;
         clip_tokenize(ctx, text, &tokens);
         clip_text_encode(ctx, n_threads, &tokens, txt_vec, false);
-        similarities[i] = clip_similarity_score(img_vec, txt_vec, vec_dim);
+        similarities[i] = clip_similarity_score(img_vec.data(), txt_vec.data(), vec_dim);
     }
 
     // apply softmax and sort scores
     softmax_with_sorting(similarities, n_labels, scores, indices);
 
-    free(img_vec);
-    free(txt_vec);
     free(similarities);
 
     return true;

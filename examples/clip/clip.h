@@ -4,6 +4,8 @@
 #include "ggml.h"
 #include "ggml-backend.h"
 
+#include <vector>
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -87,26 +89,27 @@ void clip_image_u8_free(struct clip_image_u8 * img);
 void clip_image_f32_free(struct clip_image_f32 * res);
 
 bool clip_image_load_from_file(const char * fname, struct clip_image_u8 * img);
-bool clip_image_preprocess(const struct clip_ctx * ctx, const struct clip_image_u8 * img, struct clip_image_f32 * res);
+bool clip_image_preprocess(const struct clip_ctx * ctx, 
+    const struct clip_image_u8 * img, struct clip_image_f32 * res);
 
-bool clip_text_encode(const struct clip_ctx * ctx, const int n_threads, const struct clip_tokens * tokens, float * vec,
-                      const bool normalize);
-bool clip_image_encode(const struct clip_ctx * ctx, const int n_threads, struct clip_image_f32 * img, float * vec,
-                       const bool normalize);
+bool clip_text_encode(const struct clip_ctx * ctx, const int n_threads, const struct clip_tokens * tokens, 
+    std::vector<float> & vec, const bool normalize);
+bool clip_image_encode(const struct clip_ctx * ctx, const int n_threads, struct clip_image_f32 * img, 
+    std::vector<float> & vec, const bool normalize);
 
 void clip_image_batch_preprocess(const struct clip_ctx * ctx, const int n_threads,
-                                 const struct clip_image_u8_batch * img_inputs, struct clip_image_f32_batch * imgs_resized);
-bool clip_image_batch_encode(const struct clip_ctx * ctx, const int n_threads, const struct clip_image_f32_batch * imgs,
-                             float * vec, bool normalize = false);
+    const struct clip_image_u8_batch * img_inputs, struct clip_image_f32_batch * imgs_resized);
+bool clip_image_batch_encode(const struct clip_ctx * ctx, const int n_threads, 
+    const struct clip_image_f32_batch * imgs, std::vector<float> & vec, bool normalize = false);
 
 // bool image_normalize(const clip_image_u8 *img, clip_image_f32 *res);
 
 bool clip_compare_text_and_image(const struct clip_ctx * ctx, const int n_threads, const char * text,
-                                 const struct clip_image_u8 * image, float * score);
+    const struct clip_image_u8 * image, float * score);
 float clip_similarity_score(const float * vec1, const float * vec2, const int vec_dim);
 bool softmax_with_sorting(float * arr, const int length, float * sorted_scores, int * indices);
 bool clip_zero_shot_label_image(struct clip_ctx * ctx, const int n_threads, const struct clip_image_u8 * input_img,
-                                const char ** labels, const size_t n_labels, float * scores, int * indices);
+    const char ** labels, const size_t n_labels, float * scores, int * indices);
 
 bool clip_model_quantize(const char * fname_inp, const char * fname_out, const int itype);
 

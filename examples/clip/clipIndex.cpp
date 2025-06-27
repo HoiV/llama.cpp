@@ -157,7 +157,7 @@ void testVecDb() {
     int n_threads = params.n_threads;
     clip_image_preprocess(clip_ctx, &img0, &img_res);
     int64_t t0 = timer_us();
-    if (!clip_image_encode(clip_ctx, n_threads, &img_res, testvec.data(), true)) {
+    if (!clip_image_encode(clip_ctx, n_threads, &img_res, testvec, true)) {
         fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, test_img_path.c_str());
         return;
     }
@@ -266,7 +266,7 @@ int main(int argc, char ** argv) {
 
                 clip_image_batch_preprocess(clip_ctx, params.n_threads, &img_inputs_batch, &imgs_resized_batch);
                 int64_t t0 = timer_us();
-                clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec.data(), true);
+                clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec, true);
                 int64_t t1 = timer_us();
                 if (params.verbose == 1) {
                     printf(".");
@@ -309,7 +309,7 @@ int main(int argc, char ** argv) {
 
                 clip_image_batch_preprocess(clip_ctx, params.n_threads, &img_inputs_batch, &imgs_resized_batch);
                 int64_t t0 = timer_us();
-                clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec.data(), true);
+                clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec, true);
                 int64_t t1 = timer_us();
                 if (params.verbose == 1) {
                     printf(".");
