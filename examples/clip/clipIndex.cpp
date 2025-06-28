@@ -227,7 +227,7 @@ int main(int argc, char ** argv) {
     std::vector<float> encode_timing_ms;
     int counter = 0;
 
-    // search for images in path and write embedding to database
+    // search for images in path and write embeddings to database
     for (const auto & base_dir : params.image_directories) {
         printf("[%s]: starting base dir scan of '%s'\n", __func__, base_dir.c_str());
         auto results = get_dir_keyed_files(base_dir, 0);
@@ -235,12 +235,13 @@ int main(int argc, char ** argv) {
         for (auto & entry : results) {
             printf("[%s]: processing %zu files in '%s'\n", __func__, entry.second.size(), entry.first.c_str());
 
-            size_t n_batches = (entry.second.size() / batch_size) * batch_size;
+            size_t n_batches = (entry.second.size() / batch_size);
 
             vec.resize(vec_dim * batch_size);
             img_inputs.resize(batch_size);
             imgs_resized.resize(batch_size);
 
+            printf("[%s]: processing '%d' batches of '%d' each...\n", __func__, n_batches, batch_size);
             for (size_t i = 0; i < n_batches; i += batch_size) {
                 for (size_t ib = i; ib < i + batch_size; ib++) {
                     const std::string & img_path = entry.second[ib];

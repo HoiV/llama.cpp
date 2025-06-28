@@ -1073,7 +1073,7 @@ typedef struct {
 } ImageData;
 
 // Function to preprocess a single image in a thread
-void * preprocess_image(void * arg) {
+void *preprocess_image(void * arg) {
     ImageData * imageData = static_cast<ImageData *>(arg);
     const clip_image_u8 * input = imageData->input;
     clip_image_f32 * resized = imageData->resized;
@@ -1082,7 +1082,11 @@ void * preprocess_image(void * arg) {
     // Call the original preprocess function on the image
     clip_image_preprocess(ctx, input, resized);
 
+#ifdef _WIN32
+    return NULL;
+#else
     exit(NULL);
+#endif
 }
 
 // Function to batch-preprocess multiple images i
@@ -1486,7 +1490,6 @@ bool clip_image_batch_encode(
         // copy the normalized result embeddings to the location passed by the user
         ggml_backend_tensor_get(clip_output, vec.data(), 0, ggml_nbytes(clip_output));
         float norm = std::sqrt(std::inner_product(vec.begin(), vec.end(), vec.begin(), 0.0f));
-        printf("[%s]: norm = %.2f\n", __func__, norm);
         if (norm > 0.0f) {
             for (auto& val : vec) {
                 val /= norm;
