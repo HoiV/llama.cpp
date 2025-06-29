@@ -4388,10 +4388,10 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
 #if defined(__AVX512F__) && defined(__GEN_AVX512__)
 
     __m512 acc = _mm512_setzero_ps();
-    const __m512i zero512 = _mm512_setzero_si512();
+    __m512i zero512 = _mm512_setzero_si512();
 
-    const __m256i offset = _mm256_set1_epi8(8);
-    const __m256i m4 = _mm256_set1_epi8(0xf);
+    __m512i offset_512 = _mm512_set1_epi8(8);
+    __m512i m4_512 = _mm512_set1_epi8(0xf);
 
     //
     // Process quant pairs if there are any.
@@ -4412,49 +4412,54 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
         d = _mm512_insertf32x8(d, d1, 1);
 
         //
-        // Compute the dot product of two quant blocks and accumulate.
-        //
-        // Get the q4_0 quant vectors with nibbles in the [0..15] interval, and convert to
-        // bytes in the [-8..+7] interval.
+        // Get the q4_0 quant vectors with biased nibbles in the [0..15] range.
         //
 
-        const __m128i tmp1 = _mm_loadu_si128((const __m128i *)x[i].qs);
-        const __m128i tmp3 = _mm_loadu_si128((const __m128i *)x[i + 1].qs);
+        __m128i tmp1 = _mm_loadu_si128((const __m128i *)x[i].qs);
+        __m128i tmp3 = _mm_loadu_si128((const __m128i *)x[i + 1].qs);
 
-        const __m128i tmp2 = _mm_srli_epi16(tmp1, 4);
-        __m256i qxl = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
-        qxl = _mm256_and_si256(m4, qxl);
-        qxl = _mm256_sub_epi8(qxl, offset);
-        const __m256i axl = _mm256_sign_epi8(qxl, qxl);
+        __m128i tmp2 = _mm_srli_epi16(tmp1, 4);
+        __m256i qxl = _mm256_inserti128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
 
         __m128i tmp4 = _mm_srli_epi16(tmp3, 4);
-        __m256i qxh = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp3), tmp4, 1);
-        qxh = _mm256_and_si256(m4, qxh);
-        qxh = _mm256_sub_epi8(qxh, offset);
-        const __m256i axh = _mm256_sign_epi8(qxh, qxh);
+        __m256i qxh = _mm256_inserti128_si256(_mm256_castsi128_si256(tmp3), tmp4, 1);
 
-        __m512i ax = _mm512_castsi256_si512(axl);
-        ax = _mm512_inserti32x8(ax, axh, 1);
+        __m512i qx = _mm512_inserti64x4(_mm512_castsi256_si512(qxl), qxh, 1);
+
+        qx = _mm512_and_si512(m4_512, qx);
 
         //
         // Get the q8_0 quant vectors.
         //
 
-        const __m256i qyl = _mm256_loadu_si256((const __m256i *)y[i].qs);
-        const __m256i qyh = _mm256_loadu_si256((const __m256i *)y[i + 1].qs);
-        const __m256i syl = _mm256_sign_epi8(qyl, qxl);
-        const __m256i syh = _mm256_sign_epi8(qyh, qxh);
-        __m512i sy = _mm512_castsi256_si512(syl);
-        sy = _mm512_inserti32x8(sy, syh, 1);
+        __m256i qyl = _mm256_loadu_si256((const __m256i *)y[i].qs);
+        __m256i qyh = _mm256_loadu_si256((const __m256i *)y[i + 1].qs);
+
+        __m512i qy = _mm512_inserti64x4(_mm512_castsi256_si512(qyl), qyh, 1);
 
         //
-        // mul (ax * sy) + 0 directly to epi32
-        //
-        // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+        // multiply unsigned biased q4 bytes by signed q8 bytes.
         //
 
-        const __m512i summed_pairs = _mm512_dpbusd_epi32(zero512, ax, sy);
-        const __m512 q = _mm512_cvtepi32_ps(summed_pairs);
+        __m512i sumi = _mm512_dpbusd_epi32(zero512, qx, qy);
+
+        //
+        // Multiply the unsigned bias value by the signed q8 bytes. 
+        //
+
+        __m512i bias = _mm512_dpbusd_epi32(zero512, offset_512, qy);
+
+        //
+        // Subtract the bias value from the sumi value.
+        //
+
+        sumi = _mm512_sub_epi32(sumi, bias);
+
+        //
+        // Convert integer summation to float.
+        //
+
+        __m512 q = _mm512_cvtepi32_ps(sumi);
 
         //
         // Multiply q with scale and accumulate.
@@ -4468,6 +4473,9 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
     //
 
     if (nb & 1) {
+
+        __m256i offset_256 = _mm256_set1_epi8(8);
+        __m256i m4_256 = _mm256_set1_epi8(0xf);
 
         //
         // Compute combined scale for the block.
@@ -4483,8 +4491,8 @@ void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, size_t bs, const vo
         __m128i tmp1 = _mm_loadu_si128((const __m128i *)x[i].qs);
         __m128i tmp2 = _mm_srli_epi16(tmp1, 4);
         __m256i qx = _mm256_insertf128_si256(_mm256_castsi128_si256(tmp1), tmp2, 1);
-        qx = _mm256_and_si256(m4, qx);
-        qx = _mm256_sub_epi8(qx, offset);
+        qx = _mm256_and_si256(m4_256, qx);
+        qx = _mm256_sub_epi8(qx, offset_256);
 
         //
         // Get the q8_0 quant vector.

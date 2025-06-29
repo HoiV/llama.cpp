@@ -240,11 +240,13 @@ make_q8_0_repack_quant (
 {
 #pragma comment(linker, "/EXPORT:make_q8_0_repack_quant=" __FUNCTION__)
 
+    int8_t * dst;
     uint64_t i;
     uint64_t j;
     uint64_t k;
     uint64_t offset;
     block_q8_0_repack qs_out;
+    int8_t * src;
 
     //
     // Convert groups of eight q8_0 quant blocks into one q8_0_repack quant block.
@@ -269,7 +271,21 @@ make_q8_0_repack_quant (
         // Copy the temporary q8_0_repack quant block to the output quant block.
         //
 
-        memcpy(out, &qs_out, sizeof(*out));
+        src = (int8_t *)&qs_out;
+        dst = (int8_t *)out;
+
+        const __m128i dv = _mm_loadu_si128((__m128i *)src);
+        _mm_storeu_si128((__m128i *)dst, dv);
+
+        const __m512i q0 = _mm512_loadu_si512(src + 16);
+        const __m512i q1 = _mm512_loadu_si512(src + 80);
+        const __m512i q2 = _mm512_loadu_si512(src + 144);
+        const __m512i q3 = _mm512_loadu_si512(src + 208);
+
+        _mm512_storeu_si512(dst + 16, q0);
+        _mm512_storeu_si512(dst + 80, q1);
+        _mm512_storeu_si512(dst + 144, q2);
+        _mm512_storeu_si512(dst + 208, q3);
 
         out += 1;
         in += 8;
@@ -295,11 +311,13 @@ make_q8_k_repack_quant (
 {
 #pragma comment(linker, "/EXPORT:make_q8_k_repack_quant=" __FUNCTION__)
 
+    int8_t * dst;
     uint64_t i;
     uint64_t j;
     uint64_t k;
     uint64_t offset;
-    uint8_t qs_out[QK_K];
+    int8_t qs_out[QK_K];
+    int8_t * src;
 
     //
     // Convert one q8_k quant block to one q8_k_repack quant block.
@@ -347,7 +365,18 @@ make_q8_k_repack_quant (
         // Copy the rearranged q8_k quant block into the q8_k_repack quant block.
         //
     
-        memcpy(out->qs, qs_out, sizeof(out->qs));
+        src = qs_out;
+        dst = out->qs;
+
+        const __m512i q0 = _mm512_loadu_si512(src);
+        const __m512i q1 = _mm512_loadu_si512(src + 64);
+        const __m512i q2 = _mm512_loadu_si512(src + 128);
+        const __m512i q3 = _mm512_loadu_si512(src + 192);
+
+        _mm512_storeu_si512(dst, q0);
+        _mm512_storeu_si512(dst + 64, q1);
+        _mm512_storeu_si512(dst + 128, q2);
+        _mm512_storeu_si512(dst + 192, q3);
 
         out += 1;
         in += 1;
@@ -403,27 +432,29 @@ xx_vec_dot_q4_0_q8_0_x8 (
 
         for (uint64_t j = 0; j < (QK_K / (QK8_0 * 2)); j += 1) {
             const __m256i tmp1 = _mm256_loadu_si256((const __m256i *)&x[i].qs[j * QK4_0 + 0]);
-            const __m256i tmp2 = _mm256_srli_epi16(tmp1, 4);
+            __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
 
+            const __m256i tmp2 = _mm256_srli_epi16(tmp1, 4);
             __m512i qx = _mm512_inserti32x8(_mm512_castsi256_si512(tmp1), tmp2, 1);
             qx = _mm512_and_si512(m4, qx);
-            qx = _mm512_sub_epi8(qx, offset);
-
-            const __mmask64 is_negative_qx = _mm512_cmp_epi8_mask(qx, zero512, _MM_CMPINT_LT);
-            const __m512i negated_qx = _mm512_sub_epi8(zero512, qx);
-            __m512i ax = _mm512_mask_mov_epi8(qx, is_negative_qx, negated_qx);
-
-            __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
-            const __m512i negated_qy = _mm512_sub_epi8(zero512, qy);
-            __m512i sy = _mm512_mask_mov_epi8(qy, is_negative_qx, negated_qy);
 
             //
-            // mul (ax * sy) + 0 directly to epi32
+            // Multiply unsigned scaled q4 bytes by signed q8 bytes.
             //
-            // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+
+            sumi = _mm512_dpbusd_epi32(sumi, qx, qy);
+
             //
-    
-            sumi = _mm512_dpbusd_epi32(sumi, ax, sy);
+            // Multiply the unsigned bias value by the signed q8 bytes.
+            //
+
+            const __m512i bias = _mm512_dpbusd_epi32(zero512, offset, qy);
+
+            //
+            // Subtract the bias value from the sumi value.
+            //
+
+            sumi = _mm512_sub_epi32(sumi, bias);
         }
 
         //
@@ -528,7 +559,7 @@ xx_vec_dot_q4_k_q8_k_x8 (
 
         //
         // Multiply the accumulated integer result by the q4 scale, convert to float,
-        // multiply by the q8 multiplier, and acculate the results.
+        // multiply by the q8 multiplier, and accumulate the results.
         //
 
         sumi = _mm512_mullo_epi32(sumi, scale);
@@ -739,21 +770,31 @@ quantize_row_q8_0_x8 (
     make_q8_0_repack_quant(vec_size, (block_q8_0_repack *)y, y);
 }
 
-enum ggml_type ggml_repack_tensor (
+void
+ggml_repack_tensor (
+    const struct ggml_compute_params * params,
     struct ggml_tensor *tensor
     ) 
 {
     enum ggml_type type = tensor->type;
+
+    const int ith = params->ith;
+    const int nth = params->nth;
 
     GGML_ASSERT((type == GGML_TYPE_Q4_0) ||
                 (type == GGML_TYPE_Q4_K) ||
                 (type == GGML_TYPE_Q8_0));
 
     switch (tensor_repacking_mode) {
+
+        //
+        // Repack GGML mode.
+        //
+
     case TENSOR_REPACKING_MODE_GGML:
 
         //
-        // repack GGML mode
+        // N.B. Repacking is single threaded on the zeroth cpu for ggml.
         //
 
         enum ggml_type repack_type = type;
@@ -762,9 +803,12 @@ enum ggml_type ggml_repack_tensor (
 
         } else if (type == GGML_TYPE_Q4_K) {
             repack_type = GGML_TYPE_Q4_K_8_8;
+
+        } else {
+            break;
         }
 
-        if (type != repack_type) {
+        if (!ith) {
             size_t data_size = ggml_nbytes(tensor);
             void *src_data = tensor->data;
 
@@ -777,9 +821,26 @@ enum ggml_type ggml_repack_tensor (
 
                 type = repack_type;
             }
+
+            //
+            //
+            // Wait for all other threads to arrive at the barrier below before
+            // potentially changing the tensor type.
+            //
+            // N.B. The tensor type cannot be changed until it is guaranteed that
+            //      all other threads are waiting on the barrier below.
+            //
+
+            ggml_wait_to_finalize(params);
+            tensor->type = type;
         }
 
+        ggml_wait_for_done(params);
         break;
+
+        //
+        // Repack Xbox mode.
+        //
 
     case TENSOR_REPACKING_MODE_XBOX:
 
@@ -800,10 +861,17 @@ enum ggml_type ggml_repack_tensor (
         //      the repack such that no extra memory needs to be allocated and there are
         //      no extra copies.
         //
+        // N.B. Repacking is multithreaded for xbox.
+        //
 
+        int64_t i;
         char * src_data = tensor->data;
-        uint64_t nrows = tensor->ne[1];
-        uint64_t stride = tensor->nb[1];
+        int64_t nrows = tensor->ne[1];
+        int64_t stride = tensor->nb[1];
+        const int64_t rows_per_thread = (nrows + nth - 1) / nth;
+        const int64_t start_row = rows_per_thread * ith;
+        const int64_t end_row = MIN(start_row + rows_per_thread, nrows);
+        src_data += start_row * stride;
 
 /*
         static uint32_t count = 8;
@@ -821,7 +889,7 @@ enum ggml_type ggml_repack_tensor (
         if (type == GGML_TYPE_Q4_0) {
             type = GGML_TYPE_Q4_0_x8;
 
-            for (uint64_t i = 0; i < nrows; i += 1) {
+            for (i = start_row; i < end_row; i += 1) {
                 make_q4_0_repack_quant(ne,
                                        (block_q4_0_repack *)src_data,
                                        (block_q4_0 *)src_data);
@@ -832,7 +900,7 @@ enum ggml_type ggml_repack_tensor (
         } else if (type == GGML_TYPE_Q4_K) {
             type = GGML_TYPE_Q4_K_x8;
 
-            for (uint64_t i = 0; i < nrows; i += 1) {
+            for (i = start_row; i < end_row; i += 1) {
                 make_q4_k_repack_quant(ne,
                                        (block_q4_K_repack *)src_data,
                                        (block_q4_K *)src_data);
@@ -843,7 +911,7 @@ enum ggml_type ggml_repack_tensor (
         } else if (type == GGML_TYPE_Q8_0) {
             type = GGML_TYPE_Q8_0_Q8_0_x8;
 
-            for (uint64_t i = 0; i < nrows; i += 1) {
+            for (i = start_row; i < end_row; i += 1) {
                 make_q8_0_repack_quant(ne,
                                        (block_q8_0_repack *)src_data,
                                        (block_q8_0 *)src_data);
@@ -852,16 +920,14 @@ enum ggml_type ggml_repack_tensor (
             }
         }
 
-/*
-        if (type != tensor->type) {
+        ggml_wait_for_done(params);
 
-            printf("*** XBOX convert tensor %s - type %s - elements %zd succeeded\n",
-                   ggml_get_name(tensor),
-                   ggml_type_name(type),
-                   tensor->ne[0]);
-        }
-*/
+        //
+        // N.B. All threads write the same value to tensor type so no special
+        //      synchronization is required.
+        //
 
+        tensor->type = type;
         break;
 
     case TENSOR_REPACKING_MODE_NONE:
@@ -869,5 +935,5 @@ enum ggml_type ggml_repack_tensor (
         break;
     }
 
-    return type;
+    return;
 }

@@ -44,7 +44,18 @@ ggml_tensor_repacking_mode_t ggml_tensor_repacking_scheme(ggml_tensor_repacking_
 
 void ggml_set_tensor_repacking_mode(ggml_tensor_repacking_mode_t type);
 
-enum ggml_type ggml_repack_tensor(struct ggml_tensor *tensor);
+void
+ggml_repack_tensor(
+    const struct ggml_compute_params * params,
+    struct ggml_tensor *tensor);
+
+void
+ggml_wait_for_done(
+    const struct ggml_compute_params * params);
+
+void
+ggml_wait_to_finalize(
+    const struct ggml_compute_params * params);
 
 // vec_dot routines for Xbox repacked tensors
 

@@ -5328,6 +5328,13 @@ int64_t mul_mat_init_time_us = 0;
 int mul_mat_init_count = 0;
 
 //
+// Mul_mat repack time statistics.
+//
+
+int64_t mul_mat_repack_time_us = 0;
+int mul_mat_repack_count = 0;
+
+//
 // Block factor statistics.
 //
 
@@ -5538,6 +5545,22 @@ print_tensor_op_perf_data (
     
         printf("average init conversion time %5.2fus\n\n",
                (float)mul_mat_init_time_us / (float)mul_mat_init_count);
+
+    } else {
+        printf("\n");
+    }
+
+    //
+    // Mul_mat repack statistics.
+    //
+
+    printf("total number of mul_mat repack conversions %d\n", mul_mat_repack_count);
+    if (mul_mat_repack_count) {
+        printf("total elapsed repack conversion time %5.2fsec\n",
+               (float)mul_mat_repack_time_us / (1000. * 1000.));
+    
+        printf("average repack conversion time %5.2fus\n\n",
+               (float)mul_mat_repack_time_us / (float)mul_mat_repack_count);
 
     } else {
         printf("\n");
@@ -10763,10 +10786,7 @@ void ggml_wait_for_done(
 #ifdef GGML_TENSOR_OP_PERF
 
         const int ith = params->ith;
-        int64_t wait_us = 0;
-        if (!ith) {
-            wait_us = ggml_time_us();
-        }
+        int64_t wait_us = ggml_time_us();
 
 #endif // GGML_TENSOR_OP_PERF
 
@@ -15066,6 +15086,50 @@ void ggml_compute_forward_mul_mat(
     const int ith = params->ith;
     const int nth = params->nth;
 
+/*
+    if (!ith) {
+        static uint32_t count = 64;
+
+        if (count) {
+            count -= 1;
+
+            printf("src0 type %s\n", ggml_type_name(src0->type));
+            printf("src0 ne[0] %zd, ne[1] %zd, ne[2] %zd, ne[3] %zd\n",
+                    src0->ne[0],
+                    src0->ne[1],
+                    src0->ne[2],
+                    src0->ne[3]);
+
+            printf("src0 nb[0] %zd, nb[1] %zd, nb[2] %zd, nb[3] %zd\n",
+                    src0->nb[0],
+                    src0->nb[1],
+                    src0->nb[2],
+                    src0->nb[3]);
+
+            printf("src1 type %s\n", ggml_type_name(src1->type));
+            printf("src1 ne[0] %zd, ne[1] %zd, ne[2] %zd, ne[3] %zd\n",
+                    src1->ne[0],
+                    src1->ne[1],
+                    src1->ne[2],
+                    src1->ne[3]);
+
+            printf("src1 nb[0] %zd, nb[1] %zd, nb[2] %zd, nb[3] %zd\n\n",
+                    src1->nb[0],
+                    src1->nb[1],
+                    src1->nb[2],
+                    src1->nb[3]);
+        }
+
+        if ((src0->ne[2] != 1) || (src0->ne[3] != 1)) {
+            __debugbreak();
+        }
+    
+        if ((src1->ne[2] != 1) || (src1->ne[3] != 1)) {
+            __debugbreak();
+        }
+    }
+*/
+
     //
     // Check if an attempt should be made to repack the src0 tensor
     //
@@ -15076,43 +15140,35 @@ void ggml_compute_forward_mul_mat(
          (src0_type == GGML_TYPE_Q4_K))) {
 
         //
-        // If this is the zeroth cpu, then attempt to repack the src0 tensor.
+        // Attempt to repack tensor.
         //
-        // N.B. Repacking is single threaded on the zeroth cpu.
+        // N.B. If the tensor is repacked, then the tensor type is changed to
+        //      the new repack type.
         //
 
-        enum ggml_type repack_type = src0_type;
-        if (!ith) {
+        #ifdef GGML_TENSOR_OP_PERF
 
-            //
-            // N.B. If the repack is successful, then the repack type is returned.
-            //      Otherwise, the original type is returned.
+        int64_t repack_t0 = ggml_time_us();
 
-            repack_type = ggml_repack_tensor(src0);
+#endif // GGML_TENSOR_OP_PERF
 
-            //
-            // Wait for all other threads to arrive at the barrier below before
-            // potentially changing the src0 type.
-            //
-            // N.B. The tensor type cannot be changed until it is guaranteed that
-            //      all other threads are waiting of the barrier below.
-            //
+        ggml_repack_tensor(params, src0);
 
-            ggml_wait_to_finalize(params);
-            src0->type = repack_type;
+#ifdef GGML_TENSOR_OP_PERF
+
+        if (!ith && (src0_type != src0->type)) {
+            mul_mat_repack_count += 1;
+            mul_mat_repack_time_us += ggml_time_us() - repack_t0;
         }
 
-        ggml_wait_for_done(params);
-    }
+#endif // GGML_TENSOR_OP_PERF
 
-    //
-    // Refresh for all threads in case the type has changed through repacking.
-    //
-    // N.B. All repacked tensors require exactly the same amount of memory as their
-    //      unpacked type.
-    //
-    
-    src0_type = src0->type;
+        //
+        // Refresh src0_type in case the type changed during repack.
+        //
+        
+        src0_type = src0->type;
+    }
 
 #ifdef GGML_TENSOR_OP_PERF
     int64_t vec_dot_src0_t0 = 0;
@@ -15200,10 +15256,7 @@ void ggml_compute_forward_mul_mat(
 
 #ifdef GGML_TENSOR_OP_PERF
 
-        int64_t init_t0 = 0;
-        if (!ith) {
-            init_t0 = ggml_time_us();
-        }
+        int64_t init_t0 = ggml_time_us();
 
 #endif // GGML_TENSOR_OP_PERF
 
@@ -15317,7 +15370,7 @@ void ggml_compute_forward_mul_mat(
     if (init_mat) {
         wdata = params->wdata;
 
-        assert(params->wsize >= ne11*ne12*ne13*row_size);
+        GGML_ASSERT(params->wsize >= ne11*ne12*ne13*row_size);
         GGML_ASSERT(src1_type == GGML_TYPE_F32);
 
         //
@@ -15326,10 +15379,7 @@ void ggml_compute_forward_mul_mat(
 
 #ifdef GGML_TENSOR_OP_PERF
 
-        int64_t init_t0 = 0;
-        if (!ith) {
-            init_t0 = ggml_time_us();
-        }
+        int64_t init_t0 = ggml_time_us();
 
 #endif // GGML_TENSOR_OP_PERF
 
@@ -15490,7 +15540,7 @@ void ggml_compute_forward_mul_mat(
     //
     // N.B. It makes no difference which operand (src0 or src1) has the most rows. The
     //      src0 loop is the data that gets continually referenced as the src1 loop
-    //      sequences through scr0 tile blocks.
+    //      sequences through src0 tile blocks.
     //
 
     size_t src0_row_size = ggml_row_size(src0_type, ne00);
@@ -15501,36 +15551,18 @@ void ggml_compute_forward_mul_mat(
 
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
 
-/*
-    if (src0_type == GGML_TYPE_Q4_K_x8) {
-        printf("ne %zd, bf %zd, src0 size %zd, src1 size %zd\n",
-               ne00,
-               blck0_factor,
-               src0_row_size,
-               row_size);
-    }
-*/
-
-#if 0 // too noisy for BF16
-    if (blck0_factor <= 1) {
-        printf("blck factor 0/1 - l1d_cache_size %zd, src0 row size %zd, src1 row size %zd\n",
-               l1d_cache_size,
-               src0_row_size,
-               row_size);
-    }
-#endif
-
     //
     // The block factor must have a value of at least one.
     //
-    // N.B. The computed block factor is zero if the size of the space available in the
+    // N.B. The computed block factor is zero if the available space in the
     //      l1d_cache is less than the src0 row size.
     //
     
     blck0_factor = MAX(1, blck0_factor);
 
     //
-    // The block factor must be less than or equal to the src0 rows per cpu.
+    // The block factor can be trimmmed if the block factor is greater than the
+    // src0 rows per cpu.
     //
 
     blck0_factor = MAX(blck0_factor, nth * 2);
@@ -15583,7 +15615,7 @@ void ggml_compute_forward_mul_mat(
     for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck0_factor) {
 
         //
-        // This loop sequences through the all src1 columns.
+        // This loop sequences through all the src1 columns.
         //
 
         for (int64_t ir1 = ir110; ir1 < ir111; ++ir1) {
@@ -22262,11 +22294,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     
 #ifdef GGML_TENSOR_OP_PERF
 
-            int64_t tensor_t0 = 0;
-
-            if (!ith) {
-                tensor_t0 = ggml_time_us();
-            }
+            int64_t tensor_t0 = ggml_time_us();
     
 #endif // GGML_TENSOR_OP_PERF
     
