@@ -1479,8 +1479,10 @@ int main(int argc, char ** argv) {
             }
         }
         printf("CPU affinity mask = [%016llX] - core count = [%d]\n", cpu_affinity_mask, cpu_core_count_from_cpumask);
+    }
 
 #if defined(__gnu_linux__)
+    if (params.process_affinity) {
         //long n_cpus = sysconf(_SC_NPROCESSORS_ONLN);
         long n_cpus = sysconf(_SC_NPROCESSORS_CONF);
         if (n_cpus < 1) {
@@ -1489,8 +1491,8 @@ int main(int argc, char ** argv) {
         printf("Number of available CPUs: %ld\n", n_cpus);
 
         ggml_set_linux_thread_affinity_mode(n_cpus, true);
-#endif // __gnu_linux__
     }
+    #endif // __gnu_linux__
 
     llama_model * lmodel = nullptr;
     const cmd_params_instance * prev_inst = nullptr;

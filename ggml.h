@@ -312,10 +312,24 @@ print_tensor_op_perf_data (
     int64_t elapsed_time_us
     );
 
+#if _WIN32
+
 void
 ggml_set_process_affinity (
     uint32_t n_thread
     );
+
+#endif // _WIN32
+
+#if defined(__gnu_linux__)
+
+void 
+ggml_set_linux_thread_affinity_mode(
+     int total_cpus, 
+     bool flag
+     );
+
+#endif // __gnu_linux__
 
 #ifdef  __cplusplus
 }

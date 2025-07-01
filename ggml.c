@@ -21983,10 +21983,10 @@ static void set_numa_thread_affinity(int thread_n) {
 }
 
 static int ggml_linux_total_cpus = 0;
-static bool ggml_use_linux_thread_affinity = false;
+static bool ggml_enable_linux_thread_affinity = false;
 void ggml_set_linux_thread_affinity_mode(int total_cpus, bool flag) {
     ggml_linux_total_cpus = total_cpus;
-    ggml_use_linux_thread_affinity = flag;
+    ggml_enable_linux_thread_affinity = flag;
 }
 
 #include <pthread.h>
@@ -21996,7 +21996,9 @@ void ggml_set_thread_affinity(int ith_cpu) {
 #if 0
     size_t setsize = CPU_ALLOC_SIZE(ggml_linux_total_cpus);
 
-    GGML_ASSERT(ggml_use_linux_thread_affinity);
+    if (!ggml_enable_linux_thread_affinity) {
+        return;
+    }
     cpu_set_t * cpuset = CPU_ALLOC(ggml_linux_total_cpus);
     CPU_ZERO_S(setsize, cpuset);
     CPU_SET_S(ith_cpu * 2, setsize, cpuset);
@@ -22009,25 +22011,31 @@ void ggml_set_thread_affinity(int ith_cpu) {
 #else
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(ith_cpu /* * 2 */, &cpuset);
+    CPU_SET(ith_cpu * 2, &cpuset); // * 2 for SMT
 
-    rv = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-    if (rv) {
-        fprintf(stderr, "warning: pthread_setaffinity_np(%d) failed: %s\n",ith_cpu, strerror(rv));
+    if (ggml_enable_linux_thread_affinity) {
+        rv = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        if (rv) {
+            fprintf(stderr, "warning: pthread_setaffinity_np(%d) failed: %s\n",ith_cpu, strerror(rv));
+        }
     }
+
     rv = pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     int cpuid = sched_getcpu();
 
-    #if DEBUG_AFFINITY
-    printf("\nMask - [");
+    #if 1 // DEBUG_AFFINITY
+    char * cpu_string = new char[ggml_linux_total_cpus * 2];
+    sprintf(cpu_string, "\nMask - [");
 	for(long int i = 0; i < ggml_linux_total_cpus; ++i) {
 		if(CPU_ISSET_S(i, sizeof(cpu_set_t), &cpuset)) {
-			printf("1");
+			sprintf(cpu_string, "1");
         } else {
-			printf("0");
+			sprintf_s(cpu_string, "0");
 		}
 	}
-    printf("] - [%2d]\n", cpuid);
+    sprintf(cpu_string, "] - [%2d]\n", cpuid);
+    printf("%s", cpu_string);
+    delete [] cpu_string;
     #endif // DEBUG_AFFINITY
 #endif
 }
@@ -22217,9 +22225,7 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
     const int ith = state->ith;
 
 #if defined(__gnu_linux__)
-    if (ggml_use_linux_thread_affinity) {
-        ggml_set_thread_affinity(ith);
-    }
+    ggml_set_thread_affinity(ith);
 #else
     // if process affinity is not set the following affinity 
     // scheme will hold for each thread instead
