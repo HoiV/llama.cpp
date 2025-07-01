@@ -241,10 +241,12 @@ int main(int argc, char ** argv) {
             img_inputs.resize(batch_size);
             imgs_resized.resize(batch_size);
 
-            printf("[%s]: processing '%d' batches of '%d' each...\n", __func__, n_batches, batch_size);
-            for (size_t i = 0; i < n_batches; i += batch_size) {
-                for (size_t ib = i; ib < i + batch_size; ib++) {
-                    const std::string & img_path = entry.second[ib];
+            printf("[%s]: processing '%zd' batches of '%zd' each...\n", __func__, n_batches, batch_size);
+            size_t img_index = 0;
+            for (size_t i = 0; i < n_batches; i++) {
+                for (size_t ib = 0; ib < batch_size; ib++) {
+                    img_index = ib + (i * batch_size);
+                    const std::string & img_path = entry.second[img_index];
                     if (params.verbose >= 2) {
                         printf("    [%s]: processing image file '%s'\n", __func__, img_path.c_str());
                     }
@@ -321,6 +323,7 @@ int main(int argc, char ** argv) {
                 for (size_t l = 0; l < leftover; l++) {
                     alg_hnsw->addPoint(vec.data() + l * vec_dim, l);
                 }
+                printf("\n");
             }
         }
     }

@@ -1100,7 +1100,7 @@ void clip_image_batch_preprocess(const clip_ctx * ctx, const int n_threads, cons
 
     // Divide the images among the threads
     int images_per_thread = img_inputs->size / num_threads;
-
+printf("%s: image_per_thread = %d - num_threads = %d\n", __func__, images_per_thread, num_threads);
     if (num_threads == 1) {
         // Single-threaded case
         for (i = 0; i < img_inputs->size; i++) {
@@ -1114,7 +1114,8 @@ void clip_image_batch_preprocess(const clip_ctx * ctx, const int n_threads, cons
 
         for (t = 0; t < num_threads; t++) {
             int start_index = t * images_per_thread;
-            int end_index = (t == num_threads - 1) ? img_inputs->size : start_index + images_per_thread;
+            int end_index = (t * images_per_thread) + images_per_thread;
+            printf("%s: thread %d - start_index = %d - end_index = %d\n", __func__, t, start_index, end_index);
 
             // Create ImageData for each thread
             for (i = start_index; i < end_index; i++) {
@@ -1130,6 +1131,16 @@ void clip_image_batch_preprocess(const clip_ctx * ctx, const int n_threads, cons
         // Wait for all threads to finish
         for (t = 0; t < num_threads; t++) {
             pthread_join(threads[t], NULL);
+        }
+
+        if ((images_per_thread * num_threads) < img_inputs->size) {
+            // for leftover images just single thread it through
+            int leftover = img_inputs->size - (images_per_thread * num_threads);
+            int start_index = images_per_thread * num_threads;
+            printf("%s: leftover = %d - start = %d\n", __func__, leftover, start_index);
+            for (i = 0; i < leftover; i++) {
+                clip_image_preprocess(ctx, &img_inputs->data[start_index+ i], &imgs_resized->data[start_index + i]);
+            }
         }
     }
 }
