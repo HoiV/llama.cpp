@@ -204,11 +204,15 @@ int main(int argc, char ** argv) {
         clip_image_preprocess(clip_ctx, &img0, &img_res);
 
         printf("[%s]: encoding image...\n", __func__);
+        int64_t t0 = timer_us();
         if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
             fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, params.img_path.c_str());
             clip_free(clip_ctx);
             return 1;
         }
+        int64_t t1 = timer_us();
+        printf("[%s]: encoding time = %9.2fms\n", __func__, (t1 - t0) / 1000.0);
+    
     } else {
 
         printf("[%s]: searching DB for string '%s'\n", __func__, params.search_text.c_str());
@@ -218,7 +222,11 @@ int main(int argc, char ** argv) {
     }
 
     printf("[%s]: KNN search image...\n", __func__);
+    int64_t t0 = timer_us();
     std::vector<std::pair<float, hnswlib::labeltype>> results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
+
+    int64_t t1 = timer_us();
+    printf("[%s]: Lookup time = %9.2fms\n", __func__, (t1 - t0) / 1000.0);
 
     if (params.verbose > 0) {
         printf("[%s]: search results - distance path:\n", __func__);
