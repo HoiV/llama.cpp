@@ -1100,22 +1100,33 @@ void clip_image_batch_preprocess(const clip_ctx * ctx, const int n_threads, cons
 
     // Divide the images among the threads
     int images_per_thread = img_inputs->size / num_threads;
-printf("%s: image_per_thread = %d - num_threads = %d\n", __func__, images_per_thread, num_threads);
+    // printf("[%s]: image_per_thread = %d - num_threads = %d\n", __func__, images_per_thread, num_threads);
     if (num_threads == 1) {
         // Single-threaded case
         for (i = 0; i < img_inputs->size; i++) {
             clip_image_preprocess(ctx, &img_inputs->data[i], &imgs_resized->data[i]);
+#if CLIP_DEBUG
+            for (int i = 0; i < imgs_resized->size; i++) {
+                float * resized_data = imgs_resized->data[i].data;
+                printf("[%s]: resized_data [%d]:\n      ", __func__, i);
+                for (int j = 0; j< 10; j++) {
+                    printf("%2.5f ", resized_data[j]);
+                }
+                printf("\n");
+            }
+#endif // CLIP_DEBUG
         }
     } else {
         // Multi-threaded case
-
+        printf("[%s]: Pre-processing with %d threads - %d images per thread\n", __func__, num_threads, images_per_thread);
+    
         std::vector<pthread_t> threads(num_threads);
         std::vector<ImageData> imageData(img_inputs->size);
 
         for (t = 0; t < num_threads; t++) {
             int start_index = t * images_per_thread;
-            int end_index = (t * images_per_thread) + images_per_thread;
-            printf("%s: thread %d - start_index = %d - end_index = %d\n", __func__, t, start_index, end_index);
+            int end_index = start_index + images_per_thread;
+            // printf("%s: thread %d - start_index = %d - end_index = %d\n", __func__, t, start_index, end_index);
 
             // Create ImageData for each thread
             for (i = start_index; i < end_index; i++) {
@@ -1125,6 +1136,7 @@ printf("%s: image_per_thread = %d - num_threads = %d\n", __func__, images_per_th
             }
 
             // Create a thread for each batch of images
+            // printf("%s: thread %d - start_index = %d - end_index = %d\n", __func__, t, start_index, end_index);
             pthread_create(&threads[t], NULL, preprocess_image, static_cast<void *>(&imageData[start_index]));
         }
 
@@ -1133,11 +1145,22 @@ printf("%s: image_per_thread = %d - num_threads = %d\n", __func__, images_per_th
             pthread_join(threads[t], NULL);
         }
 
+#if CLIP_DEBUG
+        for (int j = 0; j < imgs_resized->size; j++) {
+            float * resized_data = imgs_resized->data[j].data;
+            printf("[%s]: batch resized_data [%d]:\n      ", __func__, j);
+            for (int k = 0; k < 10; k++) {
+                printf("%2.5f ", resized_data[k]);
+            }
+            printf("\n");
+        }
+#endif // CLIP_DEBUG
+
         if ((images_per_thread * num_threads) < img_inputs->size) {
             // for leftover images just single thread it through
             int leftover = img_inputs->size - (images_per_thread * num_threads);
             int start_index = images_per_thread * num_threads;
-            printf("%s: leftover = %d - start = %d\n", __func__, leftover, start_index);
+            // printf("%s: leftover = %d - start = %d\n", __func__, leftover, start_index);
             for (i = 0; i < leftover; i++) {
                 clip_image_preprocess(ctx, &img_inputs->data[start_index+ i], &imgs_resized->data[start_index + i]);
             }
@@ -1435,6 +1458,7 @@ bool clip_image_batch_encode(
         struct ggml_tensor * inp_raw = ggml_graph_get_tensor(gf, "inp_raw");
         float * data = (float *)malloc(ggml_nbytes(inp_raw));
 
+#if 1
         for (size_t i = 0; i < imgs->size; i++) {
             const int nx = imgs->data[i].nx;
             const int ny = imgs->data[i].ny;
@@ -1452,9 +1476,28 @@ bool clip_image_batch_encode(
                 }
             }
         }
+#else // Still debugging why only the first entry of the batch gets processed
+        for (int b = 0; b < batch_size; b++) {
+            const int nx = imgs->data[b].nx;
+            const int ny = imgs->data[b].ny;
+            GGML_ASSERT(nx == image_size && ny == image_size);
+    
+            const int n = nx * ny;
+    
+            for (int k = 0; k < 3; k++) {
+                for (int y = 0; y < ny; y++) {
+                    for (int x = 0; x < nx; x++) {
+                        data[(b * 3 * n) + k * n + y * nx + x] = imgs->data[b].data[3 * (y * nx + x) + k];
+                    }
+                }
+            }
+        }
+#endif
         ggml_backend_tensor_set(inp_raw, data, 0, ggml_nbytes(inp_raw));
         free(data);
+        // printf("[%s]: 'inp_raw' tensor elements = %zd\n", __func__, ggml_nelements(inp_raw));
     }
+
     {
         struct ggml_tensor * embeddings = ggml_graph_get_tensor(gf, "embeddings");
 
@@ -1462,6 +1505,7 @@ bool clip_image_batch_encode(
         memset(zero_mem, 0, ggml_nbytes(embeddings));
         ggml_backend_tensor_set(embeddings, zero_mem, 0, ggml_nbytes(embeddings));
         free(zero_mem);
+        // printf("[%s]: 'embeddings' tensor elements = %zd\n", __func__, ggml_nelements(embeddings));
     }
 
     {
@@ -1496,15 +1540,26 @@ bool clip_image_batch_encode(
     // the last node is the output embeddings tensor or the named tensor "clip_output"
     struct ggml_tensor * embeddings = gf->nodes[gf->n_nodes - 1];
     struct ggml_tensor * clip_output = ggml_graph_get_tensor(gf, "clip_output");
+    // printf("[%s]: 'clip_output' tensor elements = %zd - vec.data() size = %zd\n", __func__, 
+    //     ggml_nelements(clip_output), vec.size());
 
     if (normalize) {
         // copy the normalized result embeddings to the location passed by the user
         ggml_backend_tensor_get(clip_output, vec.data(), 0, ggml_nbytes(clip_output));
-        float norm = std::sqrt(std::inner_product(vec.begin(), vec.end(), vec.begin(), 0.0f));
-        if (norm > 0.0f) {
-            for (auto& val : vec) {
-                val /= norm;
+        // normalize output for each output vector in the batch job
+        size_t elms_per_batch = vec.size() / batch_size;
+        // set up start/end std::vector<float>::iterator for every batch entry
+        auto start = vec.begin();
+        for (size_t b = 0; b < batch_size; b++) {
+            auto end = start + elms_per_batch;
+            float norm = std::sqrt(std::inner_product(start, end, start, 0.0f));
+            // printf("[%s]: batch %zd norm = %.2f\n", __func__, b, norm);
+            if (norm > 0.0f) {
+                for (auto it = start; it != end; ++it) {
+                    *it /= norm;
+                }
             }
+            start = end;
         }
     } else {
         // copy the result embeddings to the location passed by the user
@@ -1513,6 +1568,7 @@ bool clip_image_batch_encode(
     }
 
 // print
+// #define CLIP_DEBUG 1
 #ifdef CLIP_DEBUG
     {
         auto print_t_f32 = [&](struct ggml_tensor * t) {
@@ -1521,8 +1577,8 @@ bool clip_image_batch_encode(
                 t->ne[0], t->ne[1], t->ne[2], t->ne[3], 
                 t->nb[0], t->nb[1], t->nb[2], t->nb[3]);
             printf("data: ");
-            for (int i = 0; i < std::min<int>((int)t->ne[0], 20); i++) {
-                printf("%f ", data[i]);
+            for (int i = 0; i < std::min<int>((int)t->ne[0], 10); i++) {
+                printf("%02.5f ", data[i]);
             }
 
             // printf("\n\n");
@@ -1530,7 +1586,22 @@ bool clip_image_batch_encode(
             for (int i = 0; i < ggml_nelements(t); i++) {
                 sum += data[i];
             }
-            printf("sum:  %f\n", sum);
+            printf("sum[%lld]:  %02.5f\n", ggml_nelements(t), sum);
+        };
+
+        auto print_t_range_f32 = [&](float * data, int start, int end) {
+            int range = end - start;
+            printf("=== dtype: f32, range: %d %d\n", start, end);
+            printf("   output: ");
+            for (int i = 0; i < std::min<int>(range, 10); i++) {
+                printf("%02.5f ", data[i + start]);
+            }
+
+            double sum = 0.0;
+            for (int i = 0; i < range; i++) {
+                sum += data[i + start];
+            }
+            printf("sum[%d]:  %02.5f\n", range, sum);
         };
 
         auto print_t_f16 = [&](struct ggml_tensor * t) {
@@ -1540,32 +1611,74 @@ bool clip_image_batch_encode(
                 t->nb[0], t->nb[1], t->nb[2], t->nb[3]);
             printf("data: ");
             for (int i = 0; i < std::min<int>((int)t->ne[0], 10); i++) {
-                printf("%f ", ggml_fp16_to_fp32(data[i]));
+                printf("%02.5f ", ggml_fp16_to_fp32(data[i]));
             }
             printf("\n\n");
             double sum = 0.0;
             for (int i = 0; i < ggml_nelements(t); i++) {
                 sum += ggml_fp16_to_fp32(data[i]);
             }
-            printf("sum:  %f\n", sum);
+            printf("sum[%lld]:  %2.5f\n", ggml_nelements(t), sum);
+        };
+
+        auto print_t_range_f16 = [&](ggml_fp16_t * data, int start, int end) {
+            int range = end - start;
+            printf("=== dtype: f16, range: %d %d\n", start, end);
+            printf("   output: ");
+            for (int i = 0; i < std::min<int>(range, 10); i++) {
+                printf("%02.5f ", ggml_fp16_to_fp32(data[i + start]));
+            }
+
+            double sum = 0.0;
+            for (int i = 0; i < range; i++) {
+                sum += ggml_fp16_to_fp32(data[i + start]);
+            }
+            printf("sum[%d]:  %02.5f\n", range, sum);
         };
 
         auto * t = ggml_get_tensor(ctx_clip->ctx_gf, "clip_output");
-        if (t->type == GGML_TYPE_F32) {
-            print_t_f32(t);
-        } else if (t->type == GGML_TYPE_F16) {
-            print_t_f16(t);
+        if (batch_size == 1) {
+            if (t->type == GGML_TYPE_F32) {
+                print_t_f32(t);
+            } else if (t->type == GGML_TYPE_F16) {
+                print_t_f16(t);
+            }
+            printf("normalized output:\n");
+            for (int i = 0; i < 10; i++) {
+                printf("%02.5f ", vec[i]);
+            }        
+            float sum = 0.0;
+            for (int i = 0; i < vec.size(); i++) {
+                sum += vec[i];
+            }
+            printf("sum[%lld]:  %2.5f\n", vec.size(), sum);
+        } else {
+            int start = 0; 
+            int n_elements_per_img = ggml_nelements(t) / batch_size;
+            for (size_t ib = 0; ib < batch_size; ib++) {
+                int end = start + n_elements_per_img;
+                if (t->type == GGML_TYPE_F32) {
+                    float * data = (float *)t->data;
+                    print_t_range_f32(data, start, end);
+                } else if (t->type == GGML_TYPE_F16) {
+                    ggml_fp16_t * data = (ggml_fp16_t *)t->data;
+                    print_t_range_f16(data, start, end);
+                }
+                start = end;
+            }
+            printf("=== normalized output:\n");
+            for (size_t ib = 0; ib < batch_size; ib++) {
+                for (int i = 0; i < 10; i++) {
+                    printf("%02.5f ", vec[i + (ib * n_elements_per_img)]);
+                }
+                float sum = 0.0;
+                for (int i = 0; i < n_elements_per_img; i++) {
+                    sum += vec[i + (ib * n_elements_per_img)];
+                }
+                printf("sum[%d]:  %02.5f\n", n_elements_per_img, sum);
+            }
         }
-        printf("normalized output:\n");
-        for (int i = 0; i < 10; i++) {
-            printf("%f ", vec[i]);
-        }        
-        float sum = 0.0;
-        for (int i = 0; i < vec.size(); i++) {
-            sum += vec[i];
-        }
-        printf("normalized sum:  %f\n", sum);
-}
+    }
 
     // printf("used_mem = %zu\n", ggml_used_mem(ctx0));
 #endif

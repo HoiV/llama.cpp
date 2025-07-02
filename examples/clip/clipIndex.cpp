@@ -44,7 +44,7 @@ struct my_app_params {
     std::string model{"./clip-vit-L-336-f32.gguf"};
     std::string vecdb{"./hnswlib_images.bin"};
     std::string filepaths{"./hnswlib_images.paths"};
-    int32_t verbose{1};
+    int32_t verbose{0};
     std::vector<std::string> image_directories;
 };
 my_app_params params;
@@ -241,9 +241,14 @@ int main(int argc, char ** argv) {
             img_inputs.resize(batch_size);
             imgs_resized.resize(batch_size);
 
-            printf("[%s]: processing '%zd' batches of '%zd' each...\n", __func__, n_batches, batch_size);
+            if (params.verbose >= 1) {
+                printf("[%s]: processing '%zd' batches of '%zd' each...\n", __func__, n_batches, batch_size);
+            }
             size_t img_index = 0;
             for (size_t i = 0; i < n_batches; i++) {
+                if (params.verbose >= 1) {
+                    printf("[%s]: Batch %zd\n", __func__, i+1);
+                }
                 for (size_t ib = 0; ib < batch_size; ib++) {
                     img_index = ib + (i * batch_size);
                     const std::string & img_path = entry.second[img_index];
