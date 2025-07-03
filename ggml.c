@@ -22229,7 +22229,9 @@ thread_ret_t ggml_graph_compute_thread(void * data) {
 #else
     // if process affinity is not set the following affinity 
     // scheme will hold for each thread instead
+#ifdef DEFAULT_THREAD_AFFINITY
     SetThreadAffinityMask(GetCurrentThread(), 1ull << (ith *2));
+#endif // DEFAULT_THREAD_AFFINITY
 #endif // __gnu_linux__
 
     struct ggml_compute_params params = {
@@ -25989,3 +25991,132 @@ int ggml_cpu_has_matmul_int8(void) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// *ONLY* For CLIP support (older GGML)
+
+size_t clip_quantize_q4_0(const float * src, void * dst, int n, int k, int64_t * hist) {
+    assert(k % QK4_0 == 0);
+    const int nb = k / QK4_0;
+
+    for (int b = 0; b < n; b += k) {
+        block_q4_0 * restrict y = (block_q4_0 *) dst + b/QK4_0;
+
+        quantize_row_q4_0(src + b, y, k);
+
+        for (int i = 0; i < nb; i++) {
+            for (int j = 0; j < QK4_0; j += 2) {
+                const uint8_t vi0 = y[i].qs[j/2] & 0x0F;
+                const uint8_t vi1 = y[i].qs[j/2] >> 4;
+
+                hist[vi0]++;
+                hist[vi1]++;
+            }
+        }
+    }
+
+    return (n/QK4_0*sizeof(block_q4_0));
+}
+
+size_t clip_quantize_q4_1(const float * src, void * dst, int n, int k, int64_t * hist) {
+    assert(k % QK4_1 == 0);
+    const int nb = k / QK4_1;
+
+    for (int b = 0; b < n; b += k) {
+        block_q4_1 * restrict y = (block_q4_1 *) dst + b/QK4_1;
+
+        quantize_row_q4_1(src + b, y, k);
+
+        for (int i = 0; i < nb; i++) {
+            for (int j = 0; j < QK4_1; j += 2) {
+                const uint8_t vi0 = y[i].qs[j/2] & 0x0F;
+                const uint8_t vi1 = y[i].qs[j/2] >> 4;
+
+                hist[vi0]++;
+                hist[vi1]++;
+            }
+        }
+    }
+
+    return (n/QK4_1*sizeof(block_q4_1));
+}
+
+size_t clip_quantize_q5_0(const float * src, void * dst, int n, int k, int64_t * hist) {
+    assert(k % QK5_0 == 0);
+    const int nb = k / QK5_0;
+
+    for (int b = 0; b < n; b += k) {
+        block_q5_0 * restrict y = (block_q5_0 *)dst + b/QK5_0;
+
+        quantize_row_q5_0_reference(src + b, y, k);
+
+        for (int i = 0; i < nb; i++) {
+            uint32_t qh;
+            memcpy(&qh, &y[i].qh, sizeof(qh));
+
+            for (int j = 0; j < QK5_0; j += 2) {
+                const uint8_t vh0 = ((qh & (1u << (j + 0 ))) >> (j + 0 )) << 4;
+                const uint8_t vh1 = ((qh & (1u << (j + 16))) >> (j + 12));
+
+                // cast to 16 bins
+                const uint8_t vi0 = ((y[i].qs[j/2] & 0x0F) | vh0) / 2;
+                const uint8_t vi1 = ((y[i].qs[j/2] >>   4) | vh1) / 2;
+
+                hist[vi0]++;
+                hist[vi1]++;
+            }
+        }
+    }
+
+    return (n/QK5_0*sizeof(block_q5_0));
+}
+
+size_t clip_quantize_q5_1(const float * src, void * dst, int n, int k, int64_t * hist) {
+    assert(k % QK5_1 == 0);
+    const int nb = k / QK5_1;
+
+    for (int b = 0; b < n; b += k) {
+        block_q5_1 * restrict y = (block_q5_1 *)dst + b/QK5_1;
+
+        quantize_row_q5_1_reference(src + b, y, k);
+
+        for (int i = 0; i < nb; i++) {
+            uint32_t qh;
+            memcpy(&qh, &y[i].qh, sizeof(qh));
+
+            for (int j = 0; j < QK5_1; j += 2) {
+                const uint8_t vh0 = ((qh & (1u << (j + 0 ))) >> (j + 0 )) << 4;
+                const uint8_t vh1 = ((qh & (1u << (j + 16))) >> (j + 12));
+
+                // cast to 16 bins
+                const uint8_t vi0 = ((y[i].qs[j/2] & 0x0F) | vh0) / 2;
+                const uint8_t vi1 = ((y[i].qs[j/2] >>   4) | vh1) / 2;
+
+                hist[vi0]++;
+                hist[vi1]++;
+            }
+        }
+    }
+
+    return (n/QK5_1*sizeof(block_q5_1));
+}
+
+size_t clip_quantize_q8_0(const float * src, void * dst, int n, int k, int64_t * hist) {
+    assert(k % QK8_0 == 0);
+    const int nb = k / QK8_0;
+
+    for (int b = 0; b < n; b += k) {
+        block_q8_0 * restrict y = (block_q8_0 *)dst + b/QK8_0;
+
+        quantize_row_q8_0(src + b, y, k);
+
+        for (int i = 0; i < nb; i++) {
+            for (int j = 0; j < QK8_0; ++j) {
+                const int8_t vi = y[i].qs[j];
+
+                hist[vi/16 + 8]++;
+            }
+        }
+    }
+
+    return (n/QK8_0*sizeof(block_q8_0));
+}

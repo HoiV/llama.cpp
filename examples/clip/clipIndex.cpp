@@ -339,7 +339,6 @@ int main(int argc, char ** argv) {
 
     // print encoding stats
     if (!encode_timing_ms.empty()) {
-
         float sum = 0;
         for (float val : encode_timing_ms) {
             sum += val;

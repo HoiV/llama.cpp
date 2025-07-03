@@ -164,9 +164,9 @@ int main(int argc, char ** argv) {
         std::string cached_model_name = cached_model_fullpath.filename().string();
         std::string model_name = model_fullpath.filename().string();
         if (_strnicmp(model_name.c_str(), cached_model_name.c_str(), cached_model_name.length()) != 0) {
-            printf("[%s]: using alternative model from cmdline '%s'. The model used for indexing "
-               "was '%s'.\n",
-               __func__, model_name.c_str(), cached_model_name.c_str());
+            printf("[%s]: using alternative model from cmdline '%s'. \n"
+                   "[%s]: The index database was created with model '%s'.\n",
+                __func__, model_name.c_str(), __func__, cached_model_name.c_str());
         }
     }
 

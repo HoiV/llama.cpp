@@ -1,0 +1,13 @@
+e:\Xbox-B612\models\clip>set PYTHONPATH=e:\Xbox-B612\models\clip\gguf-py
+
+==============
+
+d:\xCloud_Reuse\Python39\python.exe convert_hf_to_gguf.py -m clip-vit-l-patch14-336 --use-f32 --o clip-vit-L-336.gguf 
+
+==============
+
+e:\Xbox-B612\models\clip>d:\xCloud_Reuse\Python39\python.exe convert_hf_to_gguf.py -m clip-ViT-B-32\0_CLIPModel --use-f32 --o clip-Vit-B-32-f32.gguf
+WARNING: Weights for the convolution op is always saved in f16, as the convolution op in GGML does not support 32-bit kernel weights yet.
+gguf: This GGUF file is for Little Endian only
+skipping parameter: logit_scale
+skipping parameter: text_model.embeddings.position_ids
