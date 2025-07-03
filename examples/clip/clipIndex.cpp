@@ -201,7 +201,9 @@ int main(int argc, char ** argv) {
 
     const size_t vec_dim = clip_get_vision_hparams(clip_ctx)->projection_dim;
     size_t batch_size = params.n_batch;
-    printf("%s: working with batch size %zd\n", __func__, batch_size);
+    if (params.verbose >= 1) {
+        printf("%s: working with batch size %zd\n", __func__, batch_size);
+    }
 
     int max_elements = 10000;   // Maximum number of elements, should be known beforehand
 
@@ -225,7 +227,6 @@ int main(int argc, char ** argv) {
     std::vector<clip_image_f32> imgs_resized(batch_size);
 
     std::vector<float> encode_timing_ms;
-    int counter = 0;
 
     // search for images in path and write embeddings to database
     for (const auto & base_dir : params.image_directories) {
@@ -246,7 +247,7 @@ int main(int argc, char ** argv) {
             }
             size_t img_index = 0;
             for (size_t i = 0; i < n_batches; i++) {
-                if (params.verbose >= 1) {
+                if (params.verbose >= 2) {
                     printf("[%s]: Batch %zd\n", __func__, i+1);
                 }
                 for (size_t ib = 0; ib < batch_size; ib++) {
@@ -288,7 +289,10 @@ int main(int argc, char ** argv) {
                 }
             }
 
-            printf("\n");
+            if (params.verbose == 1) {
+                printf("\n");
+            }
+
             // process leftover if needed
             const size_t leftover = entry.second.size() - (n_batches * batch_size);
             if (leftover > 0) {

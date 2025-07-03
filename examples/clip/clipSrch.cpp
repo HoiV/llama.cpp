@@ -41,11 +41,12 @@ struct my_app_params {
     std::string model{"./clip-vit-base-patch32_ggml-model-f16.gguf"};
     std::string vecdb{"./hnswlib_images.bin"};
     std::string filepaths{"./hnswlib_images.paths"};
-    int32_t verbose{1};
+    int32_t verbose{0};
     // TODO: index dir
 
     std::string search_text;
     std::string img_path;
+    std::string search_dir;
 
     int32_t n_results{5};
 };
@@ -60,6 +61,7 @@ void my_print_help(int argc, char ** argv, my_app_params & params) {
     printf("  -t N, --threads N: Number of threads to use for inference. Default: %d\n", params.n_threads);
     printf("  -v <level>, --verbose <level>: Control the level of verbosity. 0 = minimum, 2 = maximum. Default: %d\n",
            params.verbose);
+    printf("  -s <path>, --searchdir <path>: directory of files to be searched in the database\n");
     printf("  -n N, --results N: Number of results to display. Default: %d\n", params.n_results);
 }
 
@@ -108,6 +110,12 @@ bool my_app_params_parse(int argc, char ** argv, my_app_params & params) {
         } else if (arg == "-h" || arg == "--help") {
             my_print_help(argc, argv, params);
             exit(0);
+        } else if (arg == "-s" || arg == "--search_dir") {
+            if (++i >= argc) {
+                invalid_param = true;
+                break;
+            }
+            params.search_dir = argv[i];
         } else if (arg.find('-') == 0) {
             if (i != 0) {
                 printf("%s: unrecognized argument: %s\n", __func__, arg.c_str());
@@ -127,7 +135,7 @@ bool my_app_params_parse(int argc, char ** argv, my_app_params & params) {
         }
     }
 
-    return !(invalid_param || (params.search_text.empty() && params.img_path.empty()));
+    return !(invalid_param || (params.search_text.empty() && params.img_path.empty() && params.search_dir.empty()));
 }
 
 int main(int argc, char ** argv) {
@@ -188,6 +196,8 @@ int main(int argc, char ** argv) {
         printf("%s: index files size mismatched\n", __func__);
     }
 
+    std::vector<std::pair<float, hnswlib::labeltype>> results;
+
     int64_t t_start = timer_us();
 
     if (!params.img_path.empty()) {
@@ -204,39 +214,81 @@ int main(int argc, char ** argv) {
         clip_image_preprocess(clip_ctx, &img0, &img_res);
 
         printf("[%s]: encoding image...\n", __func__);
-        int64_t t0 = timer_us();
         if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
             fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, params.img_path.c_str());
             clip_free(clip_ctx);
             return 1;
         }
-        int64_t t1 = timer_us();
-        printf("[%s]: encoding time = %9.2fms\n", __func__, (t1 - t0) / 1000.0);
     
+        printf("[%s]: KNN search image...\n", __func__);
+        results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
+
+        auto item = results[0];
+        printf("[%s]: Located matching entry [%zd] - '%s' in DB\n", 
+            __func__, item.second, image_file_index.at(item.second).c_str());
+
+    } else if (!params.search_dir.empty()) {
+        auto imgs_dir = get_dir_keyed_files(params.search_dir, 0);
+
+        for (auto & entry : imgs_dir) {
+            printf("[%s]: processing %zu files in '%s'\n", __func__, entry.second.size(), entry.first.c_str());
+            size_t n_imgs = entry.second.size();
+            for (int img_index = 0; img_index < n_imgs; img_index++) {
+                clip_image_u8 img0;
+                const std::string & img_path = entry.second[img_index];
+                if (params.verbose >= 2) {
+                    printf("    [%s]: processing image file '%s'\n", __func__, img_path.c_str());
+                }
+
+                if (!clip_image_load_from_file(img_path.c_str(), &img0)) {
+                    fprintf(stderr, "%s: failed to load image from '%s'\n", __func__, img_path.c_str());
+                    continue;
+                }
+
+                clip_image_f32 img_res;
+                clip_image_preprocess(clip_ctx, &img0, &img_res);
+        
+                if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
+                    fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, params.img_path.c_str());
+                    clip_free(clip_ctx);
+                    return 1;
+                }
+
+                results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
+                auto item = results[0];
+                if (item.first != 0.0f) {
+                    printf("[%s]: '%s' not found in DB\n", __func__, img_path.c_str());
+                } else {
+                    if (params.verbose >=1) {
+                        printf("[%s]: Located matching entry [%zd] - '%s' in DB\n", 
+                            __func__, item.second, image_file_index.at(item.second).c_str());
+                    }
+                }
+            }
+        }
+
     } else {
 
         printf("[%s]: searching DB for string '%s'\n", __func__, params.search_text.c_str());
         clip_tokens tokens;
         clip_tokenize(clip_ctx, params.search_text.c_str(), &tokens);
         clip_text_encode(clip_ctx, params.n_threads, &tokens, vec, true);
-    }
 
-    printf("[%s]: KNN search image...\n", __func__);
-    int64_t t0 = timer_us();
-    std::vector<std::pair<float, hnswlib::labeltype>> results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
-
-    int64_t t1 = timer_us();
-    printf("[%s]: Lookup time = %9.2fms\n", __func__, (t1 - t0) / 1000.0);
-
-    if (params.verbose > 0) {
-        printf("[%s]: search results - distance path:\n", __func__);
-    }
+        printf("[%s]: KNN search image...\n", __func__);
+        results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
     
-    for (auto item: results) {
-        printf("    distance: %f - [%zd]-<%s>\n", item.first, item.second, image_file_index.at(item.second).c_str());
+        if (params.verbose > 0) {
+            printf("[%s]: search results - distance path:\n", __func__);
+        }
+        
+        for (auto item: results) {
+            printf("    distance: %f - [%zd]-<%s>\n", item.first, item.second, image_file_index.at(item.second).c_str());
+        }
     }
 
     int64_t t_elapsed = timer_us() - t_start;
+
+    printf("\n[%s]: Elapsed time: %.2f\n", __func__, t_elapsed / 1024 / 1024.0);
     print_tensor_op_perf_data(t_elapsed);
 
     clip_free(clip_ctx);

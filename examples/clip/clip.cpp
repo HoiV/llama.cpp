@@ -74,6 +74,7 @@ static std::string format(const char * fmt, ...) {
     va_end(ap2);
     va_end(ap);
     return std::string(buf.data(), buf.size());
+    GGML_UNUSED(size2);
 }
 
 //
@@ -626,12 +627,16 @@ struct clip_ctx * clip_model_load(const char * fname, const int verbosity = 1) {
 
 #ifdef GGML_USE_CUDA
     new_clip->backend = ggml_backend_cuda_init(0);
-    printf("%s: CLIP using CUDA backend\n", __func__);
+    if (verbosity >= 1) {
+        printf("%s: CLIP using CUDA backend\n", __func__);
+    }
 #endif
 
     if (!new_clip->backend) {
         new_clip->backend = ggml_backend_cpu_init();
-        printf("%s: CLIP using CPU backend\n", __func__);
+        if (verbosity >= 1) {
+            printf("%s: CLIP using CPU backend\n", __func__);
+        }
     }
 
     // model size and capabilities
@@ -1246,7 +1251,7 @@ bool clip_text_encode(const clip_ctx * ctx, const int n_threads, const clip_toke
             struct ggml_tensor * Q =
                 ggml_add(ctx0, ggml_repeat(ctx0, model.layers[il].q_b, cur), ggml_mul_mat(ctx0, model.layers[il].q_w, cur));
 
-            Q = ggml_scale_inplace_Ex(ctx0, Q, ggml_new_f32(ctx0, 1.0f / sqrt((float)d_head)));
+            Q = ggml_scale_inplace(ctx0, Q, 1.0f / sqrt((float)d_head));
             Q = ggml_reshape_4d(ctx0, Q, d_head, n_head, N, 1);
             Q = ggml_cont(ctx0, ggml_permute(ctx0, Q, 0, 2, 1, 3));
             Q = ggml_reshape_3d(ctx0, Q, d_head, N, n_head);
@@ -1328,8 +1333,8 @@ bool clip_text_encode(const clip_ctx * ctx, const int n_threads, const clip_toke
 
     // normalize output embeddings
     if (normalize) {
-        ggml_tensor * length = ggml_sqrt(ctx0, ggml_sum(ctx0, ggml_sqr(ctx0, embeddings)));
-        embeddings = ggml_scale_inplace_Ex(ctx0, embeddings, ggml_div(ctx0, ggml_new_f32(ctx0, 1.0f), length));
+        // ggml_tensor * length = ggml_sqrt(ctx0, ggml_sum(ctx0, ggml_sqr(ctx0, embeddings)));
+        // embeddings = ggml_scale_inplace_Ex(ctx0, embeddings, ggml_div(ctx0, ggml_new_f32(ctx0, 1.0f), length));
     }
 
     ggml_set_name(embeddings, "check");
@@ -1540,6 +1545,11 @@ bool clip_image_batch_encode(
     // the last node is the output embeddings tensor or the named tensor "clip_output"
     struct ggml_tensor * embeddings = gf->nodes[gf->n_nodes - 1];
     struct ggml_tensor * clip_output = ggml_graph_get_tensor(gf, "clip_output");
+    const char * clip_output_tensor_name = ggml_get_name(embeddings);
+    if (strcmp(clip_output_tensor_name, "clip_output") != 0) {
+        printf("[%s]: output tensor does not have the correct name: [%s] - expected \"clip_output\"\n", 
+            __func__, clip_output_tensor_name);
+    }
     // printf("[%s]: 'clip_output' tensor elements = %zd - vec.data() size = %zd\n", __func__, 
     //     ggml_nelements(clip_output), vec.size());
 
@@ -1689,6 +1699,7 @@ bool clip_image_batch_encode(
     return true;
 }
 
+#if 0 
 bool clip_image_batch_encode_v1(const clip_ctx * ctx, const int n_threads, const clip_image_f32_batch * imgs, float * vec,
                              const bool normalize) {
 
@@ -1964,7 +1975,7 @@ bool clip_image_batch_encode_v1(const clip_ctx * ctx, const int n_threads, const
     }
 
     // printf("used_mem = %zu\n", ggml_used_mem(ctx0));
-#endif
+#endif // CLIP_DEBUG
 
     memcpy(vec, ggml_get_data_f32(output), sizeof(float) * projection_dim * batch_size);
 
@@ -1976,6 +1987,7 @@ bool clip_image_batch_encode_v1(const clip_ctx * ctx, const int n_threads, const
 
     return true;
 }
+#endif // clip_image_batch_encode_v1()
 
 float clip_similarity_score(const float * vec1, const float * vec2, const int vec_dim) {
     float dot_product = 0.0;
