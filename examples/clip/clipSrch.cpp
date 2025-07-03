@@ -12,6 +12,7 @@
 #include "hnswlib/hnswlib.h"
 
 #include <fstream>
+#include <filesystem>
 
 #include <windows.h>
 
@@ -149,20 +150,30 @@ int main(int argc, char ** argv) {
 
     // load model path
     std::ifstream image_file_index_file(params.filepaths.c_str(), std::ios::binary);
-    std::string line;
-    std::getline(image_file_index_file, line);
+    std::string cached_model_path;
+    std::getline(image_file_index_file, cached_model_path);
     if (params.model.empty()) {
-        params.model = line;
-    } else {
-        printf("%s: using alternative model from cmdline %s. Make sure you use the same model you used "
-               "for indexing, or the embeddings will not work.\n",
-               __func__, params.model.c_str());
+        params.model = cached_model_path;
+        if (params.verbose >= 1) {
+            printf("[%s]: model arg is empty - use cached model file: '%s'\n", __func__, params.model.c_str());
+        }
+    } 
+    else {
+        std::filesystem::path cached_model_fullpath = std::filesystem::absolute(cached_model_path);
+        std::filesystem::path model_fullpath = std::filesystem::absolute(params.model);
+        std::string cached_model_name = cached_model_fullpath.filename().string();
+        std::string model_name = model_fullpath.filename().string();
+        if (_strnicmp(model_name.c_str(), cached_model_name.c_str(), cached_model_name.length()) != 0) {
+            printf("[%s]: using alternative model from cmdline '%s'. The model used for indexing "
+               "was '%s'.\n",
+               __func__, model_name.c_str(), cached_model_name.c_str());
+        }
     }
 
     // load model
     auto clip_ctx = clip_model_load(params.model.c_str(), params.verbose);
     if (!clip_ctx) {
-        printf("%s: Unable to load model from %s\n", __func__, params.model.c_str());
+        printf("%s: Unable to load model from '%s'\n", __func__, params.model.c_str());
         return 1;
     }
 
@@ -171,6 +182,7 @@ int main(int argc, char ** argv) {
 
     // load image paths
     do {
+        std::string line;
         std::getline(image_file_index_file, line);
         if (line.empty()) {
             break;
@@ -193,7 +205,8 @@ int main(int argc, char ** argv) {
     }
 
     if (image_file_index.size() != cur_elementCount) {
-        printf("%s: index files size mismatched\n", __func__);
+        printf("%s: index files size mismatched - expected (%zd) - actual (%zd)\n", 
+            __func__, image_file_index.size(), cur_elementCount);
     }
 
     std::vector<std::pair<float, hnswlib::labeltype>> results;
@@ -230,6 +243,9 @@ int main(int argc, char ** argv) {
     } else if (!params.search_dir.empty()) {
         auto imgs_dir = get_dir_keyed_files(params.search_dir, 0);
 
+        std::vector<float> encode_timing_ms;
+        int error_count = 0;
+        int match_count = 0;
         for (auto & entry : imgs_dir) {
             printf("[%s]: processing %zu files in '%s'\n", __func__, entry.second.size(), entry.first.c_str());
             size_t n_imgs = entry.second.size();
@@ -248,17 +264,24 @@ int main(int argc, char ** argv) {
                 clip_image_f32 img_res;
                 clip_image_preprocess(clip_ctx, &img0, &img_res);
         
+                int64_t t0 = timer_us();
                 if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
-                    fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, params.img_path.c_str());
+                    fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, img_path.c_str());
                     clip_free(clip_ctx);
                     return 1;
                 }
+                int64_t t1 = timer_us();
+                encode_timing_ms.push_back(((t1 - t0) / 1000.0));
 
                 results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
                 auto item = results[0];
                 if (item.first != 0.0f) {
-                    printf("[%s]: '%s' not found in DB\n", __func__, img_path.c_str());
+                    error_count++;
+                    if (params.verbose >=1) {
+                        printf("[%s]: '%s' not found in DB\n", __func__, img_path.c_str());
+                    }
                 } else {
+                    match_count++;
                     if (params.verbose >=1) {
                         printf("[%s]: Located matching entry [%zd] - '%s' in DB\n", 
                             __func__, item.second, image_file_index.at(item.second).c_str());
@@ -266,6 +289,26 @@ int main(int argc, char ** argv) {
                 }
             }
         }
+
+        // print encoding stats
+        if (!encode_timing_ms.empty()) {
+            float sum = 0;
+            for (float val : encode_timing_ms) {
+                sum += val;
+            }
+            float mean = sum / encode_timing_ms.size();
+
+            float variance = 0;
+            for (float_t val : encode_timing_ms) {
+                variance += (val - mean) * (val - mean);
+            } 
+            variance /= encode_timing_ms.size(); // Use (data.size() - 1) for sample std dev
+            float stddev = std::sqrt(variance);
+            printf("[%s]: Average encoding time / stddev: %.2fms +/- %.2f\n", __func__, mean, stddev);
+        }
+
+        printf("[%s]: Matched successfully '%d' entries with '%d' error(s)\n", 
+            __func__, match_count, error_count);
 
     } else {
 

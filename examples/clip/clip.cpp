@@ -568,6 +568,9 @@ struct clip_ctx * clip_model_load(const char * fname, const int verbosity = 1) {
     };
 
     struct gguf_context * ctx_gguf = gguf_init_from_file(fname, params);
+    if (ctx_gguf == nullptr) {
+        return nullptr;
+    }
 
     if (verbosity >= 1) {
         const int n_tensors = gguf_get_n_tensors(ctx_gguf);
