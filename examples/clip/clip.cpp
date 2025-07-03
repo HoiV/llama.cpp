@@ -2150,6 +2150,9 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
     case 8:
         type = GGML_TYPE_Q8_0;
         break;
+    case 9: 
+        type = GGML_TYPE_BF16;
+        break;
     default:
         fprintf(stderr, "%s: invalid quantization type %d\n", __func__, itype);
         return false;
@@ -2256,7 +2259,14 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
             case GGML_TYPE_Q8_0: {
                 new_size = clip_quantize_q8_0(f32_data, new_data, n_elms, cur->ne[0], hist_cur.data());
                 } break;
-            default: {
+            case GGML_TYPE_BF16: {
+                ggml_bf16_t * bf16_data = (ggml_bf16_t *) new_data;
+                for (int j = 0; j < n_elms; ++j) {
+                    bf16_data[j] = ggml_fp32_to_bf16(((float *)f32_data)[j]);
+                }
+                new_size = n_elms * sizeof(ggml_bf16_t);
+                } break;
+                default: {
                 fprintf(stderr, "%s: unsupported quantization type %d\n", __func__, new_type);
                 return false;
                 }

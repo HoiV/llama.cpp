@@ -10,6 +10,7 @@ void print_usage(int argc, char ** argv) {
     fprintf(stderr, "  type = 6 - q5_0\n");
     fprintf(stderr, "  type = 7 - q5_1\n");
     fprintf(stderr, "  type = 8 - q8_0\n");
+    fprintf(stderr, "  type = 9 - bf16\n");
 }
 
 int main(int argc, char ** argv) {
@@ -22,7 +23,7 @@ int main(int argc, char ** argv) {
     const std::string fname_out = argv[2];
 
     const int itype = atoi(argv[3]);
-    if (itype != 2 && itype != 3 && itype != 6 && itype != 7 && itype != 8) {
+    if (itype != 2 && itype != 3 && itype != 6 && itype != 7 && itype != 8 && itype != 9) {
         print_usage(argc, argv);
         return 1;
     }
