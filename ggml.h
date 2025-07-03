@@ -2578,13 +2578,6 @@ extern "C" {
 
     GGML_API ggml_type_traits_t ggml_internal_get_type_traits(enum ggml_type type);
 
-    // The following API are only available for CLIP support
-    GGML_API size_t clip_quantize_q4_0(const float * src, void * dst, int n, int k, int64_t * hist);
-    GGML_API size_t clip_quantize_q4_1(const float * src, void * dst, int n, int k, int64_t * hist);
-    GGML_API size_t clip_quantize_q5_0(const float * src, void * dst, int n, int k, int64_t * hist);
-    GGML_API size_t clip_quantize_q5_1(const float * src, void * dst, int n, int k, int64_t * hist);
-    GGML_API size_t clip_quantize_q8_0(const float * src, void * dst, int n, int k, int64_t * hist);
-
 #ifdef  __cplusplus
 }
 #endif

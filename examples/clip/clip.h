@@ -8,8 +8,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
-struct clip_ctx;
+#include <vector>
+#include <string>
+#include <map>
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +42,122 @@ typedef int32_t clip_vocab_id;
 struct clip_tokens {
     clip_vocab_id * data;
     size_t size;
+};
+
+//
+// Vocab utils
+//
+
+struct clip_vocab {
+    using id = clip_vocab_id;
+    using token = std::string;
+
+    std::map<token, id> token_to_id;
+    std::map<id, token> id_to_token;
+    std::vector<std::string> special_tokens;
+
+    //    void add_special_token(const std::string & token);
+};
+
+//
+// clip layers
+//
+
+struct clip_layer {
+    // attention
+    struct ggml_tensor * k_w;
+    struct ggml_tensor * k_b;
+    struct ggml_tensor * q_w;
+    struct ggml_tensor * q_b;
+    struct ggml_tensor * v_w;
+    struct ggml_tensor * v_b;
+
+    struct ggml_tensor * o_w;
+    struct ggml_tensor * o_b;
+
+    // layernorm 1
+    struct ggml_tensor * ln_1_w;
+    struct ggml_tensor * ln_1_b;
+
+    // ff
+    struct ggml_tensor * ff_i_w;
+    struct ggml_tensor * ff_i_b;
+
+    struct ggml_tensor * ff_o_w;
+    struct ggml_tensor * ff_o_b;
+
+    // layernorm 2
+    struct ggml_tensor * ln_2_w;
+    struct ggml_tensor * ln_2_b;
+};
+
+struct clip_text_model {
+    struct clip_text_hparams hparams;
+
+    // embeddings
+    struct ggml_tensor * token_embeddings;
+    struct ggml_tensor * position_embeddings;
+
+    std::vector<clip_layer> layers;
+
+    struct ggml_tensor * post_ln_w;
+    struct ggml_tensor * post_ln_b;
+
+    struct ggml_tensor * projection;
+};
+
+struct clip_vision_model {
+    struct clip_vision_hparams hparams;
+
+    // embeddings
+    struct ggml_tensor * class_embedding;
+    struct ggml_tensor * patch_embeddings;
+    struct ggml_tensor * position_embeddings;
+
+    struct ggml_tensor * pre_ln_w;
+    struct ggml_tensor * pre_ln_b;
+
+    std::vector<clip_layer> layers;
+
+    struct ggml_tensor * post_ln_w;
+    struct ggml_tensor * post_ln_b;
+
+    struct ggml_tensor * projection;
+};
+
+// Replacement for std::vector<uint8_t> that doesn't require zero-initialization.
+struct clip_buffer {
+    uint8_t * data = nullptr;
+    size_t size = 0;
+
+    void resize(size_t size) {
+        delete[] data;
+        data = new uint8_t[size];
+        this->size = size;
+    }
+
+    ~clip_buffer() { delete[] data; }
+};
+
+struct clip_ctx {
+    bool has_text_encoder = false;
+    bool has_vision_encoder = false;
+    struct clip_text_model text_model;
+    struct clip_vision_model vision_model;
+    struct clip_vocab vocab;
+    float image_mean[3];
+    float image_std[3];
+    bool use_gelu = false;
+    int32_t ftype = 1;
+    struct ggml_context * ctx_model = nullptr;
+    struct ggml_context * ctx_gf    = nullptr;
+    struct gguf_context * ctx_gguf  = nullptr;
+
+    // memory buffers to evaluate the model
+    struct clip_buffer buf_compute;
+    ggml_backend_buffer_t params_buffer = nullptr;
+    ggml_backend_t backend              = nullptr;
+    ggml_gallocr_t compute_alloc        = nullptr;
 };
 
 struct clip_ctx * clip_model_load(const char * fname, const int verbosity);
