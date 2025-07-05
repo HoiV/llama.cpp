@@ -180,6 +180,9 @@ std::string get_ftype(int ftype) {
     case 8:
         return "q8_0";
         break;
+    case 9:
+        return "bf16";
+        break;
     default:
         throw std::runtime_error(format("Unrecognized file type: %d\n", ftype));
     }
