@@ -171,6 +171,9 @@ std::string get_ftype(int ftype) {
     case 3:
         return "q4_1";
         break;
+    case 4:
+        return "q4_K";
+        break;
     case 6:
         return "q5_0";
         break;
