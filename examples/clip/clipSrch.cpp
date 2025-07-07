@@ -168,9 +168,13 @@ int main(int argc, char ** argv) {
         std::string cached_model_name = cached_model_fullpath.filename().string();
         std::string model_name = model_fullpath.filename().string();
         if (_strnicmp(model_name.c_str(), cached_model_name.c_str(), cached_model_name.length()) != 0) {
-            printf("[%s]: using alternative model from cmdline '%s'. \n"
-                   "[%s]: The index database was created with model '%s'.\n",
-                __func__, model_name.c_str(), __func__, cached_model_name.c_str());
+            printf("[%s]: *******************************************\n"
+                   "[%s]: using alternative model from cmdline '%s'. \n"
+                   "[%s]: The index database was created with model '%s'.\n"
+                   "[%s]: Expect errors if the models are different. \n"
+                   "[%s]: *******************************************\n",
+                __func__, __func__, model_name.c_str(), __func__, 
+                cached_model_name.c_str(), __func__, __func__);
         }
     }
 
@@ -240,10 +244,10 @@ int main(int argc, char ** argv) {
         printf("[%s]: KNN search image...\n", __func__);
         results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
 
-        auto item = results[0];
-        printf("[%s]: Located matching entry [%zd] - '%s' in DB\n", 
-            __func__, item.second, image_file_index.at(item.second).c_str());
-
+        for (auto item: results) {
+            printf("[%s]: distance: %f - [%s]\n", __func__, item.first, image_file_index.at(item.second).c_str());
+        }
+    
     } else if (!params.search_dir.empty()) {
         auto imgs_dir = get_dir_keyed_files(params.search_dir, 0);
 

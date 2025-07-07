@@ -10,8 +10,8 @@
 // *ONLY* For CLIP support (from an older GGML commit)
 
 static size_t clip_quantize_q4_0(const float * src, void * dst, int n, int k, int64_t * hist) {
-    GGML_ASSERT(k % QK4_0 == 0);
-    const int nb = k / QK4_0;
+    GGML_ASSERT(k % QK_K == 0);
+    const int nb = k / QK_K;
 
     for (int b = 0; b < n; b += k) {
         block_q4_0 * y = (block_q4_0 *) dst + b/QK4_0;
@@ -53,6 +53,21 @@ size_t clip_quantize_q4_1(const float * src, void * dst, int n, int k, int64_t *
     }
 
     return (n/QK4_1*sizeof(block_q4_1));
+}
+
+size_t clip_quantize_q4_K(const float * src, void * dst, int n, int k, int64_t * hist) {
+    GGML_UNUSED(hist);
+
+    GGML_ASSERT(k % QK_K == 0);
+    const int nb = k / QK_K;
+
+    for (int b = 0; b < n; b += k) {
+        block_q4_K * y = (block_q4_K *) dst + b/QK_K;
+
+        quantize_row_q4_K(src + b, y, k);
+    }
+
+    return (n/QK_K*sizeof(block_q4_K));
 }
 
 size_t clip_quantize_q5_0(const float * src, void * dst, int n, int k, int64_t * hist) {
@@ -146,6 +161,9 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
         break;
     case 3:
         type = GGML_TYPE_Q4_1;
+        break;
+    case 4:
+        type = GGML_TYPE_Q4_K;
         break;
     case 6:
         type = GGML_TYPE_Q5_0;
@@ -256,7 +274,10 @@ bool clip_model_quantize(const char * fname_inp, const char * fname_out, const i
             case GGML_TYPE_Q4_1: {
                 new_size = clip_quantize_q4_1(f32_data, new_data, n_elms, cur->ne[0], hist_cur.data());
                 } break;
-            case GGML_TYPE_Q5_0: {
+                case GGML_TYPE_Q4_K: {
+                    new_size = clip_quantize_q4_K(f32_data, new_data, n_elms, cur->ne[0], hist_cur.data());
+                    } break;
+                case GGML_TYPE_Q5_0: {
                 new_size = clip_quantize_q5_0(f32_data, new_data, n_elms, cur->ne[0], hist_cur.data());
                 } break;
             case GGML_TYPE_Q5_1: {
@@ -338,6 +359,7 @@ void print_usage(int argc, char ** argv) {
     fprintf(stderr, "usage: %s /path/to/ggml-model-f32.gguf /path/to/ggml-model-quantized.gguf type\n", argv[0]);
     fprintf(stderr, "  type = 2 - q4_0\n");
     fprintf(stderr, "  type = 3 - q4_1\n");
+    fprintf(stderr, "  type = 4 - q4_K\n");
     fprintf(stderr, "  type = 6 - q5_0\n");
     fprintf(stderr, "  type = 7 - q5_1\n");
     fprintf(stderr, "  type = 8 - q8_0\n");
@@ -354,7 +376,7 @@ int main(int argc, char ** argv) {
     const std::string fname_out = argv[2];
 
     const int itype = atoi(argv[3]);
-    if (itype != 2 && itype != 3 && itype != 6 && itype != 7 && itype != 8 && itype != 9) {
+    if (itype != 2 && itype != 3 && itype != 4 && itype != 6 && itype != 7 && itype != 8 && itype != 9) {
         print_usage(argc, argv);
         return 1;
     }
