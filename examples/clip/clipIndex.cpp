@@ -381,6 +381,8 @@ int main(int argc, char ** argv) {
     clip_free(clip_ctx);
 
     int64_t t_elapsed = timer_us() - t_start;
+
+    printf("\n[%s]: Elapsed time: %.2f\n", __func__, t_elapsed / 1024 / 1024.0);
     print_tensor_op_perf_data(t_elapsed);
 
     // Run small test to verify the DB is valid
