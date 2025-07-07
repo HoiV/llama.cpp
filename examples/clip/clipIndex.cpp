@@ -108,6 +108,10 @@ bool my_app_params_parse(int argc, char ** argv, my_app_params & params) {
                 break;
             }
             params.verbose = std::stoi(argv[i]);
+        } else if (arg == "-repack-ggml") {
+            ggml_set_tensor_repacking_mode(TENSOR_REPACKING_MODE_GGML);
+        } else if (arg == "-repack-xbox") {
+            ggml_set_tensor_repacking_mode(TENSOR_REPACKING_MODE_XBOX);
         } else if (arg == "-h" || arg == "--help") {
             my_print_help(argc, argv, params);
             exit(0);

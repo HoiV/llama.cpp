@@ -117,6 +117,10 @@ bool my_app_params_parse(int argc, char ** argv, my_app_params & params) {
                 break;
             }
             params.search_dir = argv[i];
+        } else if (arg == "-repack-ggml") {
+            ggml_set_tensor_repacking_mode(TENSOR_REPACKING_MODE_GGML);
+        } else if (arg == "-repack-xbox") {
+            ggml_set_tensor_repacking_mode(TENSOR_REPACKING_MODE_XBOX);
         } else if (arg.find('-') == 0) {
             if (i != 0) {
                 printf("%s: unrecognized argument: %s\n", __func__, arg.c_str());
