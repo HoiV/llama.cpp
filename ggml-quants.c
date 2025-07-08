@@ -3013,6 +3013,8 @@ size_t quantize_q5_K(const float * restrict src, void * restrict dst, int64_t nr
 // ====================== 6-bit (de)-quantization
 
 void quantize_row_q6_K_reference(const float * restrict x, block_q6_K * restrict y, int64_t k) {
+#pragma comment(linker, "/EXPORT:quantize_row_q6_K=" __FUNCTION__)
+
     const uint64_t qk = QK_K;
 
     assert(k % qk == 0);
@@ -3309,83 +3311,6 @@ void dequantize_row_q6_K(const block_q6_K * restrict x, float * restrict y, int6
 
 #endif // defined(__AVX512F__)
 
-}
-
-void quantize_row_q6_K(const float * restrict x, void * restrict vy, int64_t k) {
-#pragma comment(linker, "/EXPORT:quantize_row_q6_K=" __FUNCTION__)
-
-    const uint64_t qk = QK_K;
-
-    assert(k % qk == 0);
-
-    const uint64_t nb = k / qk;
-
-    block_q6_K * restrict y = vy;
-
-    int8_t L[QK_K];
-    float   scales[QK_K/16];
-
-    for (uint64_t i = 0; i < nb; i++) {
-
-        float max_scale = 0;
-        float max_abs_scale = 0;
-
-        for (int ib = 0; ib < QK_K/16; ++ib) {
-
-            const float scale = make_qx_quants(16, 32, x + 16*ib, L + 16*ib, 1, NULL);
-            scales[ib] = scale;
-
-            const float abs_scale = fabsf(scale);
-            if (abs_scale > max_abs_scale) {
-                max_abs_scale = abs_scale;
-                max_scale = scale;
-            }
-
-        }
-
-        if (max_abs_scale < GROUP_MAX_EPS) {
-            memset(&y[i], 0, sizeof(block_q6_K));
-            y[i].d = GGML_FP32_TO_FP16(0.f);
-            x += QK_K;
-            continue;
-        }
-
-        float iscale = -128.f/max_scale;
-        y[i].d = GGML_FP32_TO_FP16(1/iscale);
-        for (int ib = 0; ib < QK_K/16; ++ib) {
-            y[i].scales[ib] = MIN(127, nearest_int(iscale*scales[ib]));
-        }
-
-        for (int j = 0; j < QK_K/16; ++j) {
-            float d = GGML_FP16_TO_FP32(y[i].d) * y[i].scales[j];
-            if (!d) {
-                continue;
-            }
-            for (int ii = 0; ii < 16; ++ii) {
-                int l = nearest_int(x[16*j + ii]/d);
-                l = MAX(-32, MIN(31, l));
-                L[16*j + ii] = l + 32;
-            }
-        }
-
-        uint8_t * restrict ql = y[i].ql;
-        uint8_t * restrict qh = y[i].qh;
-        for (int j = 0; j < QK_K; j += 128) {
-            for (int l = 0; l < 32; ++l) {
-                const uint8_t q1 = L[j + l +  0] & 0xF;
-                const uint8_t q2 = L[j + l + 32] & 0xF;
-                const uint8_t q3 = L[j + l + 64] & 0xF;
-                const uint8_t q4 = L[j + l + 96] & 0xF;
-                ql[l+ 0] = q1 | (q3 << 4);
-                ql[l+32] = q2 | (q4 << 4);
-                qh[l] = (L[j + l] >> 4) | ((L[j + l + 32] >> 4) << 2) | ((L[j + l + 64] >> 4) << 4) | ((L[j + l + 96] >> 4) << 6);
-            }
-            ql += 64;
-            qh += 32;
-        }
-
-        x += QK_K;
-    }
 }
 
 static void quantize_row_q6_K_impl(const float * restrict x, block_q6_K * restrict y, int64_t n_per_row, const float * quant_weights) {
@@ -5215,15 +5140,22 @@ void ggml_vec_dot_q8_0_q8_0(const int n, float * restrict s, size_t bs, const vo
         const __m256i qyl = _mm256_loadu_si256((const __m256i *)y[i].qs);
         const __m256i qyh = _mm256_loadu_si256((const __m256i *)y[i + 1].qs);
 
-        const __m256i axl = _mm256_sign_epi8(qxl, qxl);
-        const __m256i axh = _mm256_sign_epi8(qxh, qxh);
-        __m512i ax = _mm512_castsi256_si512(axl);
-        ax = _mm512_inserti32x8(ax, axh, 1);
+        //
+        // Compute the absolute value of qx and generate a mask of the corresponding
+        // value of qx that are negative.
+        //
 
-        const __m256i syl = _mm256_sign_epi8(qyl, qxl);
-        const __m256i syh = _mm256_sign_epi8(qyh, qxh);
-        __m512i sy = _mm512_castsi256_si512(syl);
-        sy = _mm512_inserti32x8(sy, syh, 1);
+        const __m512i qx = _mm512_inserti32x8(_mm512_castsi256_si512(qxl), qxh, 1);
+        const __mmask64 is_negtive_qx = _mm512_movepi8_mask(qx);
+        const __m512i ax = _mm512_abs_epi8(qx);
+
+        //
+        // Compute the signed value of qy taking into account the negative values
+        // in the corresponding byte of qx.
+        //
+
+        const __m512i qy = _mm512_inserti32x8(_mm512_castsi256_si512(qyl), qyh, 1);
+        const __m512i sy = _mm512_mask_sub_epi8(qy, is_negtive_qx, zero512, qy);
 
         //
         // mul (ax * sy) + 0 directly to epi32
