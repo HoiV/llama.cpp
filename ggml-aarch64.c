@@ -510,7 +510,7 @@ void quantize_q8_0_4x8(const float * restrict x, void * restrict vy, int64_t k) 
 #endif
 }
 
-void quantize_mat_q8_0(const float * restrict x, void * restrict vy, int64_t nrow, int64_t n_per_row, int64_t blck_size_interleave) {
+void from_float_to_q8_0_4_8(const float * restrict x, void * restrict vy, int64_t nrow, int64_t n_per_row, int64_t blck_size_interleave) {
     assert(nrow == 4);
     UNUSED(nrow);
     if (blck_size_interleave == 4) {
@@ -786,7 +786,7 @@ void quantize_q8_K_4x8(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, i
 #endif
 }
 
-void quantize_mat_q8_K(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int64_t nrows, int64_t n_per_row, int64_t blck_size_interleave) {
+void from_float_to_q8_K_4_8(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int64_t nrows, int64_t n_per_row, int64_t blck_size_interleave) {
     assert(nrows == 4);
     UNUSED(nrows);
     if (blck_size_interleave == 8) {

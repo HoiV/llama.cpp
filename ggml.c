@@ -843,7 +843,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .to_float                 = (ggml_to_float_t) dequantize_row_q8_0,
         .from_float               = quantize_row_q8_0,
         .from_float_reference     = quantize_row_q8_0,
-        .from_float_to_mat        = quantize_mat_q8_0,
+        .from_float_to_mat        = from_float_to_q8_0_4_8,
         .vec_dot                  = ggml_vec_dot_q8_0_q8_0,
         .vec_dot_type             = GGML_TYPE_Q8_0,
         .nrows                    = 1,
@@ -1032,7 +1032,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .type_size                = sizeof(block_q8_K),
         .is_quantized             = true,
         .from_float               = (ggml_from_float_t)quantize_row_q8_K,
-        .from_float_to_mat        = quantize_mat_q8_K,
+        .from_float_to_mat        = from_float_to_q8_K_4_8,
     },
     [GGML_TYPE_BF16] = {
         .type_name                = "bf16",
@@ -5437,7 +5437,7 @@ print_tensor_op_perf_data (
 
     printf("Vector Dot Matrix Multiply Src0 Type Frequency\n\n");
     printf("          Total    Total  Tensor\n");
-    printf("   Count Time(sec)   %%   Time(us) Src0_Type\n\n");
+    printf("   Count Time(sec)   %%   Time(us) Src0 Type\n\n");
 
     total_count = 0;
     total_time = 0;
@@ -5465,7 +5465,7 @@ print_tensor_op_perf_data (
            (float)(total_time) / (1000. * 1000.),
            total_percent);
 
-    printf("Unary Op frequency\n\n");
+    printf("Unary Op Frequency\n\n");
     printf("          Total     Total  Tensor\n");
     printf("   Count Time(sec)   %%    Time(ms) Unary Op\n\n");
 
@@ -15223,16 +15223,7 @@ void ggml_compute_forward_mul_mat(
 
     const bool src1_cont = ggml_is_contiguous(src1);
 
-    ggml_vec_dot_t          vec_dot               = type_traits[src0_type].vec_dot;
-    enum ggml_type    const vec_dot_type          = type_traits[src0_type].vec_dot_type;
     int64_t           const vec_dot_num_rows      = type_traits[src0_type].nrows;
-    int64_t           const matmul_num_cols       = type_traits[src0_type].ncols;
-    int64_t           const blck_size_interleave  = type_traits[src0_type].blck_size_interleave;
-    ggml_from_float_to_mat_t const from_float_to_mat
-                                                  = type_traits[vec_dot_type].from_float_to_mat;
-    ggml_gemv_t       const gemv                  = type_traits[src0_type].gemv;
-    ggml_gemm_t       const gemm                  = type_traits[src0_type].gemm;
-    ggml_from_float_t const from_float            = type_traits[vec_dot_type].from_float;
 
 #if 0 // XBOX_INVESTIGATE
     //Child-SP          RetAddr               Call Site
@@ -15263,7 +15254,7 @@ void ggml_compute_forward_mul_mat(
     GGML_ASSERT(ne3 == ne13);
 
     // we don't support permuted src0 or src1
-    GGML_ASSERT(nb00 == ggml_type_size(type));
+    GGML_ASSERT(nb00 == ggml_type_size(src0_type));
     GGML_ASSERT(nb10 == ggml_type_size(src1_type));
 
     // dst cannot be transposed or permuted
@@ -15298,8 +15289,11 @@ void ggml_compute_forward_mul_mat(
         }
     }
 
-    // nb01 >= nb00 - src0 is not transposed
-    //   compute by src0 rows
+    ggml_vec_dot_t vec_dot = type_traits[src0_type].vec_dot;
+    enum ggml_type const vec_dot_type = type_traits[src0_type].vec_dot_type;
+
+    ggml_gemv_t const gemv = type_traits[src0_type].gemv;
+    ggml_gemm_t const gemm = type_traits[src0_type].gemm;
 
 #if defined(GGML_USE_RYZENAI)
 
@@ -15322,6 +15316,10 @@ void ggml_compute_forward_mul_mat(
         int64_t init_t0 = ggml_time_us();
 
 #endif // GGML_TENSOR_OP_PERF
+
+        int64_t const blck_size_interleave  = type_traits[src0_type].blck_size_interleave;
+        ggml_from_float_to_mat_t const from_float_to_mat = type_traits[vec_dot_type].from_float_to_mat;
+        ggml_from_float_t const from_float = type_traits[vec_dot_type].from_float;
 
         if (src1_type != vec_dot_type) {
             char * wdata = params->wdata;
@@ -15388,6 +15386,7 @@ void ggml_compute_forward_mul_mat(
         }
 #endif // GGML_TENSOR_OP_PERF
         
+        int64_t const matmul_num_cols = type_traits[src0_type].ncols;
         if (ggml_n_dims(src0) == 2) {
             const void *src1_wdata = (src1_type == vec_dot_type) ? src1->data : params->wdata;
             const size_t src1_col_stride = ggml_is_contiguous(src1) || src1->type != vec_dot_type ? ggml_row_size(vec_dot_type, ne10) : nb11;
@@ -15446,6 +15445,7 @@ void ggml_compute_forward_mul_mat(
 
 #endif // GGML_TENSOR_OP_PERF
 
+        ggml_from_float_t const from_float = type_traits[vec_dot_type].from_float;
         const int64_t rows_per_thread = (ne11 + nth - 1) / nth;
         const int64_t start_row = rows_per_thread * ith;
         const int64_t end_row = MIN(start_row + rows_per_thread, ne11);
