@@ -3012,7 +3012,7 @@ size_t quantize_q5_K(const float * restrict src, void * restrict dst, int64_t nr
 
 // ====================== 6-bit (de)-quantization
 
-void quantize_row_q6_K_reference(const float * restrict x, block_q6_K * restrict y, int64_t k) {
+void quantize_row_q6_K(const float * restrict x, block_q6_K * restrict y, int64_t k) {
 #pragma comment(linker, "/EXPORT:quantize_row_q6_K=" __FUNCTION__)
 
     const uint64_t qk = QK_K;
@@ -3400,7 +3400,7 @@ static void quantize_row_q6_K_impl(const float * restrict x, block_q6_K * restri
 size_t quantize_q6_K(const float * restrict src, void * restrict dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
     size_t row_size = ggml_row_size(GGML_TYPE_Q6_K, n_per_row);
     if (!quant_weights) {
-        quantize_row_q6_K_reference(src, dst, (int64_t)nrow*n_per_row);
+        quantize_row_q6_K(src, dst, (int64_t)nrow*n_per_row);
     }
     else {
         char * qrow = (char *)dst;
