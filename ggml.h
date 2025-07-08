@@ -467,11 +467,12 @@ extern "C" {
         // Xbox specific quant types.
         //
 
-        GGML_TYPE_Q8_0_Q8_0_x8 = 37,    // repacked type
-        GGML_TYPE_Q4_K_x8 = 38,         // - dummy linkage type
-        GGML_TYPE_Q4_K_Q8_K_x8 = 39,    // repacked type
-        GGML_TYPE_Q4_0_x8 = 40,         // - dummy linkage type
-        GGML_TYPE_Q4_0_Q8_0_x8 = 41,    // repacked type
+        GGML_TYPE_Q8_0_x8 = 37,         // - dummy linkage type
+        GGML_TYPE_Q8_0_Q8_0_x8 = 38,    // repacked type
+        GGML_TYPE_Q4_K_x8 = 39,         // - dummy linkage type
+        GGML_TYPE_Q4_K_Q8_K_x8 = 40,    // repacked type
+        GGML_TYPE_Q4_0_x8 = 41,         // - dummy linkage type
+        GGML_TYPE_Q4_0_Q8_0_x8 = 42,    // repacked type
 
         GGML_TYPE_COUNT,
     };

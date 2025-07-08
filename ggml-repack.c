@@ -387,289 +387,360 @@ void
 xx_vec_dot_q4_0_q8_0_x8 (
     const int n,
     float * s,
-    size_t bs,
-    const block_q4_0_repack * x,
-    size_t bx,
-    const block_q8_0_repack * y,
+    size_t nr_nb1,
+    const block_q4_0_repack * vx,
     size_t by,
+    const block_q8_0_repack * vy,
+    size_t ncols,
     int nrc
     )
 {
-#pragma comment(linker, "/EXPORT:xx_vec_dot_q4_0_q8_0_x8=" __FUNCTION__)
+    #pragma comment(linker, "/EXPORT:xx_vec_dot_q4_0_q8_0_x8=" __FUNCTION__)
 
-    GGML_UNUSED(bs);
-    GGML_UNUSED(bx);
     GGML_UNUSED(by);
-    GGML_UNUSED(nrc);
 
     const uint64_t nb = n / QK_K;
+    const uint64_t nrows = (uint32_t)nrc;
 
-    __m512 acc = _mm512_setzero_ps();
-    __m512i zero512 = _mm512_setzero_si512();
-
+    const __m512i zero512 = _mm512_setzero_si512();
     const __m512i offset = _mm512_set1_epi8(8);
     const __m512i m4 = _mm512_set1_epi8(0xf);
 
-    for (uint64_t i = 0; i < nb; ++i) {
+    //
+    // Iterate through the specified number of columns.
+    //
 
-        __m512i sumi = _mm512_setzero_si512();
+    block_q8_0_repack * y = (block_q8_0_repack *)vy;
 
-        //
-        // Compute combined scale for the an entire quant block.
-        //
-
-        const __m128h xd = _mm_loadu_ph(x[i].d);
-        const __m128h yd = _mm_loadu_ph(y[i].d);
-        const __m256 scale = _mm256_mul_ps(_mm256_cvtph_ps(xd),
-                                           _mm256_cvtph_ps(yd));
-
-        __m512 d = _mm512_castps256_ps512(scale);
-        d = _mm512_insertf32x8(d, scale, 1);
+    for (uint64_t l = 0; l < ncols; l += 1) {
 
         //
-        // Compute the dot product and accumulate.
+        // Iterate throught the specified number of rows
         //
 
-        for (uint64_t j = 0; j < (QK_K / (QK8_0 * 2)); j += 1) {
-            const __m256i tmp1 = _mm256_loadu_si256((const __m256i *)&x[i].qs[j * QK4_0 + 0]);
-            __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
+        block_q4_0_repack * x = (block_q4_0_repack *)vx;
 
-            const __m256i tmp2 = _mm256_srli_epi16(tmp1, 4);
-            __m512i qx = _mm512_inserti32x8(_mm512_castsi256_si512(tmp1), tmp2, 1);
-            qx = _mm512_and_si512(m4, qx);
+        for (uint64_t k = 0; k < nrows; k += 1) {
+            __m512 acc = _mm512_setzero_ps();
 
-            //
-            // Multiply unsigned scaled q4 bytes by signed q8 bytes.
-            //
-
-            sumi = _mm512_dpbusd_epi32(sumi, qx, qy);
-
-            //
-            // Multiply the unsigned bias value by the signed q8 bytes.
-            //
-
-            const __m512i bias = _mm512_dpbusd_epi32(zero512, offset, qy);
-
-            //
-            // Subtract the bias value from the sumi value.
-            //
-
-            sumi = _mm512_sub_epi32(sumi, bias);
+            for (uint64_t i = 0; i < nb; ++i) {
+        
+                __m512i sumi = _mm512_setzero_si512();
+        
+                //
+                // Compute combined scale for the an entire quant block.
+                //
+        
+                const __m128h xd = _mm_loadu_ph(x[i].d);
+                const __m128h yd = _mm_loadu_ph(y[i].d);
+                const __m256 scale = _mm256_mul_ps(_mm256_cvtph_ps(xd),
+                                                   _mm256_cvtph_ps(yd));
+        
+                __m512 d = _mm512_castps256_ps512(scale);
+                d = _mm512_insertf32x8(d, scale, 1);
+        
+                //
+                // Compute the dot product and accumulate.
+                //
+        
+                for (uint64_t j = 0; j < (QK_K / (QK8_0 * 2)); j += 1) {
+                    const __m256i tmp1 = _mm256_loadu_si256((const __m256i *)&x[i].qs[j * QK4_0 + 0]);
+                    __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
+        
+                    const __m256i tmp2 = _mm256_srli_epi16(tmp1, 4);
+                    __m512i qx = _mm512_inserti32x8(_mm512_castsi256_si512(tmp1), tmp2, 1);
+                    qx = _mm512_and_si512(m4, qx);
+        
+                    //
+                    // Multiply unsigned scaled q4 bytes by signed q8 bytes.
+                    //
+        
+                    sumi = _mm512_dpbusd_epi32(sumi, qx, qy);
+        
+                    //
+                    // Multiply the unsigned bias value by the signed q8 bytes.
+                    //
+        
+                    const __m512i bias = _mm512_dpbusd_epi32(zero512, offset, qy);
+        
+                    //
+                    // Subtract the bias value from the sumi value.
+                    //
+        
+                    sumi = _mm512_sub_epi32(sumi, bias);
+                }
+        
+                //
+                // Multiply q with scale and accumulate.
+                //
+        
+                const __m512 q = _mm512_cvtepi32_ps(sumi);
+                acc = _mm512_fmadd_ps(d, q, acc);
+            }
+        
+            const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
+                                             _mm512_extractf32x8_ps(acc, 1));
+        
+            const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
+                                         _mm256_extractf128_ps(res, 1));
+        
+            const __m128 t1 = _mm_hadd_ps(t0, t0);
+            s[k] = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+    
+            x += nb;
         }
 
-        //
-        // Multiply q with scale and accumulate.
-        //
-
-        const __m512 q = _mm512_cvtepi32_ps(sumi);
-        acc = _mm512_fmadd_ps(d, q, acc);
+        s = (float *)((char *)s + nr_nb1);
+        y += nb;
     }
-
-    const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
-                                     _mm512_extractf32x8_ps(acc, 1));
-
-    const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
-                                 _mm256_extractf128_ps(res, 1));
-
-    const __m128 t1 = _mm_hadd_ps(t0, t0);
-    *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
 }
 
 void
 xx_vec_dot_q4_k_q8_k_x8 (
     const int n,
     float * s,
-    size_t bs,
-    const block_q4_K_repack * x,
-    size_t bx,
-    const block_q8_K_repack * y,
+    size_t nr_nb1,
+    const block_q4_K_repack * vx,
     size_t by,
+    const block_q8_K_repack * vy,
+    size_t ncols,
     int nrc
     )
 {
-#pragma comment(linker, "/EXPORT:xx_vec_dot_q4_k_q8_k_x8=" __FUNCTION__)
+    #pragma comment(linker, "/EXPORT:xx_vec_dot_q4_k_q8_k_x8=" __FUNCTION__)
 
-    GGML_UNUSED(bs);
-    GGML_UNUSED(bx);
     GGML_UNUSED(by);
-    GGML_UNUSED(nrc);
 
     const uint64_t nb = n / QK_K;
+    const uint64_t nrows = (uint32_t)nrc;
 
-    static const uint32_t kmask1 = 0x3f3f3f3f;
-    static const uint32_t kmask2 = 0x0f0f0f0f;
-    static const uint32_t kmask4 = 0xc0c0c0c0;
+#define kmask1 0x3f3f3f3fu
+#define kmask2 0x0f0f0f0fu
+#define kmask4 0xc0c0c0c0u
 
-    uint64_t utmp[2];
-
-    __m512 acc = _mm512_setzero_ps();
-    __m128 mins_acc = _mm_setzero_ps();
     const __m512i m4 = _mm512_set1_epi8(0xf);
     const __m128i zero128 = _mm_setzero_si128();
 
-    for (uint64_t i = 0; i < nb; ++i) {
+    uint64_t utmp[2];
 
-        const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
-        const float dmin = y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+    //
+    // Iterate through the specified number of columns.
+    //
 
-        const uint32_t * vscales = (uint32_t *)x[i].scales;
-        utmp[1] = (uint64_t)(((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2)) << 32;
-        utmp[1] |= (uint64_t)(vscales[1] & kmask1);
-        utmp[0] = (uint64_t)((vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2)) << 32;
-        utmp[0] |= (uint64_t)(vscales[0] & kmask1);
+    block_q8_K_repack * y = (block_q8_K_repack *)vy;
 
-        const uint8_t * q4 = x[i].qs;
-        const int8_t  * q8 = y[i].qs;
+    for (uint64_t l = 0; l < ncols; l += 1) {
 
         //
-        // Insert 8 q4 mins and 8 q4 scales.
-        //
-        // N.B. Both mins and scales are 6-bit unsigned values.
+        // Iterate throught the specified number of rows
         //
 
-        const __m128i scales8 = _mm_insert_epi64(zero128, utmp[0], 0);
-        const __m128i mins8 = _mm_insert_epi64(zero128, utmp[1], 0);
+        block_q4_K_repack * x = (block_q4_K_repack *)vx;
 
-        //
-        // Compute the scale vector.
-        //
-        // N.B. The 8 scale values and replicated to 16 scale values.
-        //
-
-        __m512i scale = _mm512_cvtepi8_epi32(scales8);
-        scale = _mm512_inserti64x4(scale, _mm512_castsi512_si256(scale), 1);
-
-        __m512i sumi = _mm512_setzero_si512();
-
-        //
-        // Compute the integer product of the q4 and q8 quants and accumulate the
-        // integer results.
-        //
-
-        for (uint64_t j = 0; j < QK_K / 64; ++j) {
-            const __m256i q4bits = _mm256_loadu_si256((const __m256i*)(q4 + (j * 32)));
-            const __m512i q8v = _mm512_loadu_si512(q8 + (j * 64));
-
-            __m512i q4v = _mm512_castsi256_si512(q4bits);
-            q4v = _mm512_inserti32x8(q4v, _mm256_srli_epi16(q4bits, 4), 1);
-            q4v = _mm512_and_si512(q4v, m4);
-
-            sumi = _mm512_dpbusd_epi32(sumi, q4v, q8v);
+        for (uint64_t k = 0; k < nrows; k += 1) {
+            __m512 acc = _mm512_setzero_ps();
+            __m128 mins_acc = _mm_setzero_ps();
+        
+            for (uint64_t i = 0; i < nb; ++i) {
+        
+                const float d = y[i].d * GGML_FP16_TO_FP32(x[i].d);
+                const float dmin = y[i].d * GGML_FP16_TO_FP32(x[i].dmin);
+        
+                const uint32_t * vscales = (uint32_t *)x[i].scales;
+                utmp[1] = (uint64_t)(((vscales[2] >> 4) & kmask2) | ((vscales[1] & kmask4) >> 2)) << 32;
+                utmp[1] |= (uint64_t)(vscales[1] & kmask1);
+                utmp[0] = (uint64_t)((vscales[2] & kmask2) | ((vscales[0] & kmask4) >> 2)) << 32;
+                utmp[0] |= (uint64_t)(vscales[0] & kmask1);
+        
+                const uint8_t * q4 = x[i].qs;
+                const int8_t  * q8 = y[i].qs;
+        
+                //
+                // Insert 8 q4 mins and 8 q4 scales.
+                //
+                // N.B. Both mins and scales are 6-bit unsigned values.
+                //
+        
+                const __m128i scales8 = _mm_insert_epi64(zero128, utmp[0], 0);
+                const __m128i mins8 = _mm_insert_epi64(zero128, utmp[1], 0);
+        
+                //
+                // Compute the scale vector.
+                //
+                // N.B. The 8 scale values are replicated to 16 scale values.
+                //
+        
+                __m512i scale = _mm512_cvtepi8_epi32(scales8);
+                scale = _mm512_inserti64x4(scale, _mm512_castsi512_si256(scale), 1);
+        
+                __m512i sumi = _mm512_setzero_si512();
+        
+                //
+                // Compute the integer product of the q4 and q8 quants and accumulate the
+                // integer results.
+                //
+        
+                for (uint64_t j = 0; j < QK_K / 64; ++j) {
+                    const __m256i q4bits = _mm256_loadu_si256((const __m256i*)(q4 + (j * 32)));
+                    const __m512i q8v = _mm512_loadu_si512(q8 + (j * 64));
+        
+                    __m512i q4v = _mm512_castsi256_si512(q4bits);
+                    q4v = _mm512_inserti32x8(q4v, _mm256_srli_epi16(q4bits, 4), 1);
+                    q4v = _mm512_and_si512(q4v, m4);
+        
+                    sumi = _mm512_dpbusd_epi32(sumi, q4v, q8v);
+                }
+        
+                //
+                // Multiply the accumulated integer result by the q4 scale, convert to float,
+                // multiply by the q8 multiplier, and accumulate the results.
+                //
+        
+                sumi = _mm512_mullo_epi32(sumi, scale);
+                acc = _mm512_fmadd_ps(_mm512_set1_ps(d), _mm512_cvtepi32_ps(sumi), acc);
+        
+                //
+                // Load 8 q8 bsums values, multiply by the mins values, and accumulate
+                // the floating results.
+                //
+                // N.B. The half add to fold the 16 bsum values into 8 values is performed
+                //      in the make q8_k quant code.
+                //
+        
+                const __m128i q8s = _mm_loadu_si128((const __m128i *)y[i].bsums);
+                const __m128i mins = _mm_cvtepi8_epi16(mins8);
+                const __m128i prod = _mm_madd_epi16(mins, q8s);
+                mins_acc = _mm_fmadd_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod), mins_acc);
+            }
+        
+            const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
+                                             _mm512_extractf32x8_ps(acc, 1));
+        
+            __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
+                                   _mm256_extractf128_ps(res, 1));
+        
+            t0 = _mm_sub_ps(t0, mins_acc);
+        
+            const __m128 t1 = _mm_hadd_ps(t0, t0);
+            s[k] = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+    
+            x += nb;
         }
 
-        //
-        // Multiply the accumulated integer result by the q4 scale, convert to float,
-        // multiply by the q8 multiplier, and accumulate the results.
-        //
-
-        sumi = _mm512_mullo_epi32(sumi, scale);
-        acc = _mm512_fmadd_ps(_mm512_set1_ps(d), _mm512_cvtepi32_ps(sumi), acc);
-
-        //
-        // Load 8 q8 bsums values, multiply by the mins values, and accumulate
-        // the floating results.
-        //
-        // N.B. The half add to fold the 16 bsum values into 8 values is performed
-        //      in the make q8_k quant code.
-        //
-
-        const __m128i q8s = _mm_loadu_si128((const __m128i *)y[i].bsums);
-        const __m128i mins = _mm_cvtepi8_epi16(mins8);
-        const __m128i prod = _mm_madd_epi16(mins, q8s);
-        mins_acc = _mm_fmadd_ps(_mm_set1_ps(dmin), _mm_cvtepi32_ps(prod), mins_acc);
+        s = (float *)((char *)s + nr_nb1);
+        y += nb;
     }
-
-    const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
-                                     _mm512_extractf32x8_ps(acc, 1));
-
-    __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
-                                 _mm256_extractf128_ps(res, 1));
-
-    t0 = _mm_sub_ps(t0, mins_acc);
-
-    const __m128 t1 = _mm_hadd_ps(t0, t0);
-    *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
 }
 
 void
 xx_vec_dot_q8_0_q8_0_x8 (
     const int n,
     float * s,
-    size_t bs,
-    const block_q8_0_repack * x,
-    size_t bx,
-    const block_q8_0_repack * y,
+    size_t nr_nb1,
+    const block_q8_0_repack * vx,
     size_t by,
+    const block_q8_0_repack * vy,
+    size_t ncols,
     int nrc
     )
 {
-#pragma comment(linker, "/EXPORT:xx_vec_dot_q8_0_q8_0_x8=" __FUNCTION__)
+    #pragma comment(linker, "/EXPORT:xx_vec_dot_q8_0_q8_0_x8=" __FUNCTION__)
 
-    GGML_UNUSED(bs);
-    GGML_UNUSED(bx);
     GGML_UNUSED(by);
-    GGML_UNUSED(nrc);
 
     const uint64_t nb = n / QK_K;
+    const uint64_t nrows = (uint32_t)nrc;
 
-    __m512 acc = _mm512_setzero_ps();
-    __m512i zero512 = _mm512_setzero_si512();
+    const __m512i zero512 = _mm512_setzero_si512();
 
-    for (uint64_t i = 0; i < nb; ++i) {
+    //
+    // Iterate through the specified number of columns.
+    //
 
-        __m512i sumi = _mm512_setzero_si512();
+    block_q8_0_repack * y = (block_q8_0_repack *)vy;
 
-        //
-        // Compute combined scale for the an entire quant block.
-        //
-
-        const __m128h xd = _mm_loadu_ph(x[i].d);
-        const __m128h yd = _mm_loadu_ph(y[i].d);
-        const __m256 scale = _mm256_mul_ps(_mm256_cvtph_ps(xd),
-                                           _mm256_cvtph_ps(yd));
-
-        __m512 d = _mm512_castps256_ps512(scale);
-        d = _mm512_insertf32x8(d, scale, 1);
+    for (uint64_t l = 0; l < ncols; l += 1) {
 
         //
-        // Compute the dot product and accumulate.
+        // Iterate throught the specified number of rows.
         //
 
-        for (uint64_t j = 0; j < (QK_K / (QK8_0 * 2)); j += 1) {
-            __m512i qx = _mm512_loadu_si512((const __m512i *)&x[i].qs[j * QK8_0 * 2 + 0]);
-            const __mmask64 is_negative_qx = _mm512_cmp_epi8_mask(qx, zero512, _MM_CMPINT_LT);
-            const __m512i negated_qx = _mm512_sub_epi8(zero512, qx);
-            __m512i ax = _mm512_mask_mov_epi8(qx, is_negative_qx, negated_qx);
+        block_q8_0_repack * x = (block_q8_0_repack *)vx;
 
-            __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
-            const __m512i negated_qy = _mm512_sub_epi8(zero512, qy);
-            __m512i sy = _mm512_mask_mov_epi8(qy, is_negative_qx, negated_qy);
+        for (uint64_t k = 0; k < nrows; k += 1) {
+            __m512 acc = _mm512_setzero_ps();
 
-            //
-            // mul (ax * sy) + 0 directly to epi32
-            //
-            // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
-            //
+            for (uint64_t i = 0; i < nb; ++i) {
+        
+                __m512i sumi = _mm512_setzero_si512();
+        
+                //
+                // Compute combined scale for the an entire quant block.
+                //
+        
+                const __m128h xd = _mm_loadu_ph(x[i].d);
+                const __m128h yd = _mm_loadu_ph(y[i].d);
+                const __m256 scale = _mm256_mul_ps(_mm256_cvtph_ps(xd),
+                                                   _mm256_cvtph_ps(yd));
+        
+                __m512 d = _mm512_castps256_ps512(scale);
+                d = _mm512_insertf32x8(d, scale, 1);
+        
+                //
+                // Compute the dot product and accumulate.
+                //
+        
+                for (uint64_t j = 0; j < (QK_K / (QK8_0 * 2)); j += 1) {
+                    const __m512i qx = _mm512_loadu_si512((const __m512i *)&x[i].qs[j * QK8_0 * 2 + 0]);
+                    const __m512i qy = _mm512_loadu_si512((const __m512i *)&y[i].qs[j * QK8_0 * 2 + 0]);
     
-            sumi = _mm512_dpbusd_epi32(sumi, ax, sy);
+                    //
+                    // Compute the absolute value of qx and generate a mask of the corresponding
+                    // values of qx that are negative.
+                    //
+    
+                    const __m512i ax = _mm512_abs_epi8(qx);
+                    const __mmask64 is_negative_qx = _mm512_movepi8_mask(qx);
+    
+                    //
+                    // Compute the signed value of qy taking into account the negative values
+                    // in the corresponding byte of qx.
+                    //
+    
+                    const __m512i sy = _mm512_mask_sub_epi8(qy, is_negative_qx, zero512, qy);
+    
+                    //
+                    // mul (ax * sy) + sumi directly to epi32
+                    //
+                    // N.B. __AVX512VNNI__ and __AVX512VL__ are always defined.
+                    //
+            
+                    sumi = _mm512_dpbusd_epi32(sumi, ax, sy);
+                }
+        
+                //
+                // Multiply q with scale and accumulate.
+                //
+        
+                const __m512 q = _mm512_cvtepi32_ps(sumi);
+                acc = _mm512_fmadd_ps(d, q, acc);
+            }
+        
+            const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
+                                             _mm512_extractf32x8_ps(acc, 1));
+        
+            const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
+                                         _mm256_extractf128_ps(res, 1));
+        
+            const __m128 t1 = _mm_hadd_ps(t0, t0);
+            s[k] = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
+    
+            x += nb;
         }
 
-        //
-        // Multiply q with scale and accumulate.
-        //
-
-        const __m512 q = _mm512_cvtepi32_ps(sumi);
-        acc = _mm512_fmadd_ps(d, q, acc);
+        s = (float *)((char *)s + nr_nb1);
+        y += nb;
     }
-
-    const __m256 res = _mm256_add_ps(_mm512_castps512_ps256(acc),
-                                     _mm512_extractf32x8_ps(acc, 1));
-
-    const __m128 t0 = _mm_add_ps(_mm256_castps256_ps128(res),
-                                 _mm256_extractf128_ps(res, 1));
-
-    const __m128 t1 = _mm_hadd_ps(t0, t0);
-    *s = _mm_cvtss_f32(_mm_hadd_ps(t1, t1));
 
 /*
     static uint32_t count = 128;
@@ -845,11 +916,11 @@ ggml_repack_tensor (
     case TENSOR_REPACKING_MODE_XBOX:
 
         //
-        // Check if the number of elements is 0 mod QK_K.
+        // Check if the tensor is contiguous and the number of elements is 0 mod QK_K.
         //
 
         uint64_t ne = tensor->ne[0];
-        if ((ne % QK_K) != 0) {
+        if (!ggml_is_contiguous(tensor) || ((ne % QK_K) != 0)) {
             break;
         }
 
@@ -909,7 +980,7 @@ ggml_repack_tensor (
             }
 
         } else if (type == GGML_TYPE_Q8_0) {
-            type = GGML_TYPE_Q8_0_Q8_0_x8;
+            type = GGML_TYPE_Q8_0_x8;
 
             for (i = start_row; i < end_row; i += 1) {
                 make_q8_0_repack_quant(ne,

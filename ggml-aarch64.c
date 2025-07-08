@@ -5350,7 +5350,8 @@ static int repack_q4_0_to_q4_0_8_bl(struct ggml_tensor *t, int interleave_block,
     if (dst_buffer == NULL) {
         return -1;
     }
-    memcpy(dst_buffer, src, row_q4_0x8_size);
+    // **** Not needed ****
+    // memcpy(dst_buffer, src, row_q4_0x8_size);
     block_q4_0x8 * dst_buffer_cur = dst_buffer;
 
     for (int b = 0; b < nrow; b += ncols_interleaved) {
@@ -5407,7 +5408,8 @@ static int repack_q4_K_to_q4_K_8_bl(struct ggml_tensor * t, int interleave_block
     if (dst_buffer == NULL) {
         return -1;
     }
-    memcpy(dst_buffer, src, row_q4_Kx8_size);
+    // **** Not needed ****
+    // memcpy(dst_buffer, src, row_q4_Kx8_size);
     block_q4_Kx8 * dst_buffer_cur = dst_buffer;
 
     for (int b = 0; b < nrow; b += ncols_interleaved) {

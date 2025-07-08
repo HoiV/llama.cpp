@@ -1138,20 +1138,28 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     //
     // Xbox repack and linkage types.
     //
-    // N.B. A linkage type is not required for GGML_TYPE_Q8_0_Q8_0_x8 since both the
-    //      src0 and src1 tensors are the same type size and block size.
+    // A linkage type is required since there is a different vec_dot function.
     //
 
+    [GGML_TYPE_Q8_0_x8] = {
+        .type_name                = "q8_0_x8",
+        .blck_size                = QK8_0 * 8,
+        .type_size                = sizeof(block_q8_0_repack),
+        .is_quantized             = true,
+        .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q8_0_q8_0_x8,
+        .vec_dot_type             = GGML_TYPE_Q8_0_Q8_0_x8,
+        .nrows                    = 1,
+    },
     [GGML_TYPE_Q8_0_Q8_0_x8] = {
         .type_name                = "q8_0_q8_0_x8",
-        .blck_size                = QK8_0,
-        .type_size                = sizeof(block_q8_0),
+        .blck_size                = QK8_0 * 8,
+        .type_size                = sizeof(block_q8_0_repack),
         .is_quantized             = true,
         .to_float                 = NULL,
         .from_float               = (ggml_from_float_t)quantize_row_q8_0_x8,
         .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q8_0_q8_0_x8,
         .vec_dot_type             = GGML_TYPE_Q8_0_Q8_0_x8,
-        .nrows                    = 1,
+        .nrows                    = -1,
     },
 
     //
@@ -1177,7 +1185,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .from_float               = (ggml_from_float_t)quantize_row_q8_k_x8,
         .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_k_q8_k_x8,
         .vec_dot_type             = GGML_TYPE_Q4_K_Q8_K_x8,
-        .nrows                    = 1,
+        .nrows                    = -1,
     },
 
     //
@@ -1188,8 +1196,8 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
 
     [GGML_TYPE_Q4_0_x8] = {
         .type_name                = "q4_0_x8",
-        .blck_size                = QK4_0,
-        .type_size                = sizeof(block_q4_0),
+        .blck_size                = QK4_0 * 8,
+        .type_size                = sizeof(block_q4_0_repack),
         .is_quantized             = true,
         .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_0_q8_0_x8,
         .vec_dot_type             = GGML_TYPE_Q4_0_Q8_0_x8,
@@ -1197,13 +1205,13 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
     },
     [GGML_TYPE_Q4_0_Q8_0_x8] = {
         .type_name                = "q4_0_q8_0_x8",
-        .blck_size                = QK8_0,
-        .type_size                = sizeof(block_q8_0),
+        .blck_size                = QK8_0 * 8,
+        .type_size                = sizeof(block_q8_0_repack),
         .is_quantized             = true,
         .from_float               = (ggml_from_float_t)quantize_row_q8_0_x8,
         .vec_dot                  = (ggml_vec_dot_t)xx_vec_dot_q4_0_q8_0_x8,
         .vec_dot_type             = GGML_TYPE_Q4_0_Q8_0_x8,
-        .nrows                    = 1,
+        .nrows                    = -1,
     },
 };
 
@@ -5977,6 +5985,10 @@ extern inline const char * ggml_type_name(enum ggml_type type) {
 
 extern inline bool ggml_is_quantized(enum ggml_type type) {
     return type_traits[type].is_quantized;
+}
+
+extern inline bool ggml_is_multirow(enum ggml_type type) {
+    return (type_traits[type].nrows == -1);
 }
 
 extern inline const char * ggml_op_name(enum ggml_op op) {
@@ -15086,49 +15098,78 @@ void ggml_compute_forward_mul_mat(
     const int ith = params->ith;
     const int nth = params->nth;
 
-/*
+    #if 0
+
     if (!ith) {
         static uint32_t count = 64;
 
-        if (count) {
-            count -= 1;
+        if ((src0_type == GGML_TYPE_Q4_0) ||
+            (src0_type == GGML_TYPE_Q4_K) ||
+            (src0_type == GGML_TYPE_Q8_0)) {
 
-            printf("src0 type %s\n", ggml_type_name(src0->type));
-            printf("src0 ne[0] %zd, ne[1] %zd, ne[2] %zd, ne[3] %zd\n",
-                    src0->ne[0],
-                    src0->ne[1],
-                    src0->ne[2],
-                    src0->ne[3]);
-
-            printf("src0 nb[0] %zd, nb[1] %zd, nb[2] %zd, nb[3] %zd\n",
-                    src0->nb[0],
-                    src0->nb[1],
-                    src0->nb[2],
-                    src0->nb[3]);
-
-            printf("src1 type %s\n", ggml_type_name(src1->type));
-            printf("src1 ne[0] %zd, ne[1] %zd, ne[2] %zd, ne[3] %zd\n",
-                    src1->ne[0],
-                    src1->ne[1],
-                    src1->ne[2],
-                    src1->ne[3]);
-
-            printf("src1 nb[0] %zd, nb[1] %zd, nb[2] %zd, nb[3] %zd\n\n",
-                    src1->nb[0],
-                    src1->nb[1],
-                    src1->nb[2],
-                    src1->nb[3]);
-        }
-
-        if ((src0->ne[2] != 1) || (src0->ne[3] != 1)) {
-            __debugbreak();
-        }
+            if (count) {
+                count -= 1;
     
-        if ((src1->ne[2] != 1) || (src1->ne[3] != 1)) {
-            __debugbreak();
+                printf("src0 type %s, dims %d, nrows %zd, nr0 %zd, row_size %zd, %s\n",
+                       ggml_type_name(src0->type),
+                       ggml_n_dims(src0),
+                       ggml_nrows(src0),
+                       src0->ne[1],
+                       ggml_row_size(src0_type, src0->ne[0]),
+                       ggml_is_contiguous(src0) ? "contiguous" : "noncontiguous");
+
+                printf("src0 ne00 %zd, ne01 %zd, ne02 %zd, ne03 %zd\n",
+                        src0->ne[0],
+                        src0->ne[1],
+                        src0->ne[2],
+                        src0->ne[3]);
+    
+                printf("src0 nb00 %zd, nb01 %zd, nb02 %zd, nb03 %zd\n\n",
+                        src0->nb[0],
+                        src0->nb[1],
+                        src0->nb[2],
+                        src0->nb[3]);
+    
+                printf("src1 type %s, dims %d, nrows %zd, nr1 %zd, row_size %zd, %s\n",
+                       ggml_type_name(src1->type),
+                       ggml_n_dims(src1),
+                       ggml_nrows(src1),
+                       dst->ne[1] * src1->ne[2] * src1->ne[3],
+                       ggml_row_size(src1_type, src1->ne[0]),
+                       ggml_is_contiguous(src1) ? "contiguous" : "noncontiguous");
+
+                printf("src1 ne10 %zd, ne11 %zd, ne12 %zd, ne13 %zd\n",
+                        src1->ne[0],
+                        src1->ne[1],
+                        src1->ne[2],
+                        src1->ne[3]);
+    
+                printf("src1 nb10 %zd, nb11 %zd, nb12 %zd, nb13 %zd\n\n",
+                        src1->nb[0],
+                        src1->nb[1],
+                        src1->nb[2],
+                        src1->nb[3]);
+    
+                printf("dst type %s, %s\n",
+                       ggml_type_name(dst->type),
+                       ggml_is_contiguous(dst) ? "contiguous" : "noncontiguous");
+
+                printf("dst ne0 %zd, ne1 %zd, ne2 %zd, ne3 %zd\n",
+                        dst->ne[0],
+                        dst->ne[1],
+                        dst->ne[2],
+                        dst->ne[3]);
+    
+                printf("dst nb0 %zd, nb1 %zd, nb2 %zd, nb3 %zd\n\n",
+                        dst->nb[0],
+                        dst->nb[1],
+                        dst->nb[2],
+                        dst->nb[3]);
+            }
         }
     }
-*/
+
+#endif // #if 0
 
     //
     // Check if an attempt should be made to repack the src0 tensor
@@ -15231,9 +15272,31 @@ void ggml_compute_forward_mul_mat(
     GGML_ASSERT(nb1 <= nb2);
     GGML_ASSERT(nb2 <= nb3);
 
-    // broadcast factors
-    const int64_t r2 = ne12/ne02;
-    const int64_t r3 = ne13/ne03;
+    //
+    // WARNING: The following code is a live assert that there is never a broadcast
+    //           value that is not 1. This code can be removed or turned into an assert
+    //           later.
+    //
+
+    if (!ith) {
+    
+        // broadcast factors
+        const int64_t r2 = ne12/ne02;
+        const int64_t r3 = ne13/ne03;
+    
+        if ((r2 != 1) || (r3 != 1)) {
+            printf("ne12 %zd - ne02 %zd, ne13 %zd - ne03 %zd, r2 %zd, r3 %zd\n\n",
+                   ne12,
+                   ne02,
+                   ne13,
+                   ne03,
+                   r2,
+                   r3);
+
+            fflush(stdout);
+            abort();
+        }
+    }
 
     // nb01 >= nb00 - src0 is not transposed
     //   compute by src0 rows
@@ -15551,6 +15614,25 @@ void ggml_compute_forward_mul_mat(
 
     int64_t blck0_factor = (l1d_cache_size + (src0_row_size / 2) - row_size) / src0_row_size; 
 
+#if 0
+
+    if (!ith) {
+
+        static uint32_t bcount = 64;
+
+        if (bcount) {
+            bcount -= 1;
+
+            printf("lid$ %zd, src0_row_size %zd, src1_row_size %zd, bf %zd\n",
+                   l1d_cache_size,
+                   src0_row_size,
+                   row_size,
+                   blck0_factor);
+        }
+    }
+
+#endif // #if 0
+
     //
     // The block factor must have a value of at least one.
     //
@@ -15611,45 +15693,92 @@ void ggml_compute_forward_mul_mat(
     // The number of rows in a tile is the blocking factor.
     //
 
-    void * dst_data = dst->data;
-    for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck0_factor) {
+    char * dst_data = dst->data;
+
+    //
+    // Split the multirow code from the single row code. The multirow code only
+    // contains the repacked quant types and much more is known about the memory
+    // layout of these types. This enables superfluous overhead to be ommitted.
+    //
+
+    if (ggml_is_multirow(vec_dot_type)) {
 
         //
-        // This loop sequences through all the src1 columns.
+        // Compute the dot product of the selected set of src1 columns versus a tile
+        // block of src0 rows.
+        //
+        // N.B. ir110 - ir111 is the set of selected columns.
+        //
+        // N.B. ir010 - ir011 is the set of selected rows.
         //
 
-        for (int64_t ir1 = ir110; ir1 < ir111; ++ir1) {
-            const int64_t i13 = (ir1/(ne12*ne1));
-            const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
-            const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
+        const char * src0_row = src0->data;
+        const char * src1_col = wdata + (row_size * ir110);
+        float * dst_col = (float *)(dst_data + (ir110 * nb1));
 
-            // broadcast src0 into src1
-            const int64_t i03 = i13/r3;
-            const int64_t i02 = i12/r2;
-
-            const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
-
-            // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
-            //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
-            //       the original src1 data pointer, so we should index using the indices directly
-            // TODO: this is a bit of a hack, we should probably have a better way to handle this
-
-            const char * src1_col = (const char *) wdata +
-                (src1_cont || init_mat
-                    ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
-                    : (i11*nb11 + i12*nb12 + i13*nb13));
-
-            float * dst_col = (float *) ((char *) dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
-
-            //
-            // This loop computes the dot product of one src1 column versus a tile block of
-            // src0 rows.
-            //
+        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck0_factor) {
 
             const int64_t limit0 = MIN(iir0 + blck0_factor, ir011);
-            for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
-                vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
-                // printf("vec_dot -> %8.5f\n", *dst_col);
+            vec_dot(ne00,
+                    &dst_col[iir0],
+                    nb1,
+                    src0_row + (iir0 * nb01),
+                    0,
+                    src1_col,
+                    ir111 - ir110,
+                    limit0 - iir0);
+        }
+
+    } else {
+        for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck0_factor) {
+
+            //
+            // This loop sequences through all the src1 columns.
+            //
+
+            for (int64_t ir1 = ir110; ir1 < ir111; ++ir1) {
+                const int64_t i13 = (ir1/(ne12*ne1));
+                const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
+                const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
+
+#if 0
+
+                //
+                // WARNING: It should not be necessary to broadcast src0 into src1 since
+                //          neither src0 nor src1 can be permuted or transposed.
+                //
+
+                // broadcast src0 into src1
+                const int64_t i03 = i13/r3;
+                const int64_t i02 = i12/r2;
+
+                const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
+
+#endif // #if 0
+
+                const char * src0_row = (const char *) src0->data + (0 + i12*nb02 + i13*nb03);
+
+                // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
+                //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
+                //       the original src1 data pointer, so we should index using the indices directly
+                // TODO: this is a bit of a hack, we should probably have a better way to handle this
+
+                const char * src1_col = wdata +
+                    (src1_cont || init_mat
+                     ? (i11      + i12*ne11 + i13*ne12*ne11)*row_size
+                     : (i11*nb11 + i12*nb12 + i13*nb13));
+    
+                float * dst_col = (float *)(dst_data + (i11*nb1 + i12*nb2 + i13*nb3));
+    
+                //
+                // This loop computes the dot product of one src1 column versus a tile block of
+                // src0 rows.
+                //
+    
+                const int64_t limit0 = MIN(iir0 + blck0_factor, ir011);
+                for (int64_t ir0 = iir0; ir0 < limit0; ++ir0) {
+                    vec_dot(ne00, &dst_col[ir0], 0, src0_row + ir0*nb01, 0, src1_col, 0, 1);
+                }
             }
         }
     }
@@ -17059,9 +17188,11 @@ void ggml_compute_forward_soft_max_f32(
                 ggml_vec_mad_f32(nc, wp, mp_f32, slope);
 
 #if 0
+
                 for (int i = 0; i < nc; ++i) {
                     wp[i] += slope*mp_f32[i];
                 }
+
 #endif // #if 0
 
             }
