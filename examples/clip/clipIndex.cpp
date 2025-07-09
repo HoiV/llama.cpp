@@ -14,6 +14,8 @@
 
 #include "hnswlib/hnswlib.h"
 
+#if _WIN32
+
 #include <windows.h>
 
 static int64_t timer_freq = 0, timer_start = 0;
@@ -36,6 +38,8 @@ int64_t timer_us(void) {
     QueryPerformanceCounter(&t);
     return ((t.QuadPart - timer_start) * 1000000) / timer_freq;
 }
+
+#endif // _WIN32
 
 struct my_app_params {
     int32_t n_batch{1};
@@ -160,12 +164,12 @@ void testVecDb() {
     clip_image_f32 img_res;
     int n_threads = params.n_threads;
     clip_image_preprocess(clip_ctx, &img0, &img_res);
-    int64_t t0 = timer_us();
+    int64_t t0 = ggml_time_us();
     if (!clip_image_encode(clip_ctx, n_threads, &img_res, testvec, true)) {
         fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, test_img_path.c_str());
         return;
     }
-    int64_t t1 = timer_us();
+    int64_t t1 = ggml_time_us();
     printf("[%s]: encoding time = %9.2fms\n", __func__, (t1 - t0) / 1000.0);
 
     // Query the elements for themselves and measure recall
@@ -188,14 +192,14 @@ void testVecDb() {
 }
 
 int main(int argc, char ** argv) {
-    timer_init();
+    ggml_time_init();
 
     if (!my_app_params_parse(argc, argv, params)) {
         my_print_help(argc, argv, params);
         return 1;
     }
 
-    int64_t t_start = timer_us();
+    const int64_t t_start = ggml_time_us();
 
     struct clip_ctx * clip_ctx = clip_model_load(params.model.c_str(), params.verbose);
     if (clip_ctx == NULL) {
@@ -278,9 +282,9 @@ int main(int argc, char ** argv) {
                 imgs_resized_batch.size = imgs_resized.size();
 
                 clip_image_batch_preprocess(clip_ctx, params.n_threads, &img_inputs_batch, &imgs_resized_batch);
-                int64_t t0 = timer_us();
+                int64_t t0 = ggml_time_us();
                 clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec, true);
-                int64_t t1 = timer_us();
+                int64_t t1 = ggml_time_us();
                 if (params.verbose == 1) {
                     printf(".");
                 }
@@ -324,9 +328,9 @@ int main(int argc, char ** argv) {
                 auto imgs_resized_batch = clip_image_f32_batch_make(imgs_resized);
 
                 clip_image_batch_preprocess(clip_ctx, params.n_threads, &img_inputs_batch, &imgs_resized_batch);
-                int64_t t0 = timer_us();
+                int64_t t0 = ggml_time_us();
                 clip_image_batch_encode(clip_ctx, params.n_threads, &imgs_resized_batch, vec, true);
-                int64_t t1 = timer_us();
+                int64_t t1 = ggml_time_us();
                 if (params.verbose == 1) {
                     printf(".");
                 }
@@ -380,9 +384,9 @@ int main(int argc, char ** argv) {
 
     clip_free(clip_ctx);
 
-    int64_t t_elapsed = timer_us() - t_start;
+    int64_t t_elapsed = ggml_time_us() - t_start;
 
-    printf("\n[%s]: Elapsed time: %.2f\n", __func__, t_elapsed / 1024 / 1024.0);
+    printf("\n[%s]: Elapsed time: %.2fs\n", __func__, t_elapsed / 1000.0 / 1000.0);
     print_tensor_op_perf_data(t_elapsed);
 
     // Run small test to verify the DB is valid

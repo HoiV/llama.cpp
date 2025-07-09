@@ -22154,19 +22154,19 @@ void ggml_set_thread_affinity(int ith_cpu) {
     rv = pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     int cpuid = sched_getcpu();
 
-    #if 1 // DEBUG_AFFINITY
-    char * cpu_string = new char[ggml_linux_total_cpus * 2];
+    #if 0 // DEBUG_AFFINITY
+    char * cpu_string = (char *)(ggml_linux_total_cpus * 2);
     sprintf(cpu_string, "\nMask - [");
 	for(long int i = 0; i < ggml_linux_total_cpus; ++i) {
 		if(CPU_ISSET_S(i, sizeof(cpu_set_t), &cpuset)) {
 			sprintf(cpu_string, "1");
         } else {
-			sprintf_s(cpu_string, "0");
+			sprintf(cpu_string, "0");
 		}
 	}
     sprintf(cpu_string, "] - [%2d]\n", cpuid);
     printf("%s", cpu_string);
-    delete [] cpu_string;
+    free(cpu_string);
     #endif // DEBUG_AFFINITY
 #endif
 }

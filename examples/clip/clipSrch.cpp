@@ -14,6 +14,9 @@
 #include <fstream>
 #include <filesystem>
 
+#if _WIN32
+
+#include <string.h>
 #include <windows.h>
 
 static int64_t timer_freq = 0, timer_start = 0;
@@ -36,6 +39,12 @@ int64_t timer_us(void) {
     QueryPerformanceCounter(&t);
     return ((t.QuadPart - timer_start) * 1000000) / timer_freq;
 }
+
+#else
+
+#include <strings.h>
+
+#endif // _WIN32
 
 struct my_app_params {
     int32_t n_threads{1};
@@ -144,7 +153,7 @@ bool my_app_params_parse(int argc, char ** argv, my_app_params & params) {
 }
 
 int main(int argc, char ** argv) {
-    timer_init();
+    ggml_time_init();
 
     my_app_params params;
     if (!my_app_params_parse(argc, argv, params)) {
@@ -167,7 +176,11 @@ int main(int argc, char ** argv) {
         std::filesystem::path model_fullpath = std::filesystem::absolute(params.model);
         std::string cached_model_name = cached_model_fullpath.filename().string();
         std::string model_name = model_fullpath.filename().string();
+#if defined(_WIN32)
         if (_strnicmp(model_name.c_str(), cached_model_name.c_str(), cached_model_name.length()) != 0) {
+#else
+        if (strncasecmp(model_name.c_str(), cached_model_name.c_str(), cached_model_name.length()) != 0) {
+#endif // _WIN32
             printf("[%s]: *******************************************\n"
                    "[%s]: using alternative model from cmdline '%s'. \n"
                    "[%s]: The index database was created with model '%s'.\n"
@@ -219,7 +232,7 @@ int main(int argc, char ** argv) {
 
     std::vector<std::pair<float, hnswlib::labeltype>> results;
 
-    int64_t t_start = timer_us();
+    int64_t t_start = ggml_time_us();
 
     if (!params.img_path.empty()) {
         printf("[%s]: searching DB for image '%s'\n", __func__, params.img_path.c_str());
@@ -272,13 +285,13 @@ int main(int argc, char ** argv) {
                 clip_image_f32 img_res;
                 clip_image_preprocess(clip_ctx, &img0, &img_res);
         
-                int64_t t0 = timer_us();
+                int64_t t0 = ggml_time_us();
                 if (!clip_image_encode(clip_ctx, params.n_threads, &img_res, vec, true)) {
                     fprintf(stderr, "%s: failed to encode image from '%s'\n", __func__, img_path.c_str());
                     clip_free(clip_ctx);
                     return 1;
                 }
-                int64_t t1 = timer_us();
+                int64_t t1 = ggml_time_us();
                 encode_timing_ms.push_back(((t1 - t0) / 1000.0));
 
                 results = alg_hnsw->searchKnnCloserFirst(vec.data(), params.n_results);
@@ -337,9 +350,9 @@ int main(int argc, char ** argv) {
         }
     }
 
-    int64_t t_elapsed = timer_us() - t_start;
+    int64_t t_elapsed = ggml_time_us() - t_start;
 
-    printf("\n[%s]: Elapsed time: %.2f\n", __func__, t_elapsed / 1024 / 1024.0);
+    printf("\n[%s]: Elapsed time: %.2fs\n", __func__, t_elapsed / 1000.0 / 1000.0);
     print_tensor_op_perf_data(t_elapsed);
 
     clip_free(clip_ctx);
