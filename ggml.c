@@ -15263,31 +15263,9 @@ void ggml_compute_forward_mul_mat(
     GGML_ASSERT(nb1 <= nb2);
     GGML_ASSERT(nb2 <= nb3);
 
-    //
-    // WARNING: The following code is a live assert that there is never a broadcast
-    //           value that is not 1. This code can be removed or turned into an assert
-    //           later.
-    //
-
-    if (!ith) {
-    
-        // broadcast factors
-        const int64_t r2 = ne12/ne02;
-        const int64_t r3 = ne13/ne03;
-    
-        if ((r2 != 1) || (r3 != 1)) {
-            printf("ne12 %zd - ne02 %zd, ne13 %zd - ne03 %zd, r2 %zd, r3 %zd\n\n",
-                   ne12,
-                   ne02,
-                   ne13,
-                   ne03,
-                   r2,
-                   r3);
-
-            fflush(stdout);
-            abort();
-        }
-    }
+    // broadcast factors
+    const int64_t r2 = ne12/ne02;
+    const int64_t r3 = ne13/ne03;
 
     ggml_vec_dot_t vec_dot = type_traits[src0_type].vec_dot;
     enum ggml_type const vec_dot_type = type_traits[src0_type].vec_dot_type;
