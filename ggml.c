@@ -15719,22 +15719,11 @@ void ggml_compute_forward_mul_mat(
                 const int64_t i12 = (ir1 - i13*ne12*ne1)/ne1;
                 const int64_t i11 = (ir1 - i13*ne12*ne1 - i12*ne1);
 
-#if 0
-
-                //
-                // WARNING: It should not be necessary to broadcast src0 into src1 since
-                //          neither src0 nor src1 can be permuted or transposed.
-                //
-
                 // broadcast src0 into src1
                 const int64_t i03 = i13/r3;
                 const int64_t i02 = i12/r2;
 
                 const char * src0_row = (const char *) src0->data + (0 + i02*nb02 + i03*nb03);
-
-#endif // #if 0
-
-                const char * src0_row = (const char *) src0->data + (0 + i12*nb02 + i13*nb03);
 
                 // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
                 //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
